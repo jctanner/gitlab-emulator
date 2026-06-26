@@ -17,13 +17,14 @@ API for a real `gitlab-runner` process to:
 
 ## Environment
 
-The Vagrant setup uses three VMs on `glemu124_net`:
+The Vagrant setup uses four VMs on `glemu124_net`:
 
 | VM | IP | Purpose |
 |---|---:|---|
 | `server` | `192.168.124.10` | Runs the emulator container behind Caddy TLS |
 | `client` | `192.168.124.11` | Runs CLI smoke tests |
 | `runner` | `192.168.124.12` | Runs official `gitlab-runner` and Docker |
+| `k8s-runner` | `192.168.124.13` | Runs official `gitlab-runner` with Kubernetes executor and local k3s |
 
 The runner VM has:
 
@@ -66,11 +67,15 @@ Current static tokens:
 | Token | Purpose |
 |---|---|
 | `runner-registration-token` | Registration token accepted by the emulator |
-| `glrt-emulator-runner-token` | Runner authentication token returned by the emulator |
+| `glrt-emulator-runner-token` | Backward-compatible first runner authentication token returned by the emulator |
 
 When no persisted pipeline jobs are eligible, `POST /api/v4/jobs/request`
 returns `204 No Content`. Jobs are created through project pipeline APIs, either
 from direct validation job input or from committed `.gitlab-ci.yml`.
+
+Each additional registration with `runner-registration-token` now receives a
+distinct persisted `glrt-...` runner token so the Docker executor runner and
+Kubernetes executor runner can coexist.
 
 ## Commands That Worked
 
@@ -116,6 +121,24 @@ Run the official runner `needs:artifacts` validation:
 ```bash
 make vm-runner-artifact-needs-test
 ```
+
+Run the official runner Kubernetes executor validation:
+
+```bash
+make vm-k8s-runner-up
+make vm-k8s-runner-validate
+make vm-k8s-incluster-validate
+```
+
+The validated Kubernetes path uses GitLab Runner `19.1.1`, k3s
+`v1.35.5+k3s1`, and a tagged `k8s_probe` job. The job creates a runner pod in
+the `gitlab-runner` namespace, streams trace output back to the emulator,
+finishes successfully, and uploads artifact metadata.
+
+The in-cluster path deploys `gitlab/gitlab-runner:v19.1.1` as
+`glemu-k8s-incluster-runner` in namespace `gitlab-runner-incluster`, then runs
+a tagged `k8s-incluster` job. The validation shows both the manager pod and a
+separate CI job pod in that namespace.
 
 Create a persisted direct job for the runner:
 

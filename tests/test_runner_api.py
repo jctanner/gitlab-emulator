@@ -38,6 +38,43 @@ async def test_runner_registration_exchanges_registration_token(client, db_sessi
     assert runner.last_contact_at is not None
 
 
+async def test_runner_registration_creates_distinct_runner_tokens(client):
+    first = await client.post(
+        f"{API}/runners",
+        headers={"RUNNER-TOKEN": REGISTRATION_TOKEN},
+        json={
+            "token": REGISTRATION_TOKEN,
+            "description": "docker-runner",
+            "tag_list": "docker",
+            "info": {"name": "docker-runner", "executor": "docker"},
+        },
+    )
+    assert first.status_code == 201
+    assert first.json()["token"] == RUNNER_TOKEN
+
+    second = await client.post(
+        f"{API}/runners",
+        headers={"RUNNER-TOKEN": REGISTRATION_TOKEN},
+        json={
+            "token": REGISTRATION_TOKEN,
+            "description": "k8s-runner",
+            "tag_list": "k8s",
+            "run_untagged": False,
+            "info": {"name": "k8s-runner", "executor": "kubernetes"},
+        },
+    )
+    assert second.status_code == 201
+    assert second.json()["token"].startswith("glrt-")
+    assert second.json()["token"] != RUNNER_TOKEN
+
+    runners = await client.get(f"{API}/runners")
+    assert runners.status_code == 200
+    assert [runner["description"] for runner in runners.json()] == [
+        "docker-runner",
+        "k8s-runner",
+    ]
+
+
 async def test_runner_request_no_job_returns_204(client, db_session):
     resp = await client.post(
         f"{API}/jobs/request",

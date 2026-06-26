@@ -25,6 +25,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   and current CI status.
 - `docs/runner-testing.md`: official GitLab Runner validation notes and known
   runner behavior.
+- `docs/kubernetes-runner-validation-plan.md`: k3s-backed GitLab Runner
+  Kubernetes executor validation plan and results.
 - `docs/remaining-slices.md`: completed MVP slice record and deferred work.
 - `GITLAB_STATUS.md`: current status snapshot.
 
@@ -34,12 +36,19 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 - Git Smart HTTP supports clone, fetch, and push against emulator repositories.
 - The Vagrant environment has separate `server`, `client`, and `runner` VMs.
 - The `runner` VM uses the official GitLab Runner with a Docker executor.
+- The `k8s-runner` VM uses the official GitLab Runner with a Kubernetes
+  executor backed by local k3s, both as a VM service and as an in-cluster
+  manager Deployment.
 - Runner registration, verification, unregister, no-job polling, job request,
   trace append, job status update, artifact upload, and artifact download have
   all been implemented at a minimal compatibility level.
 - Persisted pipelines and jobs exist.
 - Pipelines can be created directly or from a minimal `.gitlab-ci.yml`.
 - The official runner VM has executed persisted jobs from the emulator.
+- The Kubernetes executor runner VM has executed a tagged job from the emulator
+  through a k3s job pod, with trace and artifact metadata round trips.
+- The in-cluster Kubernetes executor runner manager has also executed a tagged
+  job from inside k3s, with a separate CI job pod, trace, and artifacts.
 - Runner jobs can fetch private project repositories through Git Smart HTTP
   using CI job tokens.
 - Minimal CI support exists for stages, image, variables, before_script, script,

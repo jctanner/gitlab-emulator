@@ -33,7 +33,7 @@ from app.api.repository_files import _commit_file_change, _file_metadata
 from app.api.runner import explain_job_scheduling, registered_runner_diagnostics
 from app.config import settings
 from app.database import get_db
-from app.models.ci import Pipeline, PipelineJob
+from app.models.ci import CiRunner, Pipeline, PipelineJob
 from app.models.event import Event
 from app.models.issue import Issue
 from app.models.organization import Organization
@@ -179,6 +179,21 @@ def _ci_lab_selected_url(
     return f"/admin/ci-lab{suffix}"
 
 
+def _runners_redirect(
+    *,
+    runner_id: int | None = None,
+    flash_message: str | None = None,
+    flash_type: str = "info",
+) -> RedirectResponse:
+    params: dict[str, str] = {}
+    if flash_message:
+        params["flash_message"] = flash_message
+        params["flash_type"] = flash_type
+    suffix = f"?{urlencode(params)}" if params else ""
+    url = f"/admin/runners/{runner_id}{suffix}" if runner_id else f"/admin/runners{suffix}"
+    return RedirectResponse(url=url, status_code=302)
+
+
 def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
@@ -218,6 +233,39 @@ def _runner_readiness(runner_diagnostics: dict) -> dict:
         "detail": "Runner registered previously, but has not polled recently.",
         "healthy": True,
     }
+
+
+def _runner_status(runner: CiRunner) -> str:
+    if runner.paused:
+        return "paused"
+    if runner.last_poll_at is not None:
+        return "polling"
+    if runner.last_contact_at is not None:
+        return "contacted"
+    return "offline"
+
+
+def _runner_job_names(runner: CiRunner) -> set[str]:
+    return {name for name in [runner.runner_name, runner.description] if name}
+
+
+async def _runner_recent_jobs(
+    db: AsyncSession,
+    runner: CiRunner,
+    *,
+    limit: int = 25,
+) -> list[PipelineJob]:
+    runner_names = _runner_job_names(runner)
+    if not runner_names:
+        return []
+    result = await db.execute(
+        select(PipelineJob)
+        .options(selectinload(PipelineJob.project), selectinload(PipelineJob.pipeline))
+        .where(PipelineJob.runner_name.in_(runner_names))
+        .order_by(PipelineJob.updated_at.desc(), PipelineJob.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 async def _selected_ci_lab_state(
@@ -774,6 +822,131 @@ async def ci_lab_job_action(
         job_id=job_id,
         flash_message=message,
         flash_type="success",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Routes: Runners
+# ---------------------------------------------------------------------------
+
+@router.get("/runners", response_class=HTMLResponse)
+async def list_runners(
+    request: Request,
+    flash_message: str | None = None,
+    flash_type: str = "info",
+    db: AsyncSession = Depends(get_db),
+):
+    """List registered CI runners."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+
+    result = await db.execute(select(CiRunner).order_by(CiRunner.id.asc()))
+    runners = list(result.scalars().all())
+    runner_statuses = {runner.id: _runner_status(runner) for runner in runners}
+
+    return templates.TemplateResponse(
+        request=request,
+        name="runners.html",
+        context=_ctx(
+            request,
+            admin_user=admin_user,
+            flash_message=flash_message,
+            flash_type=flash_type,
+            runners=runners,
+            runner_statuses=runner_statuses,
+        ),
+    )
+
+
+@router.get("/runners/{runner_id}", response_class=HTMLResponse)
+async def runner_detail(
+    request: Request,
+    runner_id: int,
+    flash_message: str | None = None,
+    flash_type: str = "info",
+    db: AsyncSession = Depends(get_db),
+):
+    """Show runner details and recent jobs."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+
+    result = await db.execute(
+        select(CiRunner)
+        .options(selectinload(CiRunner.last_job))
+        .where(CiRunner.id == runner_id)
+    )
+    runner = result.scalar_one_or_none()
+    if runner is None:
+        return RedirectResponse(url="/admin/runners", status_code=302)
+
+    jobs = await _runner_recent_jobs(db, runner)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="runner_detail.html",
+        context=_ctx(
+            request,
+            admin_user=admin_user,
+            flash_message=flash_message,
+            flash_type=flash_type,
+            runner=runner,
+            runner_status=_runner_status(runner),
+            jobs=jobs,
+        ),
+    )
+
+
+@router.post("/runners/{runner_id}/{action}", response_class=HTMLResponse)
+async def runner_action(
+    request: Request,
+    runner_id: int,
+    action: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Pause, resume, or delete a persisted CI runner."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+
+    result = await db.execute(select(CiRunner).where(CiRunner.id == runner_id))
+    runner = result.scalar_one_or_none()
+    if runner is None:
+        return _runners_redirect(
+            flash_message="Runner not found.",
+            flash_type="error",
+        )
+
+    description = runner.description or f"runner #{runner.id}"
+    if action == "pause":
+        runner.paused = True
+        await db.commit()
+        return _runners_redirect(
+            runner_id=runner.id,
+            flash_message=f"Paused {description}.",
+            flash_type="success",
+        )
+    if action == "resume":
+        runner.paused = False
+        await db.commit()
+        return _runners_redirect(
+            runner_id=runner.id,
+            flash_message=f"Resumed {description}.",
+            flash_type="success",
+        )
+    if action == "delete":
+        await db.delete(runner)
+        await db.commit()
+        return _runners_redirect(
+            flash_message=f"Deleted {description}.",
+            flash_type="success",
+        )
+
+    return _runners_redirect(
+        runner_id=runner.id,
+        flash_message="Unsupported runner action.",
+        flash_type="error",
     )
 
 

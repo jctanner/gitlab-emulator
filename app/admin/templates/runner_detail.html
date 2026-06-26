@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Runner {{ runner.id }} - GitLab Emulator Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-items-center flex-justify-between mb-3">
+    <div>
+        <a href="/admin/runners" class="Link--secondary f6">&larr; Runners</a>
+        <h2 class="f2 mt-1">Runner #{{ runner.id }}</h2>
+    </div>
+    <div class="d-flex flex-items-center flex-wrap flex-justify-end" style="gap: 8px;">
+        <span class="status-{{ runner_status }}">{{ runner_status }}</span>
+        {% if runner.paused %}
+        <form method="post" action="/admin/runners/{{ runner.id }}/resume" class="inline-delete">
+            <button type="submit" class="btn btn-sm">Resume</button>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/runners/{{ runner.id }}/pause" class="inline-delete">
+            <button type="submit" class="btn btn-sm">Pause</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/admin/runners/{{ runner.id }}/delete" class="inline-delete" onsubmit="return confirm('Delete this runner registration?');">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+    </div>
+</div>
+
+<section class="ci-lab-panel mb-4">
+    <h3 class="f4 mb-2">Details</h3>
+    <table class="admin-table admin-detail">
+        <tbody>
+            <tr><td>Description</td><td>{{ runner.description or "glemu-runner" }}</td></tr>
+            <tr><td>Token</td><td><code>{{ runner.token }}</code></td></tr>
+            <tr><td>Tags</td><td>{{ (runner.tags or [])|join(", ") or "none" }}</td></tr>
+            <tr><td>Run untagged</td><td>{{ "yes" if runner.run_untagged else "no" }}</td></tr>
+            <tr><td>Paused</td><td>{{ "yes" if runner.paused else "no" }}</td></tr>
+            <tr><td>Locked</td><td>{{ "yes" if runner.locked else "no" }}</td></tr>
+            <tr><td>Runner name</td><td>{{ runner.runner_name or "unknown" }}</td></tr>
+            <tr><td>Executor</td><td>{{ runner.runner_executor or "unknown" }}</td></tr>
+            <tr><td>Version</td><td>{{ runner.runner_version or "unknown" }}</td></tr>
+            <tr><td>Revision</td><td>{{ runner.runner_revision or "unknown" }}</td></tr>
+            <tr><td>Platform</td><td>{{ runner.runner_platform or "unknown" }}</td></tr>
+            <tr><td>Architecture</td><td>{{ runner.runner_architecture or "unknown" }}</td></tr>
+            <tr><td>System ID</td><td>{{ runner.system_id or "unknown" }}</td></tr>
+            <tr><td>Last contact</td><td>{{ runner.last_contact_at or "never" }}</td></tr>
+            <tr><td>Last verify</td><td>{{ runner.last_verify_at or "never" }}</td></tr>
+            <tr><td>Last poll</td><td>{{ runner.last_poll_at or "never" }}</td></tr>
+            <tr><td>Last job</td><td>{{ runner.last_job_id or "none" }}</td></tr>
+            <tr><td>Created</td><td>{{ runner.created_at or "" }}</td></tr>
+            <tr><td>Updated</td><td>{{ runner.updated_at or "" }}</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="ci-lab-panel">
+    <h3 class="f4 mb-2">Recent Jobs</h3>
+    {% if jobs %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Project</th>
+                <th>Pipeline</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Finished</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td>
+                    {% if job.project and job.pipeline %}
+                    <a href="/admin/ci-lab?project_id={{ job.project_id }}&pipeline_id={{ job.pipeline_id }}&job_id={{ job.id }}">#{{ job.id }}</a>
+                    {% else %}
+                    #{{ job.id }}
+                    {% endif %}
+                </td>
+                <td>{{ job.project.full_name if job.project else job.project_id }}</td>
+                <td>#{{ job.pipeline_id }}</td>
+                <td><strong>{{ job.name }}</strong></td>
+                <td><span class="status-{{ job.status }}">{{ job.status }}</span></td>
+                <td>{{ job.started_at or "" }}</td>
+                <td>{{ job.finished_at or "" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="color-fg-muted mb-0">No jobs have been assigned to this runner yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

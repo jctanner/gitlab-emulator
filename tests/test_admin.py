@@ -105,6 +105,160 @@ async def test_admin_repos_page(client, admin_user, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_admin_runners_page_lists_details_and_jobs(client, admin_user):
+    """Admin runners page shows registered runner details and assigned jobs."""
+    from app.admin.routes import _sign_session
+
+    client.cookies.set("admin_session", _sign_session("admin"), path="/admin")
+
+    register_runner = await client.post(
+        f"{API}/runners",
+        headers={"RUNNER-TOKEN": "runner-registration-token"},
+        json={
+            "token": "runner-registration-token",
+            "description": "admin-runners-page",
+            "tag_list": "docker,vm",
+            "run_untagged": True,
+            "info": {"name": "admin-runner", "version": "19.0.1", "executor": "docker"},
+        },
+    )
+    assert register_runner.status_code == 201
+    runner_id = register_runner.json()["id"]
+
+    runners_page = await client.get("/admin/runners")
+    assert runners_page.status_code == 200
+    assert "admin-runners-page" in runners_page.text
+    assert "docker, vm" in runners_page.text
+    assert f"/admin/runners/{runner_id}" in runners_page.text
+    assert f"/admin/runners/{runner_id}/pause" in runners_page.text
+    assert f"/admin/runners/{runner_id}/delete" in runners_page.text
+
+    create_project = await client.post(
+        "/admin/ci-lab/projects",
+        data={"name": "Runner Detail Admin Test"},
+        follow_redirects=False,
+    )
+    assert create_project.status_code in (302, 303)
+    location = create_project.headers["location"]
+    project_id = int(location.split("project_id=", 1)[1].split("&", 1)[0])
+
+    save_yaml = await client.post(
+        "/admin/ci-lab/yaml",
+        data={
+            "project_id": str(project_id),
+            "ci_yaml": "runner_probe:\n  script:\n    - echo runner detail\n",
+        },
+        follow_redirects=False,
+    )
+    assert save_yaml.status_code in (302, 303)
+
+    create_pipeline = await client.post(
+        "/admin/ci-lab/pipelines",
+        data={"project_id": str(project_id), "ref": "main"},
+        follow_redirects=False,
+    )
+    assert create_pipeline.status_code in (302, 303)
+    pipeline_location = create_pipeline.headers["location"]
+    pipeline_id = int(pipeline_location.split("pipeline_id=", 1)[1].split("&", 1)[0])
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": "glrt-emulator-runner-token"},
+        json={
+            "token": "glrt-emulator-runner-token",
+            "info": {"name": "admin-runner", "version": "19.0.1", "executor": "docker"},
+        },
+    )
+    assert request.status_code == 201
+    job_id = request.json()["id"]
+
+    detail_page = await client.get(f"/admin/runners/{runner_id}")
+    assert detail_page.status_code == 200
+    assert f"Runner #{runner_id}" in detail_page.text
+    assert "glrt-emulator-runner-token" in detail_page.text
+    assert "admin-runner" in detail_page.text
+    assert "docker" in detail_page.text
+    assert "runner_probe" in detail_page.text
+    assert f"/admin/ci-lab?project_id={project_id}&pipeline_id={pipeline_id}&job_id={job_id}" in detail_page.text
+
+
+@pytest.mark.asyncio
+async def test_admin_runner_controls_pause_resume_and_delete(client, admin_user):
+    """Admin runners page can pause, resume, and delete stale registrations."""
+    from app.admin.routes import _sign_session
+
+    client.cookies.set("admin_session", _sign_session("admin"), path="/admin")
+
+    register_runner = await client.post(
+        f"{API}/runners",
+        headers={"RUNNER-TOKEN": "runner-registration-token"},
+        json={
+            "token": "runner-registration-token",
+            "description": "stale-k8s-runner",
+            "tag_list": "k8s",
+            "run_untagged": False,
+            "info": {"name": "stale-k8s-runner", "executor": "kubernetes"},
+        },
+    )
+    assert register_runner.status_code == 201
+    runner_id = register_runner.json()["id"]
+
+    pause = await client.post(
+        f"/admin/runners/{runner_id}/pause",
+        follow_redirects=False,
+    )
+    assert pause.status_code in (302, 303)
+    assert pause.headers["location"].startswith(f"/admin/runners/{runner_id}")
+
+    paused_page = await client.get(pause.headers["location"])
+    assert paused_page.status_code == 200
+    assert "Paused stale-k8s-runner." in paused_page.text
+    assert "paused" in paused_page.text
+    assert f"/admin/runners/{runner_id}/resume" in paused_page.text
+
+    resume = await client.post(
+        f"/admin/runners/{runner_id}/resume",
+        follow_redirects=False,
+    )
+    assert resume.status_code in (302, 303)
+
+    resumed_page = await client.get(resume.headers["location"])
+    assert resumed_page.status_code == 200
+    assert "Resumed stale-k8s-runner." in resumed_page.text
+    assert f"/admin/runners/{runner_id}/pause" in resumed_page.text
+
+    unsupported = await client.post(
+        f"/admin/runners/{runner_id}/unsupported",
+        follow_redirects=False,
+    )
+    assert unsupported.status_code in (302, 303)
+    unsupported_page = await client.get(unsupported.headers["location"])
+    assert "Unsupported runner action." in unsupported_page.text
+
+    delete = await client.post(
+        f"/admin/runners/{runner_id}/delete",
+        follow_redirects=False,
+    )
+    assert delete.status_code in (302, 303)
+    assert delete.headers["location"].startswith("/admin/runners")
+
+    runners_page = await client.get(delete.headers["location"])
+    assert runners_page.status_code == 200
+    assert "Deleted stale-k8s-runner." in runners_page.text
+    runners_page = await client.get("/admin/runners")
+    assert runners_page.status_code == 200
+    assert "stale-k8s-runner" not in runners_page.text
+
+    missing = await client.post(
+        f"/admin/runners/{runner_id}/pause",
+        follow_redirects=False,
+    )
+    assert missing.status_code in (302, 303)
+    missing_page = await client.get(missing.headers["location"])
+    assert "Runner not found." in missing_page.text
+
+
+@pytest.mark.asyncio
 async def test_admin_ci_lab_requires_auth(client):
     """CI Lab redirects unauthenticated users to admin login."""
     resp = await client.get("/admin/ci-lab", follow_redirects=False)

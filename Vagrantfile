@@ -233,4 +233,62 @@ EOF
     SHELL
   end
 
+  # --- k3s Runner VM: official GitLab Runner with Kubernetes executor ---
+  config.vm.define "k8s-runner" do |k8s|
+    k8s.vm.box = "debian/bookworm64"
+    k8s.vm.hostname = "glemu-k8s-runner"
+
+    k8s.vm.network "private_network",
+      ip: "192.168.124.13",
+      libvirt__network_name: "glemu124_net",
+      libvirt__dhcp_enabled: false,
+      libvirt__forward_mode: "none"
+
+    k8s.vm.synced_folder ".", "/vagrant", disabled: true
+
+    k8s.vm.provider :libvirt do |lv|
+      lv.uri = "qemu:///system"
+      lv.cpus = 2
+      lv.memory = 4096
+    end
+
+    k8s.vm.provision "shell", inline: <<-SHELL
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+
+      apt-get update
+      apt-get install -y ca-certificates curl gnupg git jq rsync
+
+      # Point glemu.local at the server VM.
+      grep -q '^192\\.168\\.124\\.10 glemu\\.local$' /etc/hosts \
+        || echo "192.168.124.10 glemu.local" >> /etc/hosts
+
+      # Single-node k3s for Kubernetes executor validation.
+      if ! command -v k3s >/dev/null 2>&1; then
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 0644" sh -
+      fi
+      mkdir -p /home/vagrant/.kube
+      cp /etc/rancher/k3s/k3s.yaml /home/vagrant/.kube/config
+      chown -R vagrant:vagrant /home/vagrant/.kube
+
+      # Official GitLab Runner package repository.
+      if [ ! -f /etc/apt/sources.list.d/runner_gitlab-runner.list ]; then
+        curl -fsSL https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh \
+          | bash
+      fi
+      apt-get install -y gitlab-runner
+
+      mkdir -p /srv/scripts /etc/gitlab-runner/k3s
+      chown -R vagrant:vagrant /srv
+
+      kubectl get namespace gitlab-runner >/dev/null 2>&1 \
+        || kubectl create namespace gitlab-runner
+
+      echo "k3s Kubernetes runner provisioning complete."
+      k3s --version
+      kubectl version --client=true
+      gitlab-runner --version
+    SHELL
+  end
+
 end

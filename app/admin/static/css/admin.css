@@ -269,6 +269,10 @@ table.admin-detail td:first-child {
     font-size: 12px;
 }
 .status-success { color: #1a7f37; font-weight: 600; }
+.status-polling,
+.status-contacted { color: #1a7f37; font-weight: 600; }
+.status-paused { color: #bf8700; font-weight: 600; }
+.status-offline { color: #656d76; font-weight: 600; }
 .status-canceled,
 .status-skipped,
 .status-manual { color: #8250df; font-weight: 600; }

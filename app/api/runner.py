@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -173,6 +174,29 @@ async def _ensure_runner(db: DbSession, token: str = EMULATOR_RUNNER_TOKEN) -> C
         )
         db.add(runner)
         await db.flush()
+    return runner
+
+
+async def _create_registered_runner(db: DbSession) -> CiRunner:
+    existing = await db.execute(select(CiRunner.id).limit(1))
+    if existing.first() is None:
+        token = EMULATOR_RUNNER_TOKEN
+    else:
+        while True:
+            token = f"glrt-{secrets.token_urlsafe(24)}"
+            result = await db.execute(select(CiRunner.id).where(CiRunner.token == token))
+            if result.scalar_one_or_none() is None:
+                break
+    runner = CiRunner(
+        token=token,
+        description="glemu-runner",
+        tags=[],
+        run_untagged=True,
+        paused=False,
+        locked=False,
+    )
+    db.add(runner)
+    await db.flush()
     return runner
 
 
@@ -815,11 +839,18 @@ async def register_runner(
     db: DbSession,
     runner_token: str | None = Header(default=None, alias="RUNNER-TOKEN"),
 ):
-    """Register a runner with a static emulator registration token."""
+    """Register a runner with the emulator registration token."""
     token = body.token or _runner_token_from_header(runner_token)
-    if not (_is_registration_token(token) or _is_runner_token(token)):
+    if not token:
         raise HTTPException(status_code=403, detail="Forbidden")
-    runner = await _ensure_runner(db)
+    if _is_registration_token(token):
+        runner = await _create_registered_runner(db)
+    else:
+        runner = await _runner_for_token(db, token)
+        if runner is None and _is_runner_token(token):
+            runner = await _ensure_runner(db, token)
+        if runner is None:
+            raise HTTPException(status_code=403, detail="Forbidden")
     runner.tags = _tag_list(body.tag_list)
     runner.run_untagged = body.run_untagged
     runner.description = body.description or "glemu-runner"
@@ -837,11 +868,15 @@ async def verify_runner(
     db: DbSession,
     runner_token: str | None = Header(default=None, alias="RUNNER-TOKEN"),
 ):
-    """Verify the static emulator runner token."""
+    """Verify a persisted emulator runner token."""
     token = body.token or _runner_token_from_header(runner_token)
-    if not (_is_runner_token(token) or _is_registration_token(token)):
+    if not token:
         raise HTTPException(status_code=403, detail="Forbidden")
-    runner = await _ensure_runner(db)
+    runner = await _runner_for_token(db, token)
+    if runner is None and (_is_runner_token(token) or _is_registration_token(token)):
+        runner = await _ensure_runner(db)
+    if runner is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
     _record_runner_contact(runner, event="verify", system_id=body.system_id)
     await db.commit()
     await db.refresh(runner)
@@ -856,12 +891,13 @@ async def unregister_runner(
 ):
     """Accept runner unregister requests for validation workflows."""
     token = body.token or _runner_token_from_header(runner_token)
-    if not _is_runner_token(token):
-        raise HTTPException(status_code=403, detail="Forbidden")
     runner = await _runner_for_token(db, token)
-    if runner is not None:
-        await db.delete(runner)
-        await db.commit()
+    if runner is None:
+        if not _is_runner_token(token):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    await db.delete(runner)
+    await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -873,11 +909,11 @@ async def request_job(
 ):
     """Let official gitlab-runner poll successfully when no jobs are queued."""
     token = body.token or _runner_token_from_header(runner_token)
-    if not _is_runner_token(token):
-        raise HTTPException(status_code=403, detail="Forbidden")
     runner = await _runner_for_token(db, token)
-    if runner is None:
+    if runner is None and _is_runner_token(token):
         runner = await _ensure_runner(db, token)
+    if runner is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
     _record_runner_contact(runner, event="poll", info=body.info, system_id=body.system_id)
     if runner.paused:
         await db.commit()

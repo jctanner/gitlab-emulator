@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Runners - GitLab Emulator Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-items-center flex-justify-between mb-3">
+    <h2 class="f2">Runners</h2>
+    <a class="btn" href="/api/v4/runners">Runner API</a>
+</div>
+
+{% if runners %}
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Tags</th>
+            <th>Executor</th>
+            <th>Version</th>
+            <th>Last contact</th>
+            <th>Last poll</th>
+            <th>Last job</th>
+            <th class="actions">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for runner in runners %}
+        {% set status = runner_statuses.get(runner.id, "offline") %}
+        <tr>
+            <td><a href="/admin/runners/{{ runner.id }}">{{ runner.id }}</a></td>
+            <td>
+                <a href="/admin/runners/{{ runner.id }}"><strong>{{ runner.description or "glemu-runner" }}</strong></a>
+                {% if runner.runner_name %}
+                <div class="color-fg-muted f6">{{ runner.runner_name }}</div>
+                {% endif %}
+            </td>
+            <td><span class="status-{{ status }}">{{ status }}</span></td>
+            <td>{{ (runner.tags or [])|join(", ") or "none" }}</td>
+            <td>{{ runner.runner_executor or "unknown" }}</td>
+            <td>{{ runner.runner_version or "unknown" }}</td>
+            <td>{{ runner.last_contact_at or "never" }}</td>
+            <td>{{ runner.last_poll_at or "never" }}</td>
+            <td>
+                {% if runner.last_job_id %}
+                #{{ runner.last_job_id }}
+                {% else %}
+                none
+                {% endif %}
+            </td>
+            <td class="actions">
+                {% if runner.paused %}
+                <form method="post" action="/admin/runners/{{ runner.id }}/resume" class="inline-delete">
+                    <button type="submit" class="btn btn-sm">Resume</button>
+                </form>
+                {% else %}
+                <form method="post" action="/admin/runners/{{ runner.id }}/pause" class="inline-delete">
+                    <button type="submit" class="btn btn-sm">Pause</button>
+                </form>
+                {% endif %}
+                <form method="post" action="/admin/runners/{{ runner.id }}/delete" class="inline-delete" onsubmit="return confirm('Delete this runner registration?');">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="Box p-4">
+    <p class="color-fg-muted mb-0">No runners have registered with the emulator yet.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -5,6 +5,7 @@ This runbook is for the Vagrant validation stack:
 - `server`: emulator, Caddy TLS, Docker Compose, MinIO
 - `client`: CLI and `glab` validation
 - `runner`: official GitLab Runner with Docker executor
+- `k8s-runner`: official GitLab Runner with Kubernetes executor and local k3s
 
 ## Normal Deploys
 
@@ -29,6 +30,7 @@ After a reset, reinstall runner trust before validating runner jobs:
 
 ```bash
 make vm-runner-install-ca
+make vm-k8s-runner-install-ca
 ```
 
 ## Fast Operational Smoke
@@ -50,6 +52,14 @@ Use full VM validation before larger handoffs:
 make vm-validate
 ```
 
+Use Kubernetes executor validation when changing runner coordinator behavior or
+Kubernetes runner configuration:
+
+```bash
+make vm-k8s-runner-up
+make vm-k8s-runner-validate
+```
+
 ## Recovery Checklist
 
 ### Runner TLS Failures
@@ -63,7 +73,9 @@ Check:
 
 ```bash
 make vm-runner-status
+make vm-k8s-runner-status
 vagrant ssh runner -c "sudo journalctl -u gitlab-runner -n 100 --no-pager"
+vagrant ssh k8s-runner -c "sudo journalctl -u gitlab-runner -n 100 --no-pager"
 ```
 
 Recover:
@@ -71,7 +83,10 @@ Recover:
 ```bash
 make vm-runner-install-ca
 make vm-runner-register
+make vm-k8s-runner-install-ca
+make vm-k8s-runner-register
 make vm-ci-lab-smoke
+make vm-k8s-runner-validate
 ```
 
 For fast smoke runs, `make vm-ci-lab-smoke` calls `vm-runner-ensure-ca`, which
@@ -103,6 +118,8 @@ Recover with the token expected by the current emulator:
 ```bash
 make vm-runner-register RUNNER_TOKEN=runner-registration-token
 make vm-runner-status
+make vm-k8s-runner-register RUNNER_TOKEN=runner-registration-token
+make vm-k8s-runner-status
 ```
 
 ### Docker Image Pull Failures

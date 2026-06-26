@@ -16,6 +16,11 @@ Validation currently passes locally and in the VM stack. The latest validation
 run passed `make test-affected` with 190 tests and `make vm-validate`, including
 client `glab` smoke with high-level release workflow and official runner
 validation.
+The Kubernetes executor validation slice now provisions a `k8s-runner` VM with
+k3s, registers an official GitLab Runner using `executor = "kubernetes"`,
+passes `make vm-k8s-runner-validate` with trace and artifact round trips, and
+also passes `make vm-k8s-incluster-validate` with the runner manager itself
+running as a pod inside k3s.
 The first deeper resource-compatibility pass adds top-level project/group
 listing, project deletion, repository tree/raw file reads, merge request
 commits/changes, exact GitLab pagination totals plus query-preserving `Link`
@@ -100,6 +105,25 @@ Status: implemented.
 - `gitlab_emulator/docs/operations-runbook.md` documents recovery checklists
   for runner TLS failures, runner registration token mismatch, Docker image
   pull failures, stuck pending jobs, and stale running jobs.
+
+### 1.6 Kubernetes Executor Runner Validation
+
+Status: implemented.
+
+- Added a `k8s-runner` Vagrant VM running single-node k3s.
+- Added official GitLab Runner registration for the Kubernetes executor.
+- Added distinct persisted runner tokens for multiple runner registrations
+  after the first backward-compatible static token.
+- Added `vm-k8s-runner-*` make targets for provisioning, CA install,
+  registration, status/log/pod inspection, and validation.
+- Added `scripts/k8s-runner-validation.sh`, which creates a tagged `k8s`
+  pipeline job, waits for official runner execution, checks trace markers, and
+  verifies artifact metadata.
+- `make vm-k8s-runner-validate` passes and shows k3s runner pods in the
+  `gitlab-runner` namespace.
+- Added an in-cluster runner manager Deployment in namespace
+  `gitlab-runner-incluster`, validated by `make vm-k8s-incluster-validate`
+  with tag `k8s-incluster`.
 
 ## 2. Deeper Existing Resource Compatibility
 

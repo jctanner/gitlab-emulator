@@ -49,11 +49,13 @@ Important local coverage areas:
 
 ## VM Validation
 
-The Vagrant setup uses three VMs:
+The Vagrant setup uses four VMs:
 
 - `server`: emulator, Caddy TLS, Docker Compose, MinIO
 - `client`: `git`, `curl`, and `glab` validation
 - `runner`: official GitLab Runner with Docker executor
+- `k8s-runner`: official GitLab Runner with Kubernetes executor and local k3s;
+  it validates both a VM-service runner and an in-cluster runner manager
 
 Expected validation path:
 
@@ -72,6 +74,20 @@ For runner-only validation, use:
 ```bash
 make vm-runner-validate
 ```
+
+For Kubernetes executor validation, use:
+
+```bash
+make vm-k8s-runner-up
+make vm-k8s-runner-validate
+make vm-k8s-incluster-validate
+```
+
+This provisions k3s on the `k8s-runner` VM, registers an official GitLab
+Runner with `executor = "kubernetes"`, creates a tagged `k8s` pipeline job,
+waits for a k3s runner pod to execute it, checks trace markers, and verifies
+artifact metadata. The in-cluster validation deploys a second official runner
+manager as a Kubernetes Deployment, then runs a tagged `k8s-incluster` job.
 
 For a faster CI Lab plus official-runner smoke check, use:
 
@@ -168,10 +184,15 @@ command tied to concrete GitLab REST compatibility gaps.
   authenticated Docker config, or locally mirrored images.
 - TLS trust must be installed on the runner VM before the official runner can
   communicate with `https://glemu.local`.
+- TLS trust must also be installed on the `k8s-runner` VM. The Kubernetes
+  executor additionally needs pod-level name resolution for `glemu.local`,
+  handled by the runner `host_aliases` configuration in the current validation
+  script.
 - `make vm-deploy` preserves Caddy's local CA. If the server VM is reset with
   `make vm-deploy-reset` or `make vm-reset`, refresh the runner trust with
-  `make vm-runner-install-ca`; stale CA trust appears as pending jobs with
-  runner logs reporting certificate verification failures.
+  `make vm-runner-install-ca` and `make vm-k8s-runner-install-ca`; stale CA
+  trust appears as pending jobs with runner logs reporting certificate
+  verification failures.
 - The runner VM must have Docker available and enough privileges for the Docker
   executor.
 - Stuck pending jobs should be diagnosed through CI Lab runner diagnostics or

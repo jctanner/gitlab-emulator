@@ -12,7 +12,7 @@ help:
 		/^# -{10}/ { next } \
 		/^# [A-Z]/ { if(section!="") print ""; printf "\033[1m%s\033[0m\n", substr($$0,3); section=$$0; next } \
 		/^## /     { desc=substr($$0,4); next } \
-		/^[a-zA-Z_-]+:/{ if(desc!="") { target=$$1; sub(/:.*/, "", target); printf "  \033[36m%-15s\033[0m %s\n", target, desc; desc="" } }' $(MAKEFILE_LIST)
+		/^[a-zA-Z0-9_-]+:/{ if(desc!="") { target=$$1; sub(/:.*/, "", target); printf "  \033[36m%-15s\033[0m %s\n", target, desc; desc="" } }' $(MAKEFILE_LIST)
 	@echo ""
 
 # Docker (local)
@@ -137,10 +137,11 @@ clean: down
 
 # Vagrant VM (Debian 12 + Docker, via libvirt/KVM)
 
-.PHONY: vm-net vm-up vm-sync vm-build vm-start vm-reset vm-stop vm-logs vm-deploy vm-deploy-reset vm-destroy vm-ssh vm-ip vm-test vm-git-test vm-glab vm-ci-lab-smoke vm-validate vm-validate-current vm-runner-validate vm-runner-variable-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test vm-client-scripts-sync vm-client-install-glab vm-client-install-ca vm-client-sync vm-client-ssh vm-runner-sync vm-runner-ssh vm-runner-status vm-runner-cache-config vm-runner-ensure-ca vm-runner-install-ca vm-runner-register
+.PHONY: vm-net vm-up vm-sync vm-build vm-start vm-reset vm-stop vm-logs vm-deploy vm-deploy-reset vm-destroy vm-ssh vm-ip vm-test vm-git-test vm-glab vm-ci-lab-smoke vm-validate vm-validate-current vm-runner-validate vm-runner-variable-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test vm-client-scripts-sync vm-client-install-glab vm-client-install-ca vm-client-sync vm-client-ssh vm-runner-sync vm-runner-ssh vm-runner-status vm-runner-cache-config vm-runner-ensure-ca vm-runner-install-ca vm-runner-register vm-k8s-runner-up vm-k8s-runner-sync vm-k8s-runner-ssh vm-k8s-runner-status vm-k8s-runner-logs vm-k8s-runner-pods vm-k8s-runner-install-ca vm-k8s-runner-register vm-k8s-runner-validate vm-k8s-incluster-sync vm-k8s-incluster-deploy vm-k8s-incluster-status vm-k8s-incluster-logs vm-k8s-incluster-pods vm-k8s-incluster-validate
 
 VM_IP := 192.168.124.10
 RUNNER_IP := 192.168.124.12
+K8S_RUNNER_IP := 192.168.124.13
 VM_PROJECT_DIR := /srv/gitlab_emulator
 GLAB_VERSION ?= 1.101.0
 GLAB_SHA256 ?= f8f40309a622416b769a455a85509bae7800070cd023466f2d33d8ee82f3fc61
@@ -215,6 +216,7 @@ vm-ssh:
 vm-ip:
 	@echo "$(VM_IP)  glemu.local"
 	@echo "$(RUNNER_IP)  glemu-runner"
+	@echo "$(K8S_RUNNER_IP)  glemu-k8s-runner"
 
 # Testing
 
@@ -374,3 +376,77 @@ vm-runner-install-ca:
 vm-runner-register: vm-runner-sync
 	@test -n "$(RUNNER_TOKEN)" || { echo "RUNNER_TOKEN is required"; exit 2; }
 	vagrant ssh runner -c 'RUNNER_TOKEN="$(RUNNER_TOKEN)" RUNNER_URL="$${RUNNER_URL:-https://glemu.local}" RUNNER_NAME="$${RUNNER_NAME:-glemu-runner}" RUNNER_TAGS="$${RUNNER_TAGS:-aipcc-small-x86_64,vm,docker,podman}" RUNNER_IMAGE="$${RUNNER_IMAGE:-quay.io/aipcc/agentic-ci/podman:latest}" RUNNER_RUN_UNTAGGED="$${RUNNER_RUN_UNTAGGED:-true}" RUNNER_CACHE_TYPE="$${RUNNER_CACHE_TYPE:-s3}" RUNNER_CACHE_PATH="$${RUNNER_CACHE_PATH:-gitlab-runner}" RUNNER_CACHE_SHARED="$${RUNNER_CACHE_SHARED:-true}" RUNNER_CACHE_S3_SERVER_ADDRESS="$${RUNNER_CACHE_S3_SERVER_ADDRESS:-glemu.local:9000}" RUNNER_CACHE_S3_ACCESS_KEY="$${RUNNER_CACHE_S3_ACCESS_KEY:-glemu}" RUNNER_CACHE_S3_SECRET_KEY="$${RUNNER_CACHE_S3_SECRET_KEY:-glemu-cache-secret}" RUNNER_CACHE_S3_BUCKET_NAME="$${RUNNER_CACHE_S3_BUCKET_NAME:-gitlab-runner-cache}" RUNNER_CACHE_S3_BUCKET_LOCATION="$${RUNNER_CACHE_S3_BUCKET_LOCATION:-us-east-1}" RUNNER_CACHE_S3_INSECURE="$${RUNNER_CACHE_S3_INSECURE:-true}" RUNNER_CACHE_S3_PATH_STYLE="$${RUNNER_CACHE_S3_PATH_STYLE:-true}" /srv/scripts/register-runner.sh'
+
+## Boot only the k3s Kubernetes runner VM
+vm-k8s-runner-up: vm-net
+	vagrant up k8s-runner
+
+## Rsync Kubernetes runner helper scripts to the k8s runner VM
+vm-k8s-runner-sync:
+	@vagrant ssh-config k8s-runner > .vagrant-ssh-config
+	@rsync -avz \
+		-e "ssh -F .vagrant-ssh-config" \
+		$(CURDIR)/scripts/register-k8s-runner.sh \
+		$(CURDIR)/scripts/deploy-incluster-k8s-runner.sh \
+		k8s-runner:/srv/scripts/
+	vagrant ssh k8s-runner -c "chmod +x /srv/scripts/register-k8s-runner.sh /srv/scripts/deploy-incluster-k8s-runner.sh"
+	@rm -f .vagrant-ssh-config
+
+## SSH into the k3s runner VM
+vm-k8s-runner-ssh:
+	vagrant ssh k8s-runner
+
+## Show GitLab Runner and k3s status on the k8s runner VM
+vm-k8s-runner-status:
+	vagrant ssh k8s-runner -c "sudo gitlab-runner status; sudo gitlab-runner list || true; sudo kubectl get nodes -o wide; sudo kubectl get pods -A"
+
+## Tail GitLab Runner service logs on the k8s runner VM
+vm-k8s-runner-logs:
+	vagrant ssh k8s-runner -c "sudo journalctl -u gitlab-runner -n 200 --no-pager"
+
+## Show GitLab Runner job pods in k3s
+vm-k8s-runner-pods:
+	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner -o wide"
+
+## Install the emulator Caddy root CA into the k8s runner VM
+vm-k8s-runner-install-ca:
+	vagrant ssh server -c 'docker exec gitlab_emulator-gitlab-emulator-1 sh -c '"'"'for path in /data/caddy-data/caddy/pki/authorities/local/root.crt /root/.local/share/caddy/pki/authorities/local/root.crt; do test -f "$$path" && exec cat "$$path"; done; echo "Caddy root CA not found" >&2; exit 1'"'"'' > .glemu-root.crt
+	@vagrant ssh-config k8s-runner > .vagrant-ssh-config
+	rsync -avz -e "ssh -F .vagrant-ssh-config" .glemu-root.crt k8s-runner:/tmp/glemu-root.crt
+	vagrant ssh k8s-runner -c "sudo cp /tmp/glemu-root.crt /usr/local/share/ca-certificates/glemu-root.crt && sudo mkdir -p /etc/gitlab-runner/certs && sudo cp /tmp/glemu-root.crt /etc/gitlab-runner/certs/glemu.local.crt && sudo update-ca-certificates && sudo gitlab-runner restart || true"
+	@rm -f .glemu-root.crt .vagrant-ssh-config
+
+## Register the k3s runner VM with the emulator using the Kubernetes executor
+vm-k8s-runner-register: vm-k8s-runner-sync
+	@test -n "$(RUNNER_TOKEN)" || { echo "RUNNER_TOKEN is required"; exit 2; }
+	vagrant ssh k8s-runner -c 'RUNNER_TOKEN="$(RUNNER_TOKEN)" RUNNER_URL="$${RUNNER_URL:-https://glemu.local}" RUNNER_NAME="$${RUNNER_NAME:-glemu-k8s-runner}" RUNNER_TAGS="$${RUNNER_TAGS:-k8s}" RUNNER_IMAGE="$${RUNNER_IMAGE:-alpine:3.20}" RUNNER_RUN_UNTAGGED="$${RUNNER_RUN_UNTAGGED:-false}" K8S_NAMESPACE="$${K8S_NAMESPACE:-gitlab-runner}" /srv/scripts/register-k8s-runner.sh'
+
+## Validate official GitLab Runner Kubernetes executor through k3s
+vm-k8s-runner-validate: vm-client-scripts-sync vm-k8s-runner-install-ca vm-k8s-runner-register
+	vagrant ssh client -c "bash /srv/scripts/k8s-runner-validation.sh"
+	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner -o wide"
+
+## Rsync in-cluster Kubernetes runner deployment helper to the k8s runner VM
+vm-k8s-incluster-sync: vm-k8s-runner-sync
+
+## Deploy an official GitLab Runner manager pod inside k3s
+vm-k8s-incluster-deploy: vm-k8s-incluster-sync vm-k8s-runner-install-ca
+	@test -n "$(RUNNER_TOKEN)" || { echo "RUNNER_TOKEN is required"; exit 2; }
+	vagrant ssh k8s-runner -c 'RUNNER_TOKEN="$(RUNNER_TOKEN)" RUNNER_URL="$${RUNNER_URL:-https://glemu.local}" RUNNER_NAME="$${RUNNER_NAME:-glemu-k8s-incluster-runner}" RUNNER_TAGS="$${RUNNER_TAGS:-k8s-incluster}" RUNNER_IMAGE="$${RUNNER_IMAGE:-alpine:3.20}" RUNNER_RUN_UNTAGGED="$${RUNNER_RUN_UNTAGGED:-false}" RUNNER_MANAGER_IMAGE="$${RUNNER_MANAGER_IMAGE:-gitlab/gitlab-runner:v19.1.1}" K8S_NAMESPACE="$${K8S_NAMESPACE:-gitlab-runner-incluster}" /srv/scripts/deploy-incluster-k8s-runner.sh'
+
+## Show in-cluster GitLab Runner manager status
+vm-k8s-incluster-status:
+	vagrant ssh k8s-runner -c "sudo kubectl get deployment,pods -n gitlab-runner-incluster -o wide"
+
+## Tail in-cluster GitLab Runner manager logs
+vm-k8s-incluster-logs:
+	vagrant ssh k8s-runner -c "sudo kubectl logs -n gitlab-runner-incluster deployment/glemu-k8s-incluster-runner --tail=200"
+
+## Show in-cluster runner manager and job pods
+vm-k8s-incluster-pods:
+	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner-incluster -o wide"
+
+## Validate official GitLab Runner running as an in-cluster k3s Deployment
+vm-k8s-incluster-validate: vm-client-scripts-sync vm-k8s-incluster-deploy
+	vagrant ssh client -c "PROJECT_NAME=k8s-incluster-runner-probe RUNNER_TAG=k8s-incluster bash /srv/scripts/k8s-runner-validation.sh"
+	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner-incluster -o wide"
