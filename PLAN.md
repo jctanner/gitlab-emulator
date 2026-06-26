@@ -29,6 +29,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   Kubernetes executor validation plan and results.
 - `docs/runner-deployment-guide.md`: supported runner deployment modes,
   registration flow, network/TLS requirements, and full k3s integration notes.
+- `docs/ci-variables-secrets-security-plan.md`: CI/CD variables, GitLab
+  Secrets Manager compatibility, log redaction, and pipeline security
+  guardrail plan.
 - `docs/remaining-slices.md`: completed MVP slice record and deferred work.
 - `GITLAB_STATUS.md`: current status snapshot.
 
