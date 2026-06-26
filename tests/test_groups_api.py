@@ -1,5 +1,7 @@
 """Tests for GitLab-shaped group API endpoints."""
 
+import json
+
 import pytest
 
 from tests.conftest import API, auth_headers
@@ -417,6 +419,220 @@ async def test_gitlab_group_members_accept_group_path(client, test_user, test_to
 
     assert resp.status_code == 200
     assert any(member["username"] == "testuser" for member in resp.json())
+
+
+@pytest.mark.asyncio
+async def test_group_variables_crud_and_environment_scope(
+    client, test_user, test_token
+):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "variable-group", "name": "Variable Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+
+    created = await client.post(
+        f"{API}/groups/{group_id}/variables",
+        json={
+            "key": "DEPLOY_TOKEN",
+            "value": "token-one",
+            "masked": True,
+            "raw": True,
+            "description": "deployment credential",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json() == {
+        "key": "DEPLOY_TOKEN",
+        "variable_type": "env_var",
+        "value": "token-one",
+        "protected": False,
+        "masked": True,
+        "hidden": False,
+        "raw": True,
+        "environment_scope": "*",
+        "description": "deployment credential",
+    }
+
+    scoped = await client.post(
+        f"{API}/groups/{group_id}/variables",
+        json={
+            "key": "DEPLOY_TOKEN",
+            "value": "token-prod",
+            "environment_scope": "production",
+            "protected": True,
+            "variable_type": "file",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert scoped.status_code == 201
+
+    duplicate = await client.post(
+        f"{API}/groups/{group_id}/variables",
+        json={"key": "DEPLOY_TOKEN", "value": "again"},
+        headers=auth_headers(test_token),
+    )
+    assert duplicate.status_code == 400
+
+    listed = await client.get(
+        f"{API}/groups/{group_id}/variables",
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert [(item["key"], item["environment_scope"]) for item in listed.json()] == [
+        ("DEPLOY_TOKEN", "*"),
+        ("DEPLOY_TOKEN", "production"),
+    ]
+
+    listed_prod = await client.get(
+        f"{API}/groups/{group_id}/variables",
+        params={"filter[environment_scope]": "production"},
+        headers=auth_headers(test_token),
+    )
+    assert listed_prod.status_code == 200
+    assert [(item["key"], item["environment_scope"]) for item in listed_prod.json()] == [
+        ("DEPLOY_TOKEN", "production"),
+    ]
+
+    get_scoped = await client.get(
+        f"{API}/groups/{group_id}/variables/DEPLOY_TOKEN",
+        params={"filter[environment_scope]": "production"},
+        headers=auth_headers(test_token),
+    )
+    assert get_scoped.status_code == 200
+    assert get_scoped.json()["value"] == "token-prod"
+    assert get_scoped.json()["variable_type"] == "file"
+    assert get_scoped.json()["protected"] is True
+
+    updated = await client.put(
+        f"{API}/groups/{group_id}/variables/DEPLOY_TOKEN",
+        json={"value": "token-two", "masked": False, "description": "updated"},
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["value"] == "token-two"
+    assert updated.json()["masked"] is False
+    assert updated.json()["description"] == "updated"
+
+    deleted = await client.delete(
+        f"{API}/groups/{group_id}/variables/DEPLOY_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.get(
+        f"{API}/groups/{group_id}/variables/DEPLOY_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_group_variable_hidden_value_is_not_read_back(
+    client, test_user, test_token
+):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "hidden-variable-group", "name": "Hidden Variable Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+
+    created = await client.post(
+        f"{API}/groups/hidden-variable-group/variables",
+        json={"key": "SECRET_TOKEN", "value": "super-secret-value", "hidden": True},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json()["value"] is None
+    assert created.json()["masked"] is True
+    assert created.json()["hidden"] is True
+
+    fetched = await client.get(
+        f"{API}/groups/hidden-variable-group/variables/SECRET_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["value"] is None
+    assert "super-secret-value" not in json.dumps(fetched.json())
+
+
+@pytest.mark.asyncio
+async def test_group_variable_rejects_invalid_key(client, test_user, test_token):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "invalid-variable-group", "name": "Invalid Variable Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+
+    resp = await client.post(
+        f"{API}/groups/{group.json()['id']}/variables",
+        json={"key": "BAD KEY", "value": "value"},
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_group_variables_accept_encoded_nested_group_path(
+    client, test_user, test_token
+):
+    parent = await client.post(
+        f"{API}/groups",
+        json={"path": "variable-parent", "name": "Variable Parent"},
+        headers=auth_headers(test_token),
+    )
+    assert parent.status_code == 201
+    child = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "child",
+            "name": "Variable Child",
+            "parent_id": parent.json()["id"],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert child.status_code == 201
+
+    created = await client.post(
+        f"{API}/groups/variable-parent%2Fchild/variables",
+        json={"key": "NESTED_TOKEN", "value": "nested"},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+
+    fetched = await client.get(
+        f"{API}/groups/variable-parent%2Fchild/variables/NESTED_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["value"] == "nested"
+
+
+@pytest.mark.asyncio
+async def test_site_admin_can_manage_group_variables(
+    client, test_user, test_token, admin_token
+):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "admin-variable-group", "name": "Admin Variable Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+
+    created = await client.post(
+        f"{API}/groups/{group.json()['id']}/variables",
+        json={"key": "ADMIN_TOKEN", "value": "admin"},
+        headers=auth_headers(admin_token),
+    )
+
+    assert created.status_code == 201
+    assert created.json()["value"] == "admin"
 
 
 @pytest.mark.asyncio

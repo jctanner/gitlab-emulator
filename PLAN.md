@@ -79,6 +79,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   path before traces are persisted or returned through job trace APIs.
 - Project CI/CD variable resolution honors protected refs and job environment
   scopes, including exact and wildcard environment-scope matches.
+- Group CI/CD variable CRUD and admin-only instance CI/CD variable APIs exist,
+  and runner payload resolution applies instance, parent group, child group,
+  and project variable precedence.
 - Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
   tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.

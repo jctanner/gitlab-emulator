@@ -1,15 +1,19 @@
 """GitLab group endpoints backed by the existing Group model."""
 
+import re
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from pydantic import BaseModel
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import Select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession
 from app.api.pagination import paginated_json
 from app.config import settings
+from app.models.ci import CiVariable
 from app.models.group import Group
 from app.models.organization import OrgMembership
 from app.models.project import Project
@@ -18,6 +22,31 @@ from app.schemas.user import SimpleUser
 from app.schemas.user import _fmt_dt
 
 router = APIRouter(tags=["groups"])
+VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+VARIABLE_TYPES = {"env_var", "file"}
+
+
+class GroupVariableCreate(BaseModel):
+    key: str
+    value: str
+    variable_type: str = "env_var"
+    protected: bool = False
+    masked: bool = False
+    hidden: bool = False
+    raw: bool = False
+    environment_scope: str = "*"
+    description: str | None = None
+
+
+class GroupVariableUpdate(BaseModel):
+    value: str | None = None
+    variable_type: str | None = None
+    protected: bool | None = None
+    masked: bool | None = None
+    hidden: bool | None = None
+    raw: bool | None = None
+    environment_scope: str | None = None
+    description: str | None = None
 
 
 async def _get_group_or_404(group_ref: str, db: DbSession) -> Group:
@@ -31,6 +60,80 @@ async def _get_group_or_404(group_ref: str, db: DbSession) -> Group:
     if group is None:
         raise HTTPException(status_code=404, detail="404 Group Not Found")
     return group
+
+
+async def _require_group_owner(group: Group, user: User, db: DbSession) -> None:
+    if user.site_admin:
+        return
+    result = await db.execute(
+        select(OrgMembership).where(
+            OrgMembership.org_id == group.id,
+            OrgMembership.user_id == user.id,
+            OrgMembership.role == "admin",
+            OrgMembership.state == "active",
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _validate_variable_key(key: str) -> str:
+    normalized = str(key or "").strip()
+    if not VARIABLE_KEY_RE.match(normalized):
+        raise HTTPException(status_code=400, detail="Invalid variable key")
+    return normalized
+
+
+def _validate_variable_type(variable_type: str) -> str:
+    normalized = str(variable_type or "env_var")
+    if normalized not in VARIABLE_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid variable_type")
+    return normalized
+
+
+def _variable_visibility(masked: bool, hidden: bool) -> str:
+    if hidden:
+        return "masked_and_hidden"
+    if masked:
+        return "masked"
+    return "visible"
+
+
+def _variable_json(variable: CiVariable) -> dict:
+    hidden = variable.visibility == "masked_and_hidden"
+    masked = variable.visibility in {"masked", "masked_and_hidden"}
+    return {
+        "key": variable.key,
+        "variable_type": variable.variable_type,
+        "value": None if hidden else variable.value,
+        "protected": variable.protected,
+        "masked": masked,
+        "hidden": hidden,
+        "raw": variable.raw,
+        "environment_scope": variable.environment_scope,
+        "description": variable.description,
+    }
+
+
+async def _get_group_variable_or_404(
+    group: Group,
+    db: DbSession,
+    key: str,
+    environment_scope: str | None = None,
+) -> CiVariable:
+    query = select(CiVariable).where(
+        CiVariable.scope_type == "group",
+        CiVariable.scope_id == group.id,
+        CiVariable.key == _validate_variable_key(key),
+    )
+    if environment_scope is not None:
+        query = query.where(CiVariable.environment_scope == environment_scope)
+    else:
+        query = query.where(CiVariable.environment_scope == "*")
+    variable = (await db.execute(query)).scalar_one_or_none()
+    if variable is None:
+        raise HTTPException(status_code=404, detail="404 Variable Not Found")
+    return variable
 
 
 def _group_json(
@@ -469,6 +572,132 @@ async def delete_group_member(
     if membership is None:
         raise HTTPException(status_code=404, detail="Member Not Found")
     await db.delete(membership)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/groups/{group_ref:path}/variables")
+async def list_group_variables(
+    group_ref: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """List group CI/CD variables."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    query = select(CiVariable).where(
+        CiVariable.scope_type == "group",
+        CiVariable.scope_id == group.id,
+    )
+    if environment_scope is not None:
+        query = query.where(CiVariable.environment_scope == environment_scope)
+    query = query.order_by(CiVariable.key, CiVariable.environment_scope)
+    variables = (await db.execute(query)).scalars().all()
+    return [_variable_json(variable) for variable in variables]
+
+
+@router.post("/groups/{group_ref:path}/variables", status_code=201)
+async def create_group_variable(
+    group_ref: str,
+    body: GroupVariableCreate,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Create a group CI/CD variable."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    variable = CiVariable(
+        scope_type="group",
+        scope_id=group.id,
+        key=_validate_variable_key(body.key),
+        value=body.value,
+        variable_type=_validate_variable_type(body.variable_type),
+        visibility=_variable_visibility(body.masked, body.hidden),
+        protected=body.protected,
+        raw=body.raw,
+        environment_scope=body.environment_scope or "*",
+        description=body.description,
+    )
+    db.add(variable)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Variable already exists") from exc
+    await db.refresh(variable)
+    return _variable_json(variable)
+
+
+@router.get("/groups/{group_ref:path}/variables/{key}")
+async def get_group_variable(
+    group_ref: str,
+    key: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """Get a group CI/CD variable by key."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    variable = await _get_group_variable_or_404(group, db, key, environment_scope)
+    return _variable_json(variable)
+
+
+@router.put("/groups/{group_ref:path}/variables/{key}")
+async def update_group_variable(
+    group_ref: str,
+    key: str,
+    body: GroupVariableUpdate,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """Update a group CI/CD variable."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    variable = await _get_group_variable_or_404(group, db, key, environment_scope)
+    if body.value is not None:
+        variable.value = body.value
+    if body.variable_type is not None:
+        variable.variable_type = _validate_variable_type(body.variable_type)
+    if body.protected is not None:
+        variable.protected = body.protected
+    if body.raw is not None:
+        variable.raw = body.raw
+    if body.environment_scope is not None:
+        variable.environment_scope = body.environment_scope or "*"
+    if body.description is not None:
+        variable.description = body.description
+    if body.masked is not None or body.hidden is not None:
+        current_hidden = variable.visibility == "masked_and_hidden"
+        current_masked = variable.visibility in {"masked", "masked_and_hidden"}
+        variable.visibility = _variable_visibility(
+            body.masked if body.masked is not None else current_masked,
+            body.hidden if body.hidden is not None else current_hidden,
+        )
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Variable already exists") from exc
+    await db.refresh(variable)
+    return _variable_json(variable)
+
+
+@router.delete("/groups/{group_ref:path}/variables/{key}", status_code=204)
+async def delete_group_variable(
+    group_ref: str,
+    key: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """Delete a group CI/CD variable."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    variable = await _get_group_variable_or_404(group, db, key, environment_scope)
+    await db.delete(variable)
     await db.commit()
     return Response(status_code=204)
 

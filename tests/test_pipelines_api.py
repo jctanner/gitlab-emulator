@@ -8,7 +8,8 @@ from urllib.parse import quote
 
 from sqlalchemy import select
 
-from app.models.ci import PipelineJob
+from app.models.ci import CiVariable, PipelineJob
+from app.models.group import Group
 from tests.conftest import API, auth_headers
 
 
@@ -944,6 +945,135 @@ review_job:
         "staging_job": "default",
         "review_job": "review",
     }
+
+
+async def test_instance_group_and_project_variable_precedence(
+    client,
+    test_token,
+    db_session,
+):
+    parent = await client.post(
+        f"{API}/groups",
+        json={"path": "ci-parent", "name": "CI Parent"},
+        headers=auth_headers(test_token),
+    )
+    assert parent.status_code == 201
+    child = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "child",
+            "name": "CI Child",
+            "parent_id": parent.json()["id"],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert child.status_code == 201
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "scoped-ci",
+            "namespace_path": "ci-parent/child",
+            "initialize_with_readme": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    ci_yaml = """
+precedence_probe:
+  script:
+    - echo precedence
+"""
+    write = await client.post(
+        f"{API}/projects/{project.json()['id']}/repository/files/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "commit_message": "add precedence ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "encoding": "base64",
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    groups = (
+        await db_session.execute(
+            select(Group).where(Group.login.in_(["ci-parent", "ci-parent/child"]))
+        )
+    ).scalars().all()
+    group_ids = {group.login: group.id for group in groups}
+    db_session.add_all(
+        [
+            CiVariable(
+                scope_type="instance",
+                scope_id=None,
+                key="ORDERED",
+                value="instance",
+            ),
+            CiVariable(
+                scope_type="instance",
+                scope_id=None,
+                key="INSTANCE_ONLY",
+                value="instance",
+            ),
+            CiVariable(
+                scope_type="group",
+                scope_id=group_ids["ci-parent"],
+                key="ORDERED",
+                value="parent",
+            ),
+            CiVariable(
+                scope_type="group",
+                scope_id=group_ids["ci-parent"],
+                key="PARENT_ONLY",
+                value="parent",
+            ),
+            CiVariable(
+                scope_type="group",
+                scope_id=group_ids["ci-parent/child"],
+                key="ORDERED",
+                value="child",
+            ),
+            CiVariable(
+                scope_type="group",
+                scope_id=group_ids["ci-parent/child"],
+                key="CHILD_ONLY",
+                value="child",
+            ),
+            CiVariable(
+                scope_type="project",
+                scope_id=project.json()["id"],
+                key="ORDERED",
+                value="project",
+            ),
+            CiVariable(
+                scope_type="project",
+                scope_id=project.json()["id"],
+                key="PROJECT_ONLY",
+                value="project",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project.json()['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert pipeline_resp.status_code == 201, pipeline_resp.text
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    variables = {item["key"]: item["value"] for item in request.json()["variables"]}
+
+    assert variables["ORDERED"] == "project"
+    assert variables["INSTANCE_ONLY"] == "instance"
+    assert variables["PARENT_ONLY"] == "parent"
+    assert variables["CHILD_ONLY"] == "child"
+    assert variables["PROJECT_ONLY"] == "project"
 
 
 async def test_variable_metadata_reaches_runner_payload(client, test_token):

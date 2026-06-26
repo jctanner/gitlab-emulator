@@ -569,6 +569,10 @@ Deliver:
 
 ### Slice 4: Group and Instance Variables
 
+Status: implemented for the MVP. Group variable CRUD and instance admin
+variable APIs are available, and runner payload resolution applies instance,
+parent group, child group, and project variable precedence.
+
 Deliver:
 
 - Group variable CRUD.

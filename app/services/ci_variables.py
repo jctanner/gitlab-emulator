@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.api.deps import DbSession
 from app.models.branch import Branch
 from app.models.ci import CiVariable
+from app.models.group import Group
 from app.models.project import Project
 
 
@@ -47,22 +48,38 @@ async def project_ref_is_protected(project: Project, ref: str, db: DbSession) ->
     return bool(result.scalar_one_or_none())
 
 
-async def project_variable_entries(
-    project: Project,
+def _project_group_paths(project: Project) -> list[str]:
+    if project.owner_type != "Organization" or "/" not in project.full_name:
+        return []
+    namespace_path = project.full_name.rsplit("/", 1)[0]
+    parts = namespace_path.split("/")
+    return ["/".join(parts[:index]) for index in range(1, len(parts) + 1)]
+
+
+async def _project_group_ids(project: Project, db: DbSession) -> list[int]:
+    paths = _project_group_paths(project)
+    if not paths:
+        return []
+    result = await db.execute(select(Group).where(Group.login.in_(paths)))
+    ids_by_path = {group.login: group.id for group in result.scalars().all()}
+    return [ids_by_path[path] for path in paths if path in ids_by_path]
+
+
+async def _variables_for_scope(
     db: DbSession,
     *,
-    ref: str,
-    environment: str | None = None,
+    scope_type: str,
+    scope_id: int | None,
+    protected_ref: bool,
+    environment: str | None,
 ) -> dict[str, dict]:
-    """Return project variables eligible for a job on a ref/environment."""
-    protected_ref = await project_ref_is_protected(project, ref, db)
+    query = select(CiVariable).where(CiVariable.scope_type == scope_type)
+    if scope_id is None:
+        query = query.where(CiVariable.scope_id.is_(None))
+    else:
+        query = query.where(CiVariable.scope_id == scope_id)
     result = await db.execute(
-        select(CiVariable)
-        .where(
-            CiVariable.scope_type == "project",
-            CiVariable.scope_id == project.id,
-        )
-        .order_by(CiVariable.key.asc(), CiVariable.environment_scope.asc())
+        query.order_by(CiVariable.key.asc(), CiVariable.environment_scope.asc())
     )
     selected: dict[str, tuple[tuple[int, int], CiVariable]] = {}
     for variable in result.scalars().all():
@@ -78,3 +95,41 @@ async def project_variable_entries(
         key: ci_variable_entry(variable)
         for key, (_specificity, variable) in selected.items()
     }
+
+
+async def project_variable_entries(
+    project: Project,
+    db: DbSession,
+    *,
+    ref: str,
+    environment: str | None = None,
+) -> dict[str, dict]:
+    """Return project variables eligible for a job on a ref/environment."""
+    protected_ref = await project_ref_is_protected(project, ref, db)
+    entries = await _variables_for_scope(
+        db,
+        scope_type="instance",
+        scope_id=None,
+        protected_ref=protected_ref,
+        environment=environment,
+    )
+    for group_id in await _project_group_ids(project, db):
+        entries.update(
+            await _variables_for_scope(
+                db,
+                scope_type="group",
+                scope_id=group_id,
+                protected_ref=protected_ref,
+                environment=environment,
+            )
+        )
+    entries.update(
+        await _variables_for_scope(
+            db,
+            scope_type="project",
+            scope_id=project.id,
+            protected_ref=protected_ref,
+            environment=environment,
+        )
+    )
+    return entries

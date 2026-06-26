@@ -149,6 +149,7 @@ def create_app() -> FastAPI:
     from app.api.repository_files import router as repository_files_router
     from app.api.gitlab_commits import router as gitlab_commits_router
     from app.api.merge_requests import router as merge_requests_router
+    from app.api.admin_ci_variables import router as admin_ci_variables_router
 
     # -- REST API routers (under /api/v4/ prefix) ----------------------------
     api_routers = [
@@ -163,6 +164,7 @@ def create_app() -> FastAPI:
         actions_router, markdown_router, emojis_router, gitignore_router,
         licenses_router, user_keys_router, deploy_keys_router,
         review_comments_router, runner_router, pipelines_router,
+        admin_ci_variables_router,
         repository_files_router, gitlab_commits_router, merge_requests_router,
         projects_router,
     ]
