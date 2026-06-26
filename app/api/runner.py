@@ -457,6 +457,24 @@ def _variables_from_dict(values: dict[str, object]) -> list[dict]:
     return [_variable_payload_item(key, value) for key, value in values.items()]
 
 
+def _masked_values_for_job(job: PipelineJob) -> list[str]:
+    values: list[str] = []
+    for variable in (job.variables or {}).values():
+        if not isinstance(variable, dict) or not variable.get("masked"):
+            continue
+        value = str(variable.get("value", ""))
+        if value:
+            values.append(value)
+    return sorted(set(values), key=len, reverse=True)
+
+
+def _redact_trace_text(text: str, job: PipelineJob) -> str:
+    redacted = text
+    for value in _masked_values_for_job(job):
+        redacted = redacted.replace(value, "[MASKED]")
+    return redacted
+
+
 def _repo_url_with_job_token(repo_url: str, job_token: str) -> str:
     parts = urlsplit(repo_url)
     credentials = f"gitlab-ci-token:{quote(job_token, safe='')}"
@@ -1007,8 +1025,11 @@ async def patch_job_trace(
                     headers=_persisted_remote_job_headers(persisted_job),
                 )
         incoming = await request.body()
-        trace.content = (current + incoming).decode(errors="replace")
-        trace.size = len(current) + len(incoming)
+        trace.content = _redact_trace_text(
+            (current + incoming).decode(errors="replace"),
+            persisted_job,
+        )
+        trace.size = len(trace.content.encode())
         persisted_job.trace_size = trace.size
         await db.commit()
         await db.refresh(persisted_job)

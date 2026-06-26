@@ -938,6 +938,64 @@ metadata_probe:
     assert variables["PROJECT_RAW"]["raw"] is True
 
 
+async def test_masked_project_variables_are_redacted_from_trace(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+redaction_probe:
+  script:
+    - echo project trace redaction
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add project variable redaction ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    masked_var = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={
+            "key": "PROJECT_MASKED",
+            "value": "super-secret-token",
+            "masked": True,
+        },
+    )
+    assert masked_var.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+
+    trace = await client.patch(
+        f"{API}/jobs/{payload['id']}/trace?debug_trace=false",
+        headers={"JOB-TOKEN": payload["token"], "Content-Range": "0-36"},
+        content=b"before super-secret-token after",
+    )
+    assert trace.status_code == 202
+
+    raw_trace = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{payload['id']}/trace"
+    )
+    assert raw_trace.status_code == 200
+    assert raw_trace.text == "before [MASKED] after"
+    assert "super-secret-token" not in raw_trace.text
+
+
 async def test_pipeline_trigger_creates_trigger_source_pipeline(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

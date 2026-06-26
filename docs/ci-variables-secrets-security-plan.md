@@ -554,6 +554,10 @@ Deliver:
 
 ### Slice 3: File, Masked, Protected, and Scoped Variables
 
+Status: partially implemented. File/masked/raw metadata reaches runner
+payloads, and masked project variable values are redacted from stored traces.
+Protected ref filtering and environment-scope matching remain.
+
 Deliver:
 
 - File variable support for persisted variables.
