@@ -724,6 +724,88 @@ vars:
     assert variables["CI_PROJECT_PATH"] == "testuser/ci-repo"
 
 
+async def test_project_variables_reach_runner_payload_with_precedence(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+variables:
+  FROM_PROJECT: yaml
+  FROM_PIPELINE: yaml
+
+project_probe:
+  variables:
+    SHARED: job
+  script:
+    - echo project variables
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add project variable ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    project_variable = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={"key": "PROJECT_ONLY", "value": "project"},
+    )
+    assert project_variable.status_code == 201
+    overridden = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={"key": "FROM_PROJECT", "value": "project"},
+    )
+    assert overridden.status_code == 201
+    shared = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={"key": "SHARED", "value": "project"},
+    )
+    assert shared.status_code == 201
+    scoped = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={
+            "key": "SCOPED_OUT",
+            "value": "production-only",
+            "environment_scope": "production",
+        },
+    )
+    assert scoped.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "variables": [
+                {"key": "FROM_PIPELINE", "value": "pipeline"},
+                {"key": "PIPELINE_ONLY", "value": "pipeline"},
+                {"key": "SHARED", "value": "pipeline"},
+            ],
+        },
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    variables = {item["key"]: item["value"] for item in request.json()["variables"]}
+
+    assert variables["PROJECT_ONLY"] == "project"
+    assert variables["PIPELINE_ONLY"] == "pipeline"
+    assert variables["FROM_PROJECT"] == "yaml"
+    assert variables["FROM_PIPELINE"] == "yaml"
+    assert variables["SHARED"] == "job"
+    assert "SCOPED_OUT" not in variables
+
+
 async def test_variable_metadata_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
@@ -792,6 +874,68 @@ metadata_probe:
     assert variables["YAML_MASKED"]["masked"] is True
     assert variables["YAML_MASKED"]["public"] is False
     assert variables["JOB_FILE"]["file"] is True
+
+
+async def test_project_variable_metadata_reaches_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+metadata_probe:
+  script:
+    - echo project metadata
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add project variable metadata ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    file_var = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={
+            "key": "PROJECT_FILE",
+            "value": "project-file-content",
+            "variable_type": "file",
+        },
+    )
+    assert file_var.status_code == 201
+    masked_var = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={"key": "PROJECT_MASKED", "value": "hidden", "masked": True},
+    )
+    assert masked_var.status_code == 201
+    raw_var = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={"key": "PROJECT_RAW", "value": "$PROJECT_FILE", "raw": True},
+    )
+    assert raw_var.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    variables = {item["key"]: item for item in request.json()["variables"]}
+
+    assert variables["PROJECT_FILE"]["file"] is True
+    assert variables["PROJECT_FILE"]["value"] == "project-file-content"
+    assert variables["PROJECT_MASKED"]["masked"] is True
+    assert variables["PROJECT_MASKED"]["public"] is False
+    assert variables["PROJECT_RAW"]["raw"] is True
 
 
 async def test_pipeline_trigger_creates_trigger_source_pipeline(client, test_token):

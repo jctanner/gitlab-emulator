@@ -543,6 +543,8 @@ Deliver:
 
 ### Slice 2: Variable Resolver and Runner Payload Integration
 
+Status: implemented for default-scope project variables.
+
 Deliver:
 
 - Shared variable resolver.
