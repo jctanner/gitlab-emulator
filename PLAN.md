@@ -66,6 +66,10 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in
   persisted runner payloads and validated through the official runner VM.
+- Project-scoped CI/CD variables can be created, listed, read, updated, and
+  deleted through GitLab-shaped project variable APIs. Environment-scope
+  filtering, key validation, and hidden write-only read behavior are covered by
+  tests.
 - Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
   tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.

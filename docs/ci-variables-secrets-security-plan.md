@@ -533,6 +533,8 @@ After Docker runner validation:
 
 ### Slice 1: Variable Data Model and Project Variable API
 
+Status: implemented for project-scoped variables.
+
 Deliver:
 
 - `ci_variables` model.

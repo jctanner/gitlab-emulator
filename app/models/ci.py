@@ -79,6 +79,35 @@ class PipelineSchedule(Base):
     last_pipeline = relationship("Pipeline", lazy="selectin")
 
 
+class CiVariable(Base):
+    __tablename__ = "ci_variables"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_type",
+            "scope_id",
+            "key",
+            "environment_scope",
+            name="uq_ci_variable_scope_key_environment",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scope_type: Mapped[str] = mapped_column(String, nullable=False)
+    scope_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    key: Mapped[str] = mapped_column(String, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    variable_type: Mapped[str] = mapped_column(String, default="env_var")
+    visibility: Mapped[str] = mapped_column(String, default="visible")
+    protected: Mapped[bool] = mapped_column(Boolean, default=False)
+    raw: Mapped[bool] = mapped_column(Boolean, default=False)
+    environment_scope: Mapped[str] = mapped_column(String, default="*")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CiRunner(Base):
     __tablename__ = "ci_runners"
 

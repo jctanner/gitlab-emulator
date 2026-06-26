@@ -7,13 +7,16 @@ once the scaffold is no longer GitHub-shaped internally.
 
 import asyncio
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request, Response
+from pydantic import BaseModel
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import AuthUser, CurrentUser, DbSession
@@ -21,6 +24,7 @@ from app.api.pagination import paginated_json
 from app.config import settings
 from app.git.bare_repo import create_initial_commit, get_branches as get_disk_branches
 from app.models.branch import Branch, BranchProtection
+from app.models.ci import CiVariable
 from app.models.group import Group
 from app.models.organization import OrgMembership
 from app.models.project import Project
@@ -28,6 +32,31 @@ from app.models.user import User
 from app.schemas.user import _fmt_dt
 
 router = APIRouter(tags=["projects"])
+VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+VARIABLE_TYPES = {"env_var", "file"}
+
+
+class ProjectVariableCreate(BaseModel):
+    key: str
+    value: str
+    variable_type: str = "env_var"
+    protected: bool = False
+    masked: bool = False
+    hidden: bool = False
+    raw: bool = False
+    environment_scope: str = "*"
+    description: str | None = None
+
+
+class ProjectVariableUpdate(BaseModel):
+    value: str | None = None
+    variable_type: str | None = None
+    protected: bool | None = None
+    masked: bool | None = None
+    hidden: bool | None = None
+    raw: bool | None = None
+    environment_scope: str | None = None
+    description: str | None = None
 
 
 def _decode_gitlab_ref(value: str) -> str:
@@ -100,6 +129,70 @@ async def _get_project_or_404(
     ):
         raise HTTPException(status_code=404, detail="404 Project Not Found")
     return project
+
+
+def _require_project_owner(project: Project, user: User) -> None:
+    if not user.site_admin and project.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _validate_variable_key(key: str) -> str:
+    normalized = str(key or "").strip()
+    if not VARIABLE_KEY_RE.match(normalized):
+        raise HTTPException(status_code=400, detail="Invalid variable key")
+    return normalized
+
+
+def _validate_variable_type(variable_type: str) -> str:
+    normalized = str(variable_type or "env_var")
+    if normalized not in VARIABLE_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid variable_type")
+    return normalized
+
+
+def _variable_visibility(masked: bool, hidden: bool) -> str:
+    if hidden:
+        return "masked_and_hidden"
+    if masked:
+        return "masked"
+    return "visible"
+
+
+def _variable_json(variable: CiVariable) -> dict:
+    hidden = variable.visibility == "masked_and_hidden"
+    masked = variable.visibility in {"masked", "masked_and_hidden"}
+    return {
+        "key": variable.key,
+        "variable_type": variable.variable_type,
+        "value": None if hidden else variable.value,
+        "protected": variable.protected,
+        "masked": masked,
+        "hidden": hidden,
+        "raw": variable.raw,
+        "environment_scope": variable.environment_scope,
+        "description": variable.description,
+    }
+
+
+async def _get_project_variable_or_404(
+    project: Project,
+    db: DbSession,
+    key: str,
+    environment_scope: str | None = None,
+) -> CiVariable:
+    query = select(CiVariable).where(
+        CiVariable.scope_type == "project",
+        CiVariable.scope_id == project.id,
+        CiVariable.key == _validate_variable_key(key),
+    )
+    if environment_scope is not None:
+        query = query.where(CiVariable.environment_scope == environment_scope)
+    else:
+        query = query.where(CiVariable.environment_scope == "*")
+    variable = (await db.execute(query)).scalar_one_or_none()
+    if variable is None:
+        raise HTTPException(status_code=404, detail="404 Variable Not Found")
+    return variable
 
 
 def _visibility_from_body(body: dict) -> tuple[str, bool]:
@@ -940,6 +1033,132 @@ async def unprotect_project_branch(
     record.protected = False
     if record.protection is not None:
         await db.delete(record.protection)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/projects/{project_ref:path}/variables")
+async def list_project_variables(
+    project_ref: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """List project CI/CD variables."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    query = select(CiVariable).where(
+        CiVariable.scope_type == "project",
+        CiVariable.scope_id == project.id,
+    )
+    if environment_scope is not None:
+        query = query.where(CiVariable.environment_scope == environment_scope)
+    query = query.order_by(CiVariable.key, CiVariable.environment_scope)
+    variables = (await db.execute(query)).scalars().all()
+    return [_variable_json(variable) for variable in variables]
+
+
+@router.post("/projects/{project_ref:path}/variables", status_code=201)
+async def create_project_variable(
+    project_ref: str,
+    body: ProjectVariableCreate,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Create a project CI/CD variable."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    variable = CiVariable(
+        scope_type="project",
+        scope_id=project.id,
+        key=_validate_variable_key(body.key),
+        value=body.value,
+        variable_type=_validate_variable_type(body.variable_type),
+        visibility=_variable_visibility(body.masked, body.hidden),
+        protected=body.protected,
+        raw=body.raw,
+        environment_scope=body.environment_scope or "*",
+        description=body.description,
+    )
+    db.add(variable)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Variable already exists") from exc
+    await db.refresh(variable)
+    return _variable_json(variable)
+
+
+@router.get("/projects/{project_ref:path}/variables/{key}")
+async def get_project_variable(
+    project_ref: str,
+    key: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """Get one project CI/CD variable."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    variable = await _get_project_variable_or_404(project, db, key, environment_scope)
+    return _variable_json(variable)
+
+
+@router.put("/projects/{project_ref:path}/variables/{key}")
+async def update_project_variable(
+    project_ref: str,
+    key: str,
+    body: ProjectVariableUpdate,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """Update one project CI/CD variable."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    variable = await _get_project_variable_or_404(project, db, key, environment_scope)
+    if body.value is not None:
+        variable.value = body.value
+    if body.variable_type is not None:
+        variable.variable_type = _validate_variable_type(body.variable_type)
+    if body.protected is not None:
+        variable.protected = body.protected
+    if body.raw is not None:
+        variable.raw = body.raw
+    if body.description is not None:
+        variable.description = body.description
+    if body.masked is not None or body.hidden is not None:
+        current_masked = variable.visibility in {"masked", "masked_and_hidden"}
+        current_hidden = variable.visibility == "masked_and_hidden"
+        variable.visibility = _variable_visibility(
+            current_masked if body.masked is None else body.masked,
+            current_hidden if body.hidden is None else body.hidden,
+        )
+    if body.environment_scope is not None:
+        variable.environment_scope = body.environment_scope or "*"
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Variable already exists") from exc
+    await db.refresh(variable)
+    return _variable_json(variable)
+
+
+@router.delete("/projects/{project_ref:path}/variables/{key}", status_code=204)
+async def delete_project_variable(
+    project_ref: str,
+    key: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+):
+    """Delete one project CI/CD variable."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    variable = await _get_project_variable_or_404(project, db, key, environment_scope)
+    await db.delete(variable)
     await db.commit()
     return Response(status_code=204)
 

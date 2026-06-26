@@ -1,6 +1,7 @@
 """Tests for GitLab-shaped project API endpoints."""
 
 import asyncio
+import json
 import os
 
 import pytest
@@ -202,6 +203,155 @@ async def test_list_projects_supports_search_and_delete(client, test_user, test_
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_project_variables_crud_and_environment_scope(
+    client, test_user, test_token
+):
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "variable-project"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    created = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={
+            "key": "DEPLOY_TOKEN",
+            "value": "token-one",
+            "masked": True,
+            "raw": True,
+            "description": "deployment credential",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json() == {
+        "key": "DEPLOY_TOKEN",
+        "variable_type": "env_var",
+        "value": "token-one",
+        "protected": False,
+        "masked": True,
+        "hidden": False,
+        "raw": True,
+        "environment_scope": "*",
+        "description": "deployment credential",
+    }
+
+    scoped = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={
+            "key": "DEPLOY_TOKEN",
+            "value": "token-prod",
+            "environment_scope": "production",
+            "protected": True,
+            "variable_type": "file",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert scoped.status_code == 201
+
+    duplicate = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={"key": "DEPLOY_TOKEN", "value": "again"},
+        headers=auth_headers(test_token),
+    )
+    assert duplicate.status_code == 400
+
+    listed = await client.get(
+        f"{API}/projects/{project_id}/variables",
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert [(item["key"], item["environment_scope"]) for item in listed.json()] == [
+        ("DEPLOY_TOKEN", "*"),
+        ("DEPLOY_TOKEN", "production"),
+    ]
+
+    get_scoped = await client.get(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        params={"filter[environment_scope]": "production"},
+        headers=auth_headers(test_token),
+    )
+    assert get_scoped.status_code == 200
+    assert get_scoped.json()["value"] == "token-prod"
+    assert get_scoped.json()["variable_type"] == "file"
+    assert get_scoped.json()["protected"] is True
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        json={"value": "token-two", "masked": False, "description": "updated"},
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["value"] == "token-two"
+    assert updated.json()["masked"] is False
+    assert updated.json()["description"] == "updated"
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.get(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_project_variable_hidden_value_is_not_read_back(
+    client, test_user, test_token
+):
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "hidden-variable-project"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_path = "testuser%2Fhidden-variable-project"
+
+    created = await client.post(
+        f"{API}/projects/{project_path}/variables",
+        json={"key": "SECRET_TOKEN", "value": "super-secret-value", "hidden": True},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json()["value"] is None
+    assert created.json()["masked"] is True
+    assert created.json()["hidden"] is True
+
+    fetched = await client.get(
+        f"{API}/projects/{project_path}/variables/SECRET_TOKEN",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["value"] is None
+    assert "super-secret-value" not in json.dumps(fetched.json())
+
+
+@pytest.mark.asyncio
+async def test_project_variable_rejects_invalid_key(client, test_user, test_token):
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "invalid-variable-project"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    resp = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={"key": "BAD KEY", "value": "value"},
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 400
 
 
 @pytest.mark.asyncio
