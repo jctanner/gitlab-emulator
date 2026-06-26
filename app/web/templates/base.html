@@ -8,28 +8,24 @@
     <link rel="stylesheet" href="{{ url_prefix }}/static/css/web.css">
 </head>
 <body>
-    {# ---- Dark header bar ---- #}
+    {# ---- GitLab-style top navigation ---- #}
     {% from "_octicons.html" import mark_gitlab, search_icon %}
-    <header class="Header color-bg-default">
+    <header class="Header color-bg-default gl-topbar">
         <div class="Header-item">
             <a href="{{ url_prefix }}/" class="Header-link color-fg-on-emphasis" style="font-weight:600;">
                 <span class="mr-2">{{ mark_gitlab(32) }}</span>
-                GitLab Emulator
             </a>
-        </div>
-        <div class="Header-item Header-item--full">
-            <form action="{{ url_prefix }}/search" method="get" class="d-flex flex-items-center">
-                <input type="text" name="q" class="form-control input-sm header-search-input" placeholder="Search..." style="max-width:280px;" aria-label="Search">
-            </form>
-        </div>
-        <div class="Header-item">
-            <a href="{{ url_prefix }}/" class="Header-link color-fg-on-emphasis">Dashboard</a>
         </div>
         <div class="Header-item">
             <a href="{{ url_prefix }}/search" class="Header-link color-fg-on-emphasis">Explore</a>
         </div>
         <div class="Header-item">
             <a href="/admin/" class="Header-link color-fg-on-emphasis">Admin</a>
+        </div>
+        <div class="Header-item Header-item--full">
+            <form action="{{ url_prefix }}/search" method="get" class="d-flex flex-items-center flex-justify-center">
+                <input type="text" name="q" class="form-control input-sm header-search-input" placeholder="Search or go to..." style="max-width:520px;" aria-label="Search">
+            </form>
         </div>
         {% if current_user %}
         <div class="Header-item">
@@ -45,22 +41,42 @@
         </div>
         {% else %}
         <div class="Header-item">
-            <a href="{{ url_prefix }}/login" class="Header-link color-fg-on-emphasis">Sign in</a>
+            <a href="{{ url_prefix }}/login" class="btn btn-sm">Sign in</a>
         </div>
         {% endif %}
     </header>
 
-    {# ---- Optional subnav (repo tabs, etc.) ---- #}
-    {% block subnav %}{% endblock %}
+    <div class="gl-app-shell">
+        <aside class="gl-sidebar gl-global-sidebar" aria-label="GitLab Emulator navigation">
+            <nav class="gl-sidebar-nav">
+                <div class="gl-sidebar-section-title">Main</div>
+                <a class="gl-sidebar-link{% if request.url.path == '/ui/' %} selected{% endif %}" href="{{ url_prefix }}/">Projects</a>
+                <a class="gl-sidebar-link{% if '/search' in request.url.path %} selected{% endif %}" href="{{ url_prefix }}/search">Explore</a>
+                {% if current_user %}
+                <a class="gl-sidebar-link{% if request.url.path == '/ui/new' %} selected{% endif %}" href="{{ url_prefix }}/new">New project</a>
+                <a class="gl-sidebar-link" href="{{ url_prefix }}/{{ current_user.login }}">Profile</a>
+                {% endif %}
+                <div class="gl-sidebar-section-title">Instance</div>
+                <a class="gl-sidebar-link" href="/admin/">Admin area</a>
+            </nav>
+        </aside>
+        <div class="gl-content-shell">
+            {# ---- Optional project sidebar ---- #}
+            {% block subnav %}{% endblock %}
 
-    {# ---- Main content ---- #}
-    <main class="container-xl px-3 px-md-4 px-lg-5 mt-4">
-        {% block content %}{% endblock %}
-    </main>
+            <div class="gl-main-column">
+                {# ---- Main content ---- #}
+                <main class="container-xl px-3 px-md-4 px-lg-5 mt-4">
+                    {% block content %}{% endblock %}
+                </main>
 
-    {# ---- Footer ---- #}
-    <footer class="container-xl px-3 px-md-4 px-lg-5 mt-6 mb-4 border-top pt-3">
-        <p class="color-fg-muted f6">&copy; GitLab Emulator v0.1.0</p>
-    </footer>
+                {# ---- Footer ---- #}
+                <footer class="container-xl px-3 px-md-4 px-lg-5 mt-6 mb-4 border-top pt-3">
+                    <p class="color-fg-muted f6">&copy; GitLab Emulator v0.1.0</p>
+                </footer>
+            </div>
+        </div>
+    </div>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

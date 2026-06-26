@@ -13,6 +13,33 @@ def _ui_session(client, username: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_ui_explore_lists_repositories_by_default_with_pagination(client, test_user):
+    """Explore lists repositories without requiring a search query."""
+    _ui_session(client, test_user.login)
+
+    for name in ["explore-alpha", "explore-beta", "explore-gamma"]:
+        create_repo = await client.post(
+            "/ui/new",
+            data={"name": name, "auto_init": "true"},
+            follow_redirects=False,
+        )
+        assert create_repo.status_code in (302, 303)
+
+    first_page = await client.get("/ui/search?per_page=2")
+    assert first_page.status_code == 200
+    assert "Explore projects" in first_page.text
+    assert "All projects" in first_page.text
+    assert "testuser/explore-" in first_page.text
+    assert "Next" in first_page.text
+    assert "/ui/search?page=2&amp;per_page=2" in first_page.text
+
+    second_page = await client.get("/ui/search?page=2&per_page=2")
+    assert second_page.status_code == 200
+    assert "Previous" in second_page.text
+    assert "/ui/search?page=1&amp;per_page=2" in second_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_repo_and_source_management_workflow(client, test_user):
     """The web UI can create/edit/delete repositories and source files."""
     _ui_session(client, test_user.login)
@@ -68,6 +95,65 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
     assert blob.status_code == 200
     assert "print(&#39;created&#39;)" in blob.text
     assert "Delete" in blob.text
+
+    branches_page = await client.get("/ui/testuser/ui-source-renamed/branches")
+    assert branches_page.status_code == 200
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed/branches">Branches</a>',
+        branches_page.text,
+    )
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed">Repository</a>',
+        branches_page.text,
+    )
+
+    commits_page = await client.get("/ui/testuser/ui-source-renamed/commits/main")
+    assert commits_page.status_code == 200
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed/commits/main">Commits</a>',
+        commits_page.text,
+    )
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed">Repository</a>',
+        commits_page.text,
+    )
+
+    tags_page = await client.get("/ui/testuser/ui-source-renamed/tags")
+    assert tags_page.status_code == 200
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed/tags">Tags</a>',
+        tags_page.text,
+    )
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed">Repository</a>',
+        tags_page.text,
+    )
+
+    create_issue = await client.post(
+        "/ui/testuser/ui-source-renamed/issues/new",
+        data={
+            "title": "Track work item rendering",
+            "body": "Make the work item split view useful.",
+        },
+        follow_redirects=False,
+    )
+    assert create_issue.status_code in (302, 303)
+    assert create_issue.headers["location"] == "/ui/testuser/ui-source-renamed/issues/1"
+
+    work_item = await client.get("/ui/testuser/ui-source-renamed/issues/1")
+    assert work_item.status_code == 200
+    assert "Work items" in work_item.text
+    assert "Track work item rendering" in work_item.text
+    assert "Make the work item split view useful." in work_item.text
+    assert "work-items-shell has-selection" in work_item.text
+    assert "work-item-row selected" in work_item.text
+    assert "Activity" in work_item.text
+    assert "Time tracking" in work_item.text
+    assert '<span class="gl-sidebar-link disabled">' in work_item.text
+    assert "Issue boards</span>" in work_item.text
+    assert "Repository graph</span>" in work_item.text
+    assert 'href="/ui/testuser/ui-source-renamed/branches">Branches</a>' in work_item.text
+    assert 'href="/ui/testuser/ui-source-renamed/-/jobs">Jobs</a>' in work_item.text
 
     edit_file = await client.post(
         "/ui/testuser/ui-source-renamed/edit/main/src/app.py",
@@ -140,6 +226,25 @@ ui_job:
     assert "Edit .gitlab-ci.yml" in pipelines_page.text
     assert "/ui/testuser/ui-ci-repo/edit/main/.gitlab-ci.yml" in pipelines_page.text
 
+    edit_ci = await client.get("/ui/testuser/ui-ci-repo/edit/main/.gitlab-ci.yml")
+    assert edit_ci.status_code == 200
+    assert 'data-code-editor="yaml"' in edit_ci.text
+    assert "/ui/static/js/codemirror-yaml.js" in edit_ci.text
+
+    save_plain = await client.post(
+        "/ui/testuser/ui-ci-repo/new/main",
+        data={
+            "filename": "notes.txt",
+            "content": "plain text\n",
+            "commit_message": "Create plain text",
+        },
+        follow_redirects=False,
+    )
+    assert save_plain.status_code in (302, 303)
+    edit_plain = await client.get("/ui/testuser/ui-ci-repo/edit/main/notes.txt")
+    assert edit_plain.status_code == 200
+    assert 'data-code-editor="yaml"' not in edit_plain.text
+
     create_pipeline = await client.post(
         "/ui/testuser/ui-ci-repo/-/pipelines",
         data={"ref": "main"},
@@ -162,10 +267,33 @@ ui_job:
     assert "window.location.reload" in pipeline_page.text
     assert "ui_job" in pipeline_page.text
     assert "pending" in pipeline_page.text
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Pipelines</a>',
+        pipeline_page.text,
+    )
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Jobs</a>',
+        pipeline_page.text,
+    )
 
     job_match = re.search(r"/-/jobs/(\d+)", pipeline_page.text)
     assert job_match is not None
     job_id = int(job_match.group(1))
+
+    jobs_page = await client.get("/ui/testuser/ui-ci-repo/-/jobs")
+    assert jobs_page.status_code == 200
+    assert "Recent jobs" in jobs_page.text
+    assert f"#{job_id} ui_job" in jobs_page.text
+    assert f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}" in jobs_page.text
+    assert 'href="/ui/testuser/ui-ci-repo/-/jobs">Jobs</a>' in jobs_page.text
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Pipelines</a>',
+        jobs_page.text,
+    )
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-ci-repo/-/jobs">Jobs</a>',
+        jobs_page.text,
+    )
 
     job_page = await client.get(f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}")
     assert job_page.status_code == 200
@@ -175,6 +303,14 @@ ui_job:
     assert "Back to pipelines" in job_page.text
     assert "Trace API" in job_page.text
     assert "window.setTimeout" in job_page.text
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Pipelines</a>',
+        job_page.text,
+    )
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Jobs</a>',
+        job_page.text,
+    )
 
     cancel_job = await client.post(
         f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}/cancel",

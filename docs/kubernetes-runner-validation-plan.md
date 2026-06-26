@@ -7,6 +7,9 @@ This plan validates whether the official GitLab Runner Kubernetes executor can
 run CI jobs against the emulator without requiring the emulator to execute jobs
 itself.
 
+For an integration-oriented description of all supported runner deployment
+methods and registration flows, see `docs/runner-deployment-guide.md`.
+
 ## Goal
 
 Prove this flow end to end:

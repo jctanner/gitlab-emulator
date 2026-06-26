@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% from "_octicons.html" import repo_icon, search_icon, people %}
-{% block title %}Search - GitLab Emulator{% endblock %}
+{% block title %}Explore - GitLab Emulator{% endblock %}
 
 {% block content %}
 <div class="Subhead">
-    <div class="Subhead-heading">Search</div>
+    <div class="Subhead-heading">Explore projects</div>
+    <div class="Subhead-description">{{ repo_total }} project{{ 's' if repo_total != 1 else '' }}</div>
 </div>
 
 <form method="get" action="{{ url_prefix }}/search" class="mb-4">
@@ -20,34 +21,60 @@
     </div>
 </form>
 
-{% if query %}
-    {% if repos %}
-    <div class="Subhead">
-        <div class="Subhead-heading f3">Repositories</div>
-    </div>
-    <div class="Box">
-        {% for repo in repos %}
-        <div class="Box-row">
-            <div class="d-flex flex-items-center mb-1">
-                <span class="color-fg-muted mr-1">{{ repo_icon(16) }}</span>
-                <a href="{{ url_prefix }}/{{ repo.owner_login }}/{{ repo.name }}" class="text-bold Link--primary">
-                    {{ repo.owner_login }}/{{ repo.name }}
-                </a>
-                {% if repo.private %}
-                <span class="Label Label--secondary ml-2">Private</span>
-                {% endif %}
-            </div>
-            {% if repo.description %}
-            <p class="color-fg-muted f6 mb-0">{{ repo.description }}</p>
+{% if repos %}
+<div class="Subhead">
+    <div class="Subhead-heading f3">{% if query %}Repository results{% else %}All projects{% endif %}</div>
+</div>
+<div class="Box">
+    {% for repo in repos %}
+    <div class="Box-row">
+        <div class="d-flex flex-items-center mb-1">
+            <span class="color-fg-muted mr-1">{{ repo_icon(16) }}</span>
+            <a href="{{ url_prefix }}/{{ repo.owner_login }}/{{ repo.name }}" class="text-bold Link--primary">
+                {{ repo.owner_login }}/{{ repo.name }}
+            </a>
+            {% if repo.private %}
+            <span class="Label Label--secondary ml-2">Private</span>
+            {% else %}
+            <span class="Label Label--secondary ml-2">Public</span>
             {% endif %}
-            <div class="f6 color-fg-muted mt-1">
-                {% if repo.language %}{{ repo.language }}{% endif %}
-            </div>
         </div>
-        {% endfor %}
+        {% if repo.description %}
+        <p class="color-fg-muted f6 mb-0">{{ repo.description }}</p>
+        {% endif %}
+        <div class="f6 color-fg-muted mt-1">
+            {% if repo.language %}{{ repo.language }} · {% endif %}
+            Updated {{ repo.updated_at.strftime('%b %d, %Y') if repo.updated_at else 'N/A' }}
+        </div>
     </div>
-    {% endif %}
+    {% endfor %}
+</div>
+{% else %}
+<div class="blankslate">
+    <h3 class="blankslate-heading">{% if query %}No repositories found{% else %}No projects yet{% endif %}</h3>
+    <p>{% if query %}No repository results found for "{{ query }}".{% else %}Create or import a project to list it here.{% endif %}</p>
+</div>
+{% endif %}
 
+{% if has_prev or has_next %}
+<nav class="paginate-container mt-3" aria-label="Pagination">
+    <div class="pagination">
+        {% if has_prev %}
+        <a href="{{ prev_url }}">Previous</a>
+        {% else %}
+        <span class="disabled">Previous</span>
+        {% endif %}
+        <span class="current">Page {{ page }}</span>
+        {% if has_next %}
+        <a href="{{ next_url }}">Next</a>
+        {% else %}
+        <span class="disabled">Next</span>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}
+
+{% if query %}
     {% if users %}
     <div class="Subhead mt-4">
         <div class="Subhead-heading f3">Users</div>
@@ -64,13 +91,6 @@
             </div>
         </div>
         {% endfor %}
-    </div>
-    {% endif %}
-
-    {% if not repos and not users %}
-    <div class="blankslate">
-        <h3 class="blankslate-heading">No results</h3>
-        <p>No results found for "{{ query }}".</p>
     </div>
     {% endif %}
 {% endif %}

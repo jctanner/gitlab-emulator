@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Jobs - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "pipelines" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-items-center flex-justify-between flex-wrap mb-3" style="gap:12px;">
+    <div>
+        <h2 class="f2 mb-1">Jobs</h2>
+        <p class="color-fg-muted mb-0">Review CI jobs across all pipelines in this project.</p>
+    </div>
+    <a class="btn" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">View pipelines</a>
+</div>
+
+<div class="Box mb-4">
+    <div class="Box-header d-flex flex-items-center flex-justify-between">
+        <h3 class="Box-title">Recent jobs</h3>
+        <span class="color-fg-muted f6">{{ jobs|length }} job{{ 's' if jobs|length != 1 else '' }}</span>
+    </div>
+    {% if jobs %}
+    {% for job in jobs %}
+    <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
+        <div>
+            <a class="text-bold" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}">#{{ job.id }} {{ job.name }}</a>
+            <span class="Label Label--secondary ml-1">{{ job.stage }}</span>
+            <span class="status-{{ job.status }} ml-2">{{ job.status }}</span>
+            <div class="color-fg-muted f6 mt-1">
+                Pipeline
+                <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/{{ job.pipeline.id }}">#{{ job.pipeline.id }}</a>
+                <span class="branch-name ml-1">{{ job.pipeline.ref }}</span>
+                <span class="ml-1">{{ job.pipeline.sha[:8] }}</span>
+                {% if job.runner_name %}<span class="ml-1">· {{ job.runner_name }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="color-fg-muted f6">
+            {{ job.created_at }}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No jobs yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

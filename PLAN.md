@@ -27,6 +27,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   runner behavior.
 - `docs/kubernetes-runner-validation-plan.md`: k3s-backed GitLab Runner
   Kubernetes executor validation plan and results.
+- `docs/runner-deployment-guide.md`: supported runner deployment modes,
+  registration flow, network/TLS requirements, and full k3s integration notes.
 - `docs/remaining-slices.md`: completed MVP slice record and deferred work.
 - `GITLAB_STATUS.md`: current status snapshot.
 

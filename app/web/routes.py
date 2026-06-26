@@ -280,22 +280,36 @@ async def landing(request: Request, db: AsyncSession = Depends(get_db)):
 async def search_page(
     request: Request,
     q: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """Search repositories and users."""
     current_user = await _get_current_user(request, db)
     repos = []
     users = []
-    if q:
-        pattern = f"%{q}%"
+    query_text = (q or "").strip()
+    offset = (page - 1) * per_page
+    repo_total = 0
+    has_prev = page > 1
+    has_next = False
+
+    if query_text:
+        pattern = f"%{query_text}%"
+        repo_filter = or_(
+            Repository.name.ilike(pattern),
+            Repository.full_name.ilike(pattern),
+            Repository.description.ilike(pattern),
+        )
+        repo_total = (await db.execute(
+            select(func.count(Repository.id)).where(repo_filter)
+        )).scalar() or 0
         result = await db.execute(
-            select(Repository).where(
-                or_(
-                    Repository.name.ilike(pattern),
-                    Repository.full_name.ilike(pattern),
-                    Repository.description.ilike(pattern),
-                )
-            ).limit(20)
+            select(Repository)
+            .where(repo_filter)
+            .order_by(Repository.updated_at.desc(), Repository.id.desc())
+            .offset(offset)
+            .limit(per_page)
         )
         repos = list(result.scalars().all())
         for repo in repos:
@@ -310,12 +324,41 @@ async def search_page(
             ).limit(20)
         )
         users = list(result.scalars().all())
+    else:
+        repo_total = (await db.execute(select(func.count(Repository.id)))).scalar() or 0
+        result = await db.execute(
+            select(Repository)
+            .order_by(Repository.updated_at.desc(), Repository.id.desc())
+            .offset(offset)
+            .limit(per_page)
+        )
+        repos = list(result.scalars().all())
+        for repo in repos:
+            repo.owner_login = repo.owner.login if repo.owner else "unknown"
+
+    has_next = (offset + len(repos)) < repo_total
+
+    def page_url(next_page: int) -> str:
+        params = {"page": next_page, "per_page": per_page}
+        if query_text:
+            params["q"] = query_text
+        return f"/ui/search?{urlencode(params)}"
 
     return templates.TemplateResponse(
         request=request,
         name="search.html",
         context=_ctx(
-            request, query=q, repos=repos, users=users,
+            request,
+            query=query_text,
+            repos=repos,
+            users=users,
+            page=page,
+            per_page=per_page,
+            repo_total=repo_total,
+            has_prev=has_prev,
+            has_next=has_next,
+            prev_url=page_url(page - 1) if has_prev else None,
+            next_url=page_url(page + 1) if has_next else None,
             current_user=current_user,
         ),
     )
@@ -738,6 +781,43 @@ async def repo_pipeline_detail_page(
     )
 
 
+@router.get("/{owner}/{repo_name}/-/jobs", response_class=HTMLResponse)
+async def repo_jobs_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Repository-scoped CI jobs list across pipelines."""
+    current_user = await _get_current_user(request, db)
+    repo = await _get_repo(db, owner, repo_name)
+    if repo is None:
+        return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+
+    jobs = list((
+        await db.execute(
+            select(PipelineJob)
+            .options(selectinload(PipelineJob.pipeline))
+            .where(PipelineJob.project_id == repo.id)
+            .order_by(PipelineJob.id.desc())
+            .limit(100)
+        )
+    ).scalars().all())
+
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_jobs.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            jobs=jobs,
+        ),
+    )
+
+
 @router.get("/{owner}/{repo_name}/-/jobs/{job_id}", response_class=HTMLResponse)
 async def repo_job_detail_page(
     request: Request,
@@ -991,7 +1071,7 @@ async def issues_list(
     request: Request,
     owner: str,
     repo_name: str,
-    state: str = Query("open"),
+    state: str = Query("all"),
     db: AsyncSession = Depends(get_db),
 ):
     """List issues for a repository."""
@@ -1036,6 +1116,8 @@ async def issues_list(
             issues=issues, state=state,
             open_count=open_count, closed_count=closed_count,
             open_issues_count=open_count,
+            selected_issue=None,
+            selected_comments=[],
             current_user=current_user,
         ),
     )
@@ -1055,10 +1137,17 @@ async def issue_detail(
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
-    result = await db.execute(
-        select(Issue).where(Issue.repo_id == repo.id, Issue.number == number)
+    pr_issue_ids = select(PullRequest.issue_id)
+    issues_query = (
+        select(Issue)
+        .where(Issue.repo_id == repo.id, ~Issue.id.in_(pr_issue_ids))
+        .order_by(Issue.number.desc())
     )
-    issue = result.scalar_one_or_none()
+    issues = list((await db.execute(issues_query)).scalars().all())
+    for item in issues:
+        item.user_login = item.user.login if item.user else "unknown"
+
+    issue = next((item for item in issues if item.number == number), None)
     if issue is None:
         return HTMLResponse(content="<h1>404 - Issue Not Found</h1>", status_code=404)
 
@@ -1073,12 +1162,31 @@ async def issue_detail(
     for c in comments:
         c.user_login = c.user.login if c.user else "unknown"
 
+    open_count = (await db.execute(
+        select(func.count(Issue.id)).where(
+            Issue.repo_id == repo.id, Issue.state == "open",
+            ~Issue.id.in_(pr_issue_ids),
+        )
+    )).scalar() or 0
+    closed_count = (await db.execute(
+        select(func.count(Issue.id)).where(
+            Issue.repo_id == repo.id, Issue.state == "closed",
+            ~Issue.id.in_(pr_issue_ids),
+        )
+    )).scalar() or 0
+
     return templates.TemplateResponse(
         request=request,
-        name="issue_detail.html",
+        name="issues.html",
         context=_ctx(
             request, owner=owner, repo=repo, repo_name=repo.name,
-            issue=issue, comments=comments,
+            issues=issues,
+            state="all",
+            open_count=open_count,
+            closed_count=closed_count,
+            open_issues_count=open_count,
+            selected_issue=issue,
+            selected_comments=comments,
             current_user=current_user,
         ),
     )

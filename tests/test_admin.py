@@ -287,6 +287,8 @@ async def test_admin_ci_lab_create_pipeline_and_play_manual_job(client, admin_us
     assert page.status_code == 200
     assert "CI Lab" in page.text
     assert ".gitlab-ci.yml" in page.text
+    assert 'data-code-editor="yaml"' in page.text
+    assert "/ui/static/js/codemirror-yaml.js" in page.text
 
     register_runner = await client.post(
         f"{API}/runners",

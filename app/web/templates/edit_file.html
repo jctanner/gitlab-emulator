@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_octicons.html" import pencil %}
 {% block title %}Editing {{ path }} - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+{% set is_yaml_file = path.lower().endswith(".yml") or path.lower().endswith(".yaml") %}
 
 {% block subnav %}
 <div class="color-bg-default border-bottom">
@@ -43,7 +44,8 @@
         <div class="Box-body">
             <div class="form-group mb-3">
                 <div class="form-group-body">
-                    <textarea id="content" name="content" class="form-control input-block"
+                    <textarea id="content" name="content" class="form-control input-block{% if is_yaml_file %} yaml-file-editor{% endif %}"
+                              {% if is_yaml_file %}data-code-editor="yaml"{% endif %}
                               rows="25" style="font-family:monospace;font-size:13px;tab-size:4;">{{ content }}</textarea>
                 </div>
             </div>
@@ -82,5 +84,11 @@
         </form>
     </div>
 </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if is_yaml_file %}
+<script type="module" src="{{ url_prefix }}/static/js/codemirror-yaml.js"></script>
 {% endif %}
 {% endblock %}

@@ -8,11 +8,11 @@
     <link rel="stylesheet" href="/admin/static/css/admin.css">
 </head>
 <body>
-    {# ---- Dark header bar (matches main app) ---- #}
+    {# ---- GitLab-style top navigation ---- #}
     <header class="Header color-bg-default">
         <div class="Header-item">
             <a href="/admin/" class="Header-link color-fg-on-emphasis" style="font-weight:600;">
-                <svg height="32" viewBox="0 0 16 16" width="32" fill="currentColor"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
+                <svg height="32" viewBox="0 0 36 36" width="32" fill="currentColor" aria-hidden="true"><path d="M18 33.1 24.2 14H11.8L18 33.1Z"></path><path d="M18 33.1 11.8 14H3.1L18 33.1Z"></path><path d="M3.1 14 .4 22.4c-.2.7 0 1.4.6 1.8L18 33.1 3.1 14Z"></path><path d="M3.1 14h8.7L8.1 2.7c-.2-.7-1.2-.7-1.5 0L3.1 14Z"></path><path d="M18 33.1 32.9 14h-8.7L18 33.1Z"></path><path d="M32.9 14 35.6 22.4c.2.7 0 1.4-.6 1.8L18 33.1 32.9 14Z"></path><path d="M32.9 14h-8.7l3.7-11.3c.2-.7 1.2-.7 1.5 0L32.9 14Z"></path></svg>
                 <span class="ml-2">Admin</span>
             </a>
         </div>
@@ -33,34 +33,40 @@
         {% endif %}
     </header>
 
-    {# ---- Admin sub-navigation ---- #}
-    {% if admin_user %}
-    <nav class="UnderlineNav" style="padding-left: 24px; padding-right: 24px;">
-        <div class="UnderlineNav-body">
-            <a class="UnderlineNav-item{% if request.url.path == '/admin/' %} selected{% endif %}" href="/admin/">Dashboard</a>
-            <a class="UnderlineNav-item{% if '/admin/users' in request.url.path %} selected{% endif %}" href="/admin/users">Users</a>
-            <a class="UnderlineNav-item{% if '/admin/tokens' in request.url.path %} selected{% endif %}" href="/admin/tokens">Tokens</a>
-            <a class="UnderlineNav-item{% if '/admin/repos' in request.url.path %} selected{% endif %}" href="/admin/repos">Repos</a>
-            <a class="UnderlineNav-item{% if '/admin/ci-lab' in request.url.path %} selected{% endif %}" href="/admin/ci-lab">CI Lab</a>
-            <a class="UnderlineNav-item{% if '/admin/runners' in request.url.path %} selected{% endif %}" href="/admin/runners">Runners</a>
-            <a class="UnderlineNav-item{% if '/admin/orgs' in request.url.path %} selected{% endif %}" href="/admin/orgs">Orgs</a>
-            <a class="UnderlineNav-item{% if '/admin/issues' in request.url.path %} selected{% endif %}" href="/admin/issues">Issues/PRs</a>
-            <a class="UnderlineNav-item{% if '/admin/import' in request.url.path %} selected{% endif %}" href="/admin/import">Import</a>
-        </div>
-    </nav>
-    {% endif %}
-
-    <main class="container-xl px-3 px-md-4 px-lg-5 mt-4">
-        {% if flash_message %}
-        <div class="flash{% if flash_type == 'error' %} flash-error{% elif flash_type == 'success' %} flash-success{% endif %} mb-3">
-            {{ flash_message }}
-        </div>
+    <div class="gl-app-shell">
+        {% if admin_user %}
+        <aside class="gl-sidebar gl-admin-sidebar" aria-label="Admin navigation">
+            <nav class="gl-sidebar-nav">
+                <div class="gl-sidebar-section-title">Admin area</div>
+                <a class="gl-sidebar-link{% if request.url.path == '/admin/' %} selected{% endif %}" href="/admin/">Overview</a>
+                <a class="gl-sidebar-link{% if '/admin/users' in request.url.path %} selected{% endif %}" href="/admin/users">Users</a>
+                <a class="gl-sidebar-link{% if '/admin/tokens' in request.url.path %} selected{% endif %}" href="/admin/tokens">Access tokens</a>
+                <a class="gl-sidebar-link{% if '/admin/repos' in request.url.path %} selected{% endif %}" href="/admin/repos">Projects</a>
+                <a class="gl-sidebar-link{% if '/admin/orgs' in request.url.path %} selected{% endif %}" href="/admin/orgs">Groups</a>
+                <div class="gl-sidebar-section-title">CI/CD</div>
+                <a class="gl-sidebar-link{% if '/admin/ci-lab' in request.url.path %} selected{% endif %}" href="/admin/ci-lab">CI Lab</a>
+                <a class="gl-sidebar-link{% if '/admin/runners' in request.url.path %} selected{% endif %}" href="/admin/runners">Runners</a>
+                <div class="gl-sidebar-section-title">Data</div>
+                <a class="gl-sidebar-link{% if '/admin/issues' in request.url.path %} selected{% endif %}" href="/admin/issues">Issues and MRs</a>
+                <a class="gl-sidebar-link{% if '/admin/import' in request.url.path %} selected{% endif %}" href="/admin/import">Import</a>
+            </nav>
+        </aside>
         {% endif %}
-        {% block content %}{% endblock %}
-    </main>
+        <div class="gl-main-column">
+            <main class="container-xl px-3 px-md-4 px-lg-5 mt-4">
+                {% if flash_message %}
+                <div class="flash{% if flash_type == 'error' %} flash-error{% elif flash_type == 'success' %} flash-success{% endif %} mb-3">
+                    {{ flash_message }}
+                </div>
+                {% endif %}
+                {% block content %}{% endblock %}
+            </main>
 
-    <footer class="container-xl px-3 px-md-4 px-lg-5 mt-6 mb-4 border-top pt-3">
-        <p class="color-fg-muted f6">&copy; GitLab Emulator v0.1.0 &mdash; Admin Panel</p>
-    </footer>
+            <footer class="container-xl px-3 px-md-4 px-lg-5 mt-6 mb-4 border-top pt-3">
+                <p class="color-fg-muted f6">&copy; GitLab Emulator v0.1.0 &mdash; Admin Panel</p>
+            </footer>
+        </div>
+    </div>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

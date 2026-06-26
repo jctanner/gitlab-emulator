@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% from "_octicons.html" import issue_opened, issue_closed %}
-{% block title %}Issues - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+{% from "_octicons.html" import issue_opened, issue_closed, comment_icon %}
+{% block title %}Work items - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
 
 {% block subnav %}
 <div class="color-bg-default border-bottom">
@@ -12,64 +12,139 @@
 {% endblock %}
 
 {% block content %}
-{# ---- State toggle ---- #}
-<div class="d-flex flex-items-center mb-3">
-    {% if current_user %}
-    <div class="flex-auto text-right">
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues/new" class="btn btn-primary btn-sm">New issue</a>
-    </div>
-    {% endif %}
-</div>
-<div class="d-flex flex-items-center mb-3">
-    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues?state=open"
-       class="btn-link {% if state != 'closed' %}text-bold{% endif %} mr-3">
-        <span class="color-fg-open">{{ issue_opened(16) }}</span>
-        {{ open_count }} Open
-    </a>
-    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues?state=closed"
-       class="btn-link {% if state == 'closed' %}text-bold{% endif %}">
-        <span class="color-fg-closed">{{ issue_closed(16) }}</span>
-        {{ closed_count }} Closed
-    </a>
-</div>
+<div class="work-items-shell{% if selected_issue %} has-selection{% endif %}">
+    <section class="work-items-list" aria-label="Work items">
+        <div class="work-items-breadcrumb color-fg-muted">
+            <a href="{{ url_prefix }}/{{ owner }}">{{ owner }}</a>
+            <span>/</span>
+            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
+            <span>/</span>
+            <strong>Work items</strong>
+        </div>
+        <div class="work-items-tabs">
+            <a class="work-items-tab selected" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues">All items</a>
+            <button class="btn-link work-items-tab muted" type="button">+ Add view</button>
+            {% if current_user %}
+            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues/new" class="btn btn-primary btn-sm">New item</a>
+            {% endif %}
+        </div>
+        <form class="work-items-filter" method="get" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues">
+            <button class="btn btn-sm" type="submit" name="state" value="all">↺</button>
+            <input class="form-control input-sm" type="search" name="q" placeholder="Search or filter results..." aria-label="Search work items">
+            <button class="btn btn-sm" type="submit">Search</button>
+            <button class="btn btn-sm" type="button">Display</button>
+        </form>
+        <div class="work-items-count">
+            {{ issues|length }} item{{ 's' if issues|length != 1 else '' }}
+        </div>
 
-{% if issues %}
-<div class="Box">
-    {% for issue in issues %}
-    <div class="Box-row d-flex flex-items-start">
-        <div class="flex-shrink-0 pt-1 mr-2">
-            {% if issue.state == "open" %}
-            <span class="color-fg-open">{{ issue_opened(16) }}</span>
-            {% else %}
-            <span class="color-fg-closed">{{ issue_closed(16) }}</span>
-            {% endif %}
-        </div>
-        <div class="flex-auto">
-            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues/{{ issue.number }}" class="text-bold Link--primary f4">
-                {{ issue.title }}
+        {% if issues %}
+        <div class="work-items-listbox">
+            {% for issue in issues %}
+            <a class="work-item-row{% if selected_issue and selected_issue.id == issue.id %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues/{{ issue.number }}">
+                <span class="work-item-icon">
+                    {% if issue.state == "open" %}{{ issue_opened(14) }}{% else %}{{ issue_closed(14) }}{% endif %}
+                </span>
+                <span class="work-item-main">
+                    <strong>{{ issue.title }}</strong>
+                    <span>{{ owner }}/{{ repo.name }}#{{ issue.number }} · created {{ issue.created_at.strftime('%b %d, %Y') if issue.created_at else '' }} by {{ issue.user_login or 'unknown' }}</span>
+                </span>
+                <span class="work-item-state status-{{ issue.state }}">
+                    {{ issue.state|capitalize }}
+                </span>
+                <span class="work-item-comments">{{ comment_icon(14) }} {{ issue.comments_count if issue.comments_count is defined else '' }}</span>
             </a>
-            {% if issue.labels %}
-            {% for label in issue.labels %}
-            <span class="IssueLabel"
-                  style="background-color:#{{ label.color or 'ededed' }};color:{% if label.color and label.color in ['000000','0e1116','1a1e22'] %}#fff{% else %}#1f2328{% endif %};">
-                {{ label.name }}
-            </span>
             {% endfor %}
-            {% endif %}
-            <div class="f6 color-fg-muted mt-1">
-                #{{ issue.number }}
-                opened by {{ issue.user_login or 'unknown' }}
-                {{ issue.updated_at.strftime('%b %d, %Y') if issue.updated_at else '' }}
-            </div>
         </div>
-    </div>
-    {% endfor %}
+        {% else %}
+        <div class="blankslate">
+            <span class="color-fg-muted">{{ issue_opened(24) }}</span>
+            <h3 class="blankslate-heading">No work items found</h3>
+            <p>There are no matching work items.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="work-item-detail" aria-label="Selected work item">
+        {% if selected_issue %}
+        <div class="work-item-detail-header">
+            <div>
+                <a class="work-item-ref" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues/{{ selected_issue.number }}">
+                    {{ repo.name }}#{{ selected_issue.number }}
+                </a>
+                <h1>{{ selected_issue.title }}</h1>
+                <div class="work-item-byline">
+                    {% if selected_issue.state == "open" %}
+                    <span class="status-open">{{ issue_opened(14) }} Open</span>
+                    {% else %}
+                    <span class="status-closed">{{ issue_closed(14) }} Closed</span>
+                    {% endif %}
+                    <span>Issue created {{ selected_issue.created_at.strftime('%b %d, %Y') if selected_issue.created_at else '' }} by <strong>{{ selected_issue.user_login or 'unknown' }}</strong></span>
+                </div>
+            </div>
+            <a class="btn btn-sm" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues">&times;</a>
+        </div>
+
+        <div class="work-item-detail-grid">
+            <article class="work-item-body">
+                {% if selected_issue.body %}
+                <div class="comment-body">{{ selected_issue.body }}</div>
+                {% else %}
+                <p class="color-fg-muted">No description provided.</p>
+                {% endif %}
+
+                <div class="work-item-reactions">
+                    <button class="btn btn-sm" type="button">+1 0</button>
+                    <button class="btn btn-sm" type="button">-1 0</button>
+                </div>
+
+                <h2>Activity</h2>
+                <div class="work-item-activity">
+                    <div class="activity-entry">
+                        <span class="avatar-placeholder avatar-placeholder--small">{{ (selected_issue.user_login or 'U')[0] }}</span>
+                        <div>
+                            <strong>{{ selected_issue.user_login or 'unknown' }}</strong>
+                            <span class="color-fg-muted">created this issue {{ selected_issue.created_at.strftime('%b %d, %Y') if selected_issue.created_at else '' }}</span>
+                        </div>
+                    </div>
+                    {% for comment in selected_comments %}
+                    <div class="activity-entry">
+                        <span class="avatar-placeholder avatar-placeholder--small">{{ (comment.user_login or 'U')[0] }}</span>
+                        <div class="Box">
+                            <div class="Box-header">
+                                <strong>{{ comment.user_login or 'unknown' }}</strong>
+                                {% if comment.created_at %}
+                                <span class="color-fg-muted">commented {{ comment.created_at.strftime('%b %d, %Y') }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="Box-body comment-body">{{ comment.body }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <aside class="work-item-sidebar" aria-label="Work item metadata">
+                <div class="work-item-field"><strong>Status</strong><span>{{ selected_issue.state|capitalize }}</span></div>
+                <div class="work-item-field"><strong>Assignees</strong><span>{% if selected_issue.assignees %}{{ selected_issue.assignees|map(attribute='login')|join(', ') }}{% else %}None{% endif %}</span></div>
+                <div class="work-item-field"><strong>Labels</strong><span>{% if selected_issue.labels %}{{ selected_issue.labels|map(attribute='name')|join(', ') }}{% else %}None{% endif %}</span></div>
+                <div class="work-item-field"><strong>Parent</strong><span>None</span></div>
+                <div class="work-item-field"><strong>Weight</strong><span>None</span></div>
+                <div class="work-item-field"><strong>Milestone</strong><span>{{ selected_issue.milestone.title if selected_issue.milestone else 'None' }}</span></div>
+                <div class="work-item-field"><strong>Iteration</strong><span>None</span></div>
+                <div class="work-item-field"><strong>Dates</strong><span>Start: None<br>Due: None</span></div>
+                <div class="work-item-field"><strong>Health status</strong><span>None</span></div>
+                <div class="work-item-field"><strong>Time tracking</strong><span>No estimate or time spent</span></div>
+            </aside>
+        </div>
+        {% else %}
+        <div class="work-item-empty">
+            <span class="color-fg-muted">{{ issue_opened(24) }}</span>
+            <h2>Track bugs, plan features, and organize your work with issues</h2>
+            <p>Use work items to collaborate on ideas, solve problems, and plan your project.</p>
+        </div>
+        {% endif %}
+    </section>
 </div>
-{% else %}
-<div class="blankslate">
-    <span class="color-fg-muted">{{ issue_opened(24) }}</span>
-    <h3 class="blankslate-heading">No issues found</h3>
-    <p>There aren't any {{ state }} issues.</p>
-</div>
-{% endif %}
 {% endblock %}

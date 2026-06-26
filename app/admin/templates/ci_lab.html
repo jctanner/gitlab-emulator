@@ -47,7 +47,7 @@
         </div>
         <form method="post" action="/admin/ci-lab/yaml" class="admin-form ci-lab-editor-form">
             <input type="hidden" name="project_id" value="{{ selected_project.id }}">
-            <textarea name="ci_yaml" class="ci-lab-editor" spellcheck="false">{{ ci_yaml }}</textarea>
+            <textarea name="ci_yaml" class="ci-lab-editor" data-code-editor="yaml" spellcheck="false">{{ ci_yaml }}</textarea>
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Save YAML</button>
             </div>
@@ -242,4 +242,8 @@
     <pre class="ci-lab-trace">{{ trace_text or "" }}</pre>
 </section>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/ui/static/js/codemirror-yaml.js"></script>
 {% endblock %}

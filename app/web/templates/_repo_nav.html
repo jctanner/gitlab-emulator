@@ -5,56 +5,105 @@
     Expects: owner, repo (Repository object), url_prefix, active_tab
     Optional: open_issues_count, open_pulls_count
 -#}
-{% from "_octicons.html" import repo_icon, code, issue_opened, git_pull_request, lock %}
+{% from "_octicons.html" import repo_icon, code, issue_opened, git_pull_request, git_branch, history, tag %}
+{% set current_path = request.url.path %}
 
-{# ---- Repo header breadcrumb ---- #}
-<div class="mb-3">
-    <div class="d-flex flex-items-center flex-wrap" style="gap:4px;">
-        <span class="color-fg-muted">{{ repo_icon(16) }}</span>
-        <a href="{{ url_prefix }}/{{ owner }}" class="text-bold Link--primary" style="font-size:20px;">{{ owner }}</a>
-        <span class="color-fg-muted" style="font-size:20px;">/</span>
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}" class="text-bold Link--primary" style="font-size:20px;">{{ repo.name }}</a>
+<aside class="gl-sidebar gl-project-sidebar" aria-label="Project navigation">
+    <div class="gl-sidebar-section-title gl-project-label">Project</div>
+    <div class="gl-project-summary">
+        <div class="gl-project-avatar">{{ repo.name[0]|upper }}</div>
+        <div class="gl-project-title">
+            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
+            <span>{{ owner }}</span>
+        </div>
         {% if repo.private %}
-        <span class="Label Label--secondary v-align-middle ml-1">Private</span>
+        <span class="Label Label--secondary">Private</span>
         {% else %}
-        <span class="Label Label--secondary v-align-middle ml-1">Public</span>
+        <span class="Label Label--secondary">Public</span>
         {% endif %}
     </div>
-</div>
 
-{# ---- Tab navigation ---- #}
-<nav class="UnderlineNav" aria-label="Repository">
-    <div class="UnderlineNav-body">
-        <a class="UnderlineNav-item{% if active_tab == 'code' %} selected{% endif %}"
-           href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">
-            <span class="UnderlineNav-octicon">{{ code(16) }}</span>
-            <span>Code</span>
-        </a>
-        <a class="UnderlineNav-item{% if active_tab == 'issues' %} selected{% endif %}"
-           href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues">
-            <span class="UnderlineNav-octicon">{{ issue_opened(16) }}</span>
-            <span>Issues</span>
-            {% if open_issues_count is defined and open_issues_count %}
-            <span class="Counter">{{ open_issues_count }}</span>
+    <nav class="gl-sidebar-nav">
+        <span class="gl-sidebar-link disabled">
+            <span class="gl-sidebar-icon">{{ repo_icon(16) }}</span>
+            <span>Manage</span>
+            <span class="gl-sidebar-caret">›</span>
+        </span>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ issue_opened(16) }}</span>
+                <span>Plan</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'issues' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/issues">
+                <span>Work items</span>
+                {% if open_issues_count is defined and open_issues_count %}
+                <span class="Counter">{{ open_issues_count }}</span>
+                {% endif %}
+            </a>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Issue boards</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Milestones</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Wiki</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Requirements</span>
+        </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ code(16) }}</span>
+                <span>Code</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'pulls' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/pulls">
+                <span>Merge requests</span>
+                {% if open_pulls_count is defined and open_pulls_count %}
+                <span class="Counter">{{ open_pulls_count }}</span>
+                {% endif %}
+            </a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'code' and '/branches' not in current_path and '/commits' not in current_path and '/tags' not in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">Repository</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/branches' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches">Branches</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/commits' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commits/{{ repo.default_branch or 'main' }}">Commits</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/tags' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tags">Tags</a>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Repository graph</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Compare revisions</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Snippets</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Locked files</span>
+        </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ git_branch(16) }}</span>
+                <span>Build</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/pipelines' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Pipelines</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/jobs' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs">Jobs</a>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Pipeline schedules</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Test cases</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Artifacts</span>
+        </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ tag(16) }}</span>
+                <span>Deploy</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'settings' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/settings">Settings</a>
             {% endif %}
-        </a>
-        <a class="UnderlineNav-item{% if active_tab == 'pulls' %} selected{% endif %}"
-           href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/pulls">
-            <span class="UnderlineNav-octicon">{{ git_pull_request(16) }}</span>
-            <span>Pull requests</span>
-            {% if open_pulls_count is defined and open_pulls_count %}
-            <span class="Counter">{{ open_pulls_count }}</span>
-            {% endif %}
-        </a>
-        <a class="UnderlineNav-item{% if active_tab == 'pipelines' %} selected{% endif %}"
-           href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">
-            <span>CI/CD</span>
-        </a>
-        {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
-        <a class="UnderlineNav-item{% if active_tab == 'settings' %} selected{% endif %}"
-           href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/settings">
-            <span>Settings</span>
-        </a>
-        {% endif %}
-    </div>
-</nav>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Releases</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Package registry</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Container registry</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Model registry</span>
+        </div>
+        <span class="gl-sidebar-link disabled">Operate <span class="gl-sidebar-caret">›</span></span>
+        <span class="gl-sidebar-link disabled">Monitor <span class="gl-sidebar-caret">›</span></span>
+        <span class="gl-sidebar-link disabled">Analyze <span class="gl-sidebar-caret">›</span></span>
+    </nav>
+</aside>
