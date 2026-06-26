@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  gitlab-emulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "443:443"
+      - "80:80"
+      - "8000:8000"
+      - "2222:2222"
+    volumes:
+      - gitlab_emulator_data:/data
+    environment:
+      - GITLAB_EMULATOR_DATA_DIR=/data
+      - GITLAB_EMULATOR_DATABASE_URL=sqlite+aiosqlite:////data/gitlab_emulator.db
+      - GITLAB_EMULATOR_BASE_URL=https://glemu.local
+      - GITLAB_EMULATOR_HOSTNAME=glemu.local
+      - GITLAB_EMULATOR_SECRET_KEY=change-me-in-production
+      - GITLAB_EMULATOR_ADMIN_USERNAME=admin
+      - GITLAB_EMULATOR_ADMIN_PASSWORD=admin
+      - GITLAB_EMULATOR_SSH_ENABLED=true
+      - GITLAB_EMULATOR_SSH_PORT=2222
+      - XDG_DATA_HOME=/data/caddy-data
+      - XDG_CONFIG_HOME=/data/caddy-config
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - gitlab_emulator_minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=glemu
+      - MINIO_ROOT_PASSWORD=glemu-cache-secret
+    restart: unless-stopped
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      - minio
+    environment:
+      - MINIO_ROOT_USER=glemu
+      - MINIO_ROOT_PASSWORD=glemu-cache-secret
+      - MINIO_BUCKET=gitlab-runner-cache
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          sleep 1
+        done
+        mc mb --ignore-existing "local/$$MINIO_BUCKET"
+
+volumes:
+  gitlab_emulator_data:
+  gitlab_emulator_minio_data:

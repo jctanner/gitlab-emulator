@@ -1,0 +1,89 @@
+# GitLab CI and Runner Plan
+
+## Goal
+
+Use the official GitLab Runner as the job execution engine while the emulator
+implements enough GitLab coordinator, project, pipeline, job, artifact, trace,
+and cache APIs for controlled integration testing.
+
+## Architecture
+
+- The emulator runs on the server VM or in a k3s-backed environment.
+- The official GitLab Runner runs on a separate runner VM.
+- The runner VM talks to the emulator over normal GitLab coordinator APIs.
+- The runner uses the Docker executor for sandboxed job containers.
+- Job containers fetch source through Git Smart HTTP from the emulator.
+- Runner cache validation uses GitLab Runner's S3 distributed cache adapter
+  backed by MinIO.
+
+## Implemented Minimal Surface
+
+- runner registration, verify, unregister
+- no-job polling
+- persisted job assignment
+- trace append
+- job status update
+- artifact upload, persistence, metadata listing, and download
+- project repository checkout with CI job token
+- persisted pipelines and jobs
+- direct job creation for validation
+- minimal `.gitlab-ci.yml` parsing
+- stage gating
+- minimal `needs`
+- optional missing `needs`
+- missing required `needs` validation
+- duplicate, self, future-stage, and unsupported cross-project/pipeline needs
+  validation
+- `needs:artifacts`
+- `needs:artifacts` dependency payloads follow declared needs order
+- common `rules`, `only`, and `except` filters
+- `rules:if` with variable truthiness, equality, inequality, regex, and simple
+  `&&`/`||`
+- `rules:exists`, commit-local `rules:changes`, `when: never`, and persisted
+  non-runnable `manual` jobs
+- local `include` entries resolved from the same repository ref
+- nested local includes and `include:project` entries resolved with depth and
+  cycle guards
+- controlled `include:remote` entries resolved from allowlisted HTTP(S) hosts
+- built-in GitLab-style template includes for local testing
+- local `extends` with multi-parent merge, `default:` inheritance,
+  `inherit: default`, `inherit: variables`, and depth/error guards
+- pipeline-level variables, top-level YAML variables, and job-level YAML
+  variables merged into official runner job payloads with documented precedence
+  and metadata for raw, masked/public, and file variables
+- project trigger tokens and trigger-created `source=trigger` pipelines
+- project pipeline schedules and manually played `source=schedule` pipelines
+- runner tag matching and `run_untagged`
+- cache metadata and archive upload/download endpoints
+- cache key prefix/files parsing and emulator cache fallback-key lookup
+- MinIO-backed official runner cache upload/restore validation
+- persisted jobs are the only runner coordinator source; the debug in-memory
+  smoke queue has been removed
+- stale running jobs are exposed in pipeline/CI Lab diagnostics; recovery is
+  manual through the CI Lab requeue action or, for GitLab-shaped clients,
+  cancel followed by retry
+
+## Remaining CI Work
+
+### YAML Semantics
+
+- deeper pipeline event behavior
+- clearer unsupported-syntax behavior
+
+### Runner Coordinator
+
+- persist and expose richer long-tail job transitions where target workflows
+  require them
+- expose additional runner/job/pipeline inspection APIs in GitLab-compatible
+  shapes where target clients require them
+- keep compatibility with official runner trace, status, artifact, and cache
+  behavior
+
+## Done Criteria
+
+- local tests cover parser output, pipeline creation, scheduling, runner
+  polling, trace append, status update, artifact download, and cache paths
+- official runner VM executes persisted direct jobs and YAML-defined pipelines
+- official runner validates source checkout, artifacts, `needs:artifacts`, and
+  S3 cache upload/restore
+- runner testing docs describe the supported flow and known limits

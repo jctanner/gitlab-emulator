@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Settings - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "settings" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Repository settings</div>
+    <div class="Subhead-description">Update project metadata or remove this repository.</div>
+</div>
+
+{% if error %}
+<div class="flash flash-error mb-3">{{ error }}</div>
+{% endif %}
+{% if message %}
+<div class="flash flash-success mb-3">{{ message }}</div>
+{% endif %}
+
+<form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/settings">
+    <div class="Box p-4">
+        <div class="form-group">
+            <div class="form-group-header">
+                <label for="name">Repository name</label>
+            </div>
+            <div class="form-group-body">
+                <div class="d-flex flex-items-center">
+                    <span class="mr-2 f4 color-fg-muted">{{ owner }} /</span>
+                    <input type="text" id="name" name="name" class="form-control" required
+                           value="{{ repo.name }}"
+                           pattern="[a-zA-Z0-9._-]+"
+                           title="Only alphanumeric characters, hyphens, underscores, and dots are allowed.">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group mt-3">
+            <div class="form-group-header">
+                <label for="description">Description</label>
+            </div>
+            <div class="form-group-body">
+                <textarea id="description" name="description" class="form-control input-block" rows="2">{{ repo.description or "" }}</textarea>
+            </div>
+        </div>
+
+        <div class="form-group mt-3">
+            <div class="form-group-header">
+                <label for="default_branch">Default branch</label>
+            </div>
+            <div class="form-group-body">
+                <input type="text" id="default_branch" name="default_branch" class="form-control" value="{{ repo.default_branch or 'main' }}">
+            </div>
+        </div>
+
+        <div class="form-checkbox mt-3">
+            <label>
+                <input type="checkbox" name="private" value="1" {% if repo.private %}checked{% endif %}>
+                <span class="text-bold">Private</span>
+                <span class="note">Mark this repository as private in emulator responses.</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">Save changes</button>
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}" class="btn ml-2">Cancel</a>
+    </div>
+</form>
+
+<div class="Subhead mt-6">
+    <div class="Subhead-heading color-fg-danger">Danger zone</div>
+    <div class="Subhead-description">Deleting a repository removes the database record and bare git repository.</div>
+</div>
+
+<div class="Box border color-border-danger-emphasis">
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/settings/delete"
+              onsubmit="return confirm('Delete {{ repo.full_name }}? This cannot be undone.');">
+            <div class="form-group my-0">
+                <div class="form-group-header">
+                    <label for="confirm_repository">Type <code>{{ repo.full_name }}</code> to confirm</label>
+                </div>
+                <div class="form-group-body d-flex flex-items-center flex-wrap" style="gap:8px;">
+                    <input type="text" id="confirm_repository" name="confirm_repository" class="form-control" autocomplete="off">
+                    <button type="submit" class="btn btn-danger">Delete repository</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

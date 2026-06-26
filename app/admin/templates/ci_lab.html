@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}CI Lab - GitLab Emulator Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-items-center flex-justify-between mb-3">
+    <h2 class="f2">CI Lab</h2>
+    {% if selected_project %}
+    <span class="Label Label--secondary">{{ selected_project.full_name }}</span>
+    {% endif %}
+</div>
+
+<div class="ci-lab-layout">
+    <section class="ci-lab-panel">
+        <h3 class="f4 mb-2">Project</h3>
+        {% if flash_message and flash_type == "error" %}
+        <div class="ci-lab-inline-error mb-3">{{ flash_message }}</div>
+        {% endif %}
+        <form method="get" action="/admin/ci-lab" class="admin-form ci-lab-form">
+            <div class="form-group">
+                <label for="project_id">Existing project</label>
+                <select id="project_id" name="project_id" class="form-control" onchange="this.form.submit()">
+                    {% for project in projects %}
+                    <option value="{{ project.id }}" {% if selected_project and selected_project.id == project.id %}selected{% endif %}>
+                        {{ project.full_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn">Load</button>
+        </form>
+
+        <form method="post" action="/admin/ci-lab/projects" class="admin-form ci-lab-form mt-3">
+            <div class="form-group">
+                <label for="name">New project</label>
+                <input id="name" name="name" class="form-control" value="ci-lab-project" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Project</button>
+        </form>
+    </section>
+
+    {% if selected_project %}
+    <section class="ci-lab-panel ci-lab-yaml">
+        <div class="d-flex flex-items-center flex-justify-between mb-2">
+            <h3 class="f4">.gitlab-ci.yml</h3>
+            <span class="branch-name">{{ selected_project.default_branch }}</span>
+        </div>
+        <form method="post" action="/admin/ci-lab/yaml" class="admin-form ci-lab-editor-form">
+            <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+            <textarea name="ci_yaml" class="ci-lab-editor" spellcheck="false">{{ ci_yaml }}</textarea>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save YAML</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="ci-lab-panel">
+        <h3 class="f4 mb-2">Pipeline</h3>
+        {% if flash_message and flash_type == "error" %}
+        <div class="ci-lab-inline-error mb-3">{{ flash_message }}</div>
+        {% endif %}
+        <form method="post" action="/admin/ci-lab/pipelines" class="admin-form ci-lab-form">
+            <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+            <div class="form-group">
+                <label for="ref">Ref</label>
+                <input id="ref" name="ref" class="form-control" value="{{ selected_project.default_branch }}">
+            </div>
+            <button type="submit" class="btn btn-primary">Create Pipeline</button>
+        </form>
+
+        {% if pipelines %}
+        <table class="admin-table mt-3">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Ref</th>
+                    <th>Status</th>
+                    <th class="actions">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pipeline in pipelines %}
+                <tr>
+                    <td><a href="/admin/ci-lab?project_id={{ selected_project.id }}&pipeline_id={{ pipeline.id }}">{{ pipeline.id }}</a></td>
+                    <td><span class="branch-name">{{ pipeline.ref }}</span></td>
+                    <td><span class="status-{{ pipeline.status }}">{{ pipeline.status }}</span></td>
+                    <td class="actions">
+                        <form method="post" action="/admin/ci-lab/pipelines/{{ pipeline.id }}/cancel" class="inline-delete">
+                            <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+                            <button type="submit" class="btn btn-sm">Cancel</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="color-fg-muted mt-3">No pipelines yet.</p>
+        {% endif %}
+    </section>
+    {% endif %}
+</div>
+
+{% if selected_project %}
+<section class="ci-lab-panel mt-4">
+    <div class="d-flex flex-items-center flex-justify-between mb-2">
+        <h3 class="f4">Runner Diagnostics</h3>
+        {% if runner_readiness.healthy %}
+        <span class="status-success">{{ runner_readiness.label }}</span>
+        {% else %}
+        <span class="status-failed">{{ runner_readiness.label }}</span>
+        {% endif %}
+    </div>
+    <p class="ci-lab-runner-state mb-3">{{ runner_readiness.detail }}</p>
+    <table class="admin-table admin-detail">
+        <tbody>
+            <tr><td>Runner</td><td>{{ runner_diagnostics.description }}</td></tr>
+            <tr><td>Last contact</td><td>{{ runner_diagnostics.last_contact_at or "never" }}</td></tr>
+            <tr><td>Last poll</td><td>{{ runner_diagnostics.last_poll_at or "never" }}</td></tr>
+            <tr><td>Last job</td><td>{{ runner_diagnostics.last_job_id or "none" }}</td></tr>
+            <tr><td>Version</td><td>{{ runner_diagnostics.last_runner_version or "unknown" }}</td></tr>
+            <tr><td>Executor</td><td>{{ runner_diagnostics.last_runner_executor or "unknown" }}</td></tr>
+            <tr><td>Tags</td><td>{{ (runner_diagnostics.tags or [])|join(", ") or "none" }}</td></tr>
+            <tr><td>Run untagged</td><td>{{ "yes" if runner_diagnostics.run_untagged else "no" }}</td></tr>
+        </tbody>
+    </table>
+    {% if not runner_diagnostics.last_contact_at %}
+    <p class="ci-lab-hint mt-2">No runner has contacted the emulator since this process started. Check runner service status, DNS for glemu.local, and install the current Caddy CA with <code>make vm-runner-install-ca</code>.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if selected_pipeline %}
+<section class="ci-lab-panel mt-4">
+    <div class="d-flex flex-items-center flex-justify-between mb-2">
+        <h3 class="f4">Jobs for pipeline #{{ selected_pipeline.id }}</h3>
+        <span class="status-{{ selected_pipeline.status }}">{{ selected_pipeline.status }}</span>
+    </div>
+    {% if jobs %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Stage</th>
+                <th>Status</th>
+                <th>Tags</th>
+                <th>Runner</th>
+                <th>Diagnostics</th>
+                <th class="actions">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            {% set diagnostic = job_diagnostics.get(job.id) %}
+            <tr>
+                <td><a href="/admin/ci-lab?project_id={{ selected_project.id }}&pipeline_id={{ selected_pipeline.id }}&job_id={{ job.id }}">{{ job.id }}</a></td>
+                <td><strong>{{ job.name }}</strong></td>
+                <td>{{ job.stage }}</td>
+                <td><span class="status-{{ job.status }}">{{ job.status }}</span></td>
+                <td>{{ (job.tags or [])|join(", ") }}</td>
+                <td>{{ job.runner_name or "" }}</td>
+                <td class="ci-lab-diagnostics">
+                    {% if diagnostic %}
+                    <span class="{% if diagnostic.eligible %}status-success{% elif diagnostic.blocked %}status-failed{% else %}status-pending{% endif %}">
+                        {% if diagnostic.eligible %}eligible{% elif diagnostic.blocked %}blocked{% else %}info{% endif %}
+                    </span>
+                    <ul>
+                        {% for reason in diagnostic.reasons %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </td>
+                <td class="actions">
+                    <form method="post" action="/admin/ci-lab/jobs/{{ job.id }}/play" class="inline-delete">
+                        <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+                        <input type="hidden" name="pipeline_id" value="{{ selected_pipeline.id }}">
+                        <button type="submit" class="btn btn-sm" {% if job.status != "manual" %}disabled{% endif %}>Play</button>
+                    </form>
+                    <form method="post" action="/admin/ci-lab/jobs/{{ job.id }}/retry" class="inline-delete">
+                        <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+                        <input type="hidden" name="pipeline_id" value="{{ selected_pipeline.id }}">
+                        <button type="submit" class="btn btn-sm" {% if job.status not in ["failed", "canceled", "skipped", "success"] %}disabled{% endif %}>Retry</button>
+                    </form>
+                    <form method="post" action="/admin/ci-lab/jobs/{{ job.id }}/requeue" class="inline-delete">
+                        <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+                        <input type="hidden" name="pipeline_id" value="{{ selected_pipeline.id }}">
+                        <button type="submit" class="btn btn-sm" {% if job.status not in ["pending", "running"] %}disabled{% endif %}>Requeue</button>
+                    </form>
+                    <form method="post" action="/admin/ci-lab/jobs/{{ job.id }}/cancel" class="inline-delete">
+                        <input type="hidden" name="project_id" value="{{ selected_project.id }}">
+                        <input type="hidden" name="pipeline_id" value="{{ selected_pipeline.id }}">
+                        <button type="submit" class="btn btn-sm" {% if job.status not in ["pending", "running", "manual"] %}disabled{% endif %}>Cancel</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="color-fg-muted">No jobs for this pipeline.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if selected_job %}
+<section class="ci-lab-panel mt-4" id="job-trace">
+    <div class="d-flex flex-items-center flex-justify-between mb-2">
+        <h3 class="f4">Job #{{ selected_job.id }} Trace</h3>
+        <a class="btn btn-sm" href="{{ selected_trace_url }}">Refresh</a>
+    </div>
+    <div class="ci-lab-copy-row mb-3">
+        <label for="ci_lab_url">Selected job URL</label>
+        <input id="ci_lab_url" class="form-control input-monospace" readonly value="{{ selected_ci_lab_url }}">
+    </div>
+    <table class="admin-table admin-detail mb-3">
+        <tbody>
+            <tr><td>Name</td><td>{{ selected_job.name }}</td></tr>
+            <tr><td>Status</td><td><span class="status-{{ selected_job.status }}">{{ selected_job.status }}</span></td></tr>
+            <tr><td>Image</td><td>{{ selected_job.image }}</td></tr>
+            <tr><td>Needs</td><td>{{ selected_job.needs or [] }}</td></tr>
+            <tr><td>Job API</td><td><a href="{{ selected_job_api_url }}">{{ selected_job_api_url }}</a></td></tr>
+            <tr><td>Trace API</td><td><a href="{{ selected_job_trace_api_url }}">{{ selected_job_trace_api_url }}</a></td></tr>
+            <tr>
+                <td>Artifacts</td>
+                <td>
+                    {% if selected_job.artifacts %}
+                    <a href="{{ selected_job_artifacts_api_url }}">Download artifacts</a>
+                    <ul class="ci-lab-artifacts">
+                        {% for artifact in selected_job.artifacts %}
+                        <li>{{ artifact.filename }} · {{ artifact.size }} bytes · {{ artifact.file_type }}/{{ artifact.file_format }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    none
+                    {% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <pre class="ci-lab-trace">{{ trace_text or "" }}</pre>
+</section>
+{% endif %}
+{% endblock %}

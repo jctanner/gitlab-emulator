@@ -1,0 +1,277 @@
+# GitLab Emulator Plan
+
+## Purpose
+
+Build a GitLab-compatible emulator for integration testing tools that need
+GitLab REST APIs, Git Smart HTTP, and real GitLab CI job execution without
+depending on a live GitLab instance.
+
+This project intentionally keeps the underlying architecture of
+`github_emulator`: FastAPI, SQLAlchemy, SQLite, Git Smart HTTP via the `git`
+binary, server-rendered admin/web UI, Docker Compose, and Vagrant validation
+VMs. The GitLab emulator should diverge where GitLab's API, data model, runner
+coordinator, CI semantics, and CLI behavior differ from GitHub.
+
+## Canonical Supporting Docs
+
+- `docs/compatibility-plan.md`: GitLab REST/API compatibility work.
+- `docs/ci-runner-plan.md`: GitLab CI, runner coordinator, and job execution
+  work.
+- `docs/validation-plan.md`: local, VM, official runner, and client validation
+  strategy.
+- `docs/operations-runbook.md`: VM deploy, smoke, and recovery checklist for
+  runner/TLS/token/image/pending/stale job issues.
+- `docs/ci-pipeline-implementation-plan.md`: detailed CI implementation slices
+  and current CI status.
+- `docs/runner-testing.md`: official GitLab Runner validation notes and known
+  runner behavior.
+- `docs/remaining-slices.md`: completed MVP slice record and deferred work.
+- `GITLAB_STATUS.md`: current status snapshot.
+
+## Current State
+
+- GitLab REST routes are mounted under `/api/v4`.
+- Git Smart HTTP supports clone, fetch, and push against emulator repositories.
+- The Vagrant environment has separate `server`, `client`, and `runner` VMs.
+- The `runner` VM uses the official GitLab Runner with a Docker executor.
+- Runner registration, verification, unregister, no-job polling, job request,
+  trace append, job status update, artifact upload, and artifact download have
+  all been implemented at a minimal compatibility level.
+- Persisted pipelines and jobs exist.
+- Pipelines can be created directly or from a minimal `.gitlab-ci.yml`.
+- The official runner VM has executed persisted jobs from the emulator.
+- Runner jobs can fetch private project repositories through Git Smart HTTP
+  using CI job tokens.
+- Minimal CI support exists for stages, image, variables, before_script, script,
+  after_script, artifacts, stage gating, needs, needs:artifacts, needs
+  validation edge cases, common ref filters, richer `rules` job selection,
+  runner tags, cache metadata, deeper `extends` semantics, nested local
+  `include`, `include:project`, controlled `include:remote`, and a small set
+  of built-in template includes.
+- Pipeline creation and runner job payloads merge pipeline-level variables,
+  top-level YAML variables, and job-level YAML variables with MVP precedence.
+  Variable metadata for raw, masked/public, and file variables is preserved in
+  persisted runner payloads and validated through the official runner VM.
+- Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
+  tokens can create `source=trigger` pipelines, and schedule `play` can create
+  `source=schedule` pipelines using the same persisted job/runner path.
+- GitLab-style pipeline/job cancel and retry REST endpoints exist. Retry
+  requeues persisted jobs through the existing runner coordinator.
+- GitLab-style manual job play exists for persisted manual jobs. Play moves
+  manual jobs to `pending` so the existing runner coordinator can assign them.
+- The admin UI includes a CI Lab for fast job experiments: project selection,
+  `.gitlab-ci.yml` editing, pipeline creation, job status inspection, traces,
+  runner diagnostics, pending-job eligibility reasons, and
+  play/cancel/retry/requeue controls. This is an emulator operator tool, not a
+  full GitLab UI clone.
+- CI Lab also surfaces runner readiness, selected job URLs, trace refresh/API
+  links, artifact download links, artifact metadata, and inline create errors.
+- MinIO backs the runner VM's S3 distributed cache configuration, and official
+  runner cache upload/restore has been validated.
+- Minimal GitLab-shaped project APIs now exist for project creation, project
+  lookup by numeric ID or URL-encoded path, user project listing, branch
+  listing/get/create/delete, and tag listing/get/create/delete.
+- Project creation supports user namespaces by default and group namespaces via
+  `namespace_id` or `namespace_path`.
+- Minimal GitLab-shaped group APIs exist for creating groups, getting groups by
+  numeric ID or path, and listing group projects.
+- Minimal GitLab repository files APIs exist for reading, creating, updating,
+  and deleting files by numeric project ID or URL-encoded project path.
+- Minimal GitLab repository commits APIs exist for listing commits, getting a
+  commit, and reading commit diff metadata by numeric project ID or URL-encoded
+  project path.
+- Minimal GitLab merge request APIs exist for creating, listing, getting,
+  updating, and merging merge requests by numeric project ID or URL-encoded
+  project path.
+- A bounded deeper resource compatibility pass is complete for groups,
+  projects, repository files/tree, commits, branches, tags, protected branches,
+  and merge requests. The pass expands common GitLab-shaped fields, filters,
+  encoded/nested path behavior, repository file metadata, tree pagination,
+  commit stats/diff metadata, and merge request diffs/merge validation.
+
+## Near-Term Slices
+
+### 1. GitLab-Native Project API
+
+Status: implemented for the MVP numeric-project-ID surface.
+
+Implement and validate GitLab-shaped project resources instead of relying on
+GitHub-shaped repository endpoints.
+
+Target API surface:
+
+- `POST /api/v4/projects`
+- `GET /api/v4/projects/:id`
+- `GET /api/v4/projects/:url_encoded_path_with_namespace`
+- `GET /api/v4/projects/:id/repository/branches`
+- `GET /api/v4/projects/:url_encoded_path_with_namespace/repository/branches`
+- `GET /api/v4/projects/:id/repository/tags`
+- `GET /api/v4/projects/:url_encoded_path_with_namespace/repository/tags`
+- `GET /api/v4/users/:id/projects`
+
+Done when:
+
+- a project can be created through GitLab-shaped API input
+- the response shape is close enough for raw HTTP clients and `glab`
+- clone, push, and fetch work against a created project over HTTP
+- tests cover API creation plus Git Smart HTTP against the created project
+
+Implemented:
+
+- `POST /api/v4/projects`
+- `GET /api/v4/projects/:id`
+- `GET /api/v4/projects/:url_encoded_path_with_namespace`
+- `GET /api/v4/projects/:id/repository/branches`
+- `GET /api/v4/projects/:url_encoded_path_with_namespace/repository/branches`
+- `GET /api/v4/projects/:id/repository/tags`
+- `GET /api/v4/projects/:url_encoded_path_with_namespace/repository/tags`
+- `GET /api/v4/users/:id/projects`
+- live `git clone`, push, and fetch validation through a project created by
+  `POST /api/v4/projects`
+
+Still needed:
+
+- deeper `glab` compatibility checks
+- richer group/subgroup namespace semantics beyond the current single-level
+  organization-backed group namespace
+
+### 2. CI Semantics Hardening
+
+Expand the current minimal `.gitlab-ci.yml` support toward common GitLab CI
+behavior.
+
+Target areas:
+
+- deeper `rules` behavior beyond the current MVP expression, exists, changes,
+  never, and manual support
+- richer cache policy/options beyond the current validated path
+
+Done when:
+
+- common YAML patterns from real projects produce persisted pipeline/job records
+- unsupported syntax fails clearly or is explicitly ignored
+- local tests cover parser output and scheduler behavior
+- official runner smoke tests still pass
+
+### 3. Runner Coordinator Cleanup
+
+Keep using the official GitLab Runner as the execution engine, and make the
+emulator provide the minimum coordinator API surface it needs.
+
+Target areas:
+
+- remove the debug in-memory smoke queue entirely
+- keep persisted jobs as the normal job source
+- keep trace append and status transitions compatible with official runner
+- persist enough job state for inspection and debugging
+- persist runner registrations and diagnostics for admin/operator inspection
+- expose pipeline/job state through GitLab-shaped APIs
+- expose minimal runner and scheduler diagnostics for operator inspection
+- surface stale running jobs in diagnostics and keep recovery explicit through
+  CI Lab requeue or GitLab-compatible cancel plus retry
+
+Done when:
+
+- official runner executes persisted direct jobs and YAML pipeline jobs
+- traces, artifacts, cache metadata, and statuses survive process restarts where
+  persistence is expected
+- runner registrations, contact timestamps, tags, and last assigned job survive
+  process restarts where persistence is expected
+- runner and pipeline diagnostics explain current scheduler state
+- stale running jobs have a documented operator recovery path without automatic
+  timeout side effects
+- debug-only runner paths have been removed
+
+### 4. GitLab REST Compatibility
+
+Replace remaining GitHub-shaped resources, names, headers, response payloads,
+and tests with GitLab behavior.
+
+Target resource areas:
+
+- users
+- groups: MVP create/list/get/list-projects and nested namespace paths
+  implemented
+- projects: MVP create/list/get/delete/list-branches/list-tags/
+  list-user-projects implemented
+- issues: MVP project list/create/get/update implemented; response tests assert
+  GitLab-shaped project issue payloads do not expose inherited GitHub issue
+  fields
+- merge requests: MVP create/list/get/update/merge/commits/changes implemented
+- repository files: MVP get/raw/tree/create/update/delete implemented
+- commits: MVP list/get/diff implemented
+- branches: MVP list/get/create/delete implemented
+- tags: MVP list/get/create/delete implemented
+- members: MVP project/group list/get/add/delete implemented
+- protected branches: MVP list/get/protect/unprotect implemented
+- releases: MVP list/create/get/update/delete implemented
+- webhooks: MVP project/group list/create/get/update/delete implemented
+- search: MVP global projects/issues/merge_requests/blobs implemented
+
+Target behavior areas:
+
+- GitLab-style pagination
+- GitLab-style auth token handling
+- GitLab-style error payloads
+- GitLab-style response headers
+- GitLab webhook payloads
+- GitLab GraphQL schema details where needed
+
+Done when:
+
+- tests assert GitLab-shaped responses rather than GitHub compatibility,
+  including regression coverage for GitLab project issue payloads
+- `glab` smoke workflows pass for the implemented surface
+- GitHub-specific naming remains only in shared historical scaffolding or has a
+  clear compatibility reason
+
+### 5. Validation and Operations
+
+Keep the VM split as the main realistic validation path:
+
+- emulator on the `server` VM
+- client tools on the `client` VM
+- official GitLab Runner on the `runner` VM
+- Docker executor job containers on the runner VM
+- MinIO on the server side for S3-compatible runner cache validation
+
+Done when:
+
+- a single documented command path can deploy the emulator and register the
+  runner: complete through `make vm-validate`
+- runner cache and artifact-needs validations pass after a clean deploy:
+  complete in the current `make vm-validate` run
+- local tests are exposed through `make test-focused`, `make test-affected`,
+  and `make test-full`, and VM tests are documented in
+  `docs/validation-plan.md`: complete
+- known operational issues, such as Docker Hub pull limits, have documented
+  workarounds: complete
+- VM deploy/reset behavior and runner recovery checklists are documented in
+  `docs/operations-runbook.md`: complete
+
+## Deferred Work
+
+- Full GitLab GraphQL parity.
+- Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
+  surface.
+- Full GitLab authorization and permission model.
+- Complete long-tail `glab` coverage beyond the smoke workflows.
+- Kubernetes runner/executor support. The current validation path is a true
+  runner VM with the official runner and Docker executor.
+- Production security hardening. This emulator is for controlled integration
+  testing environments.
+
+## High-Level Outcome
+
+After the near-term slices, this project should provide a usable GitLab-like
+test fixture:
+
+- create GitLab-shaped projects through API calls
+- push and fetch real Git repositories
+- create pipelines from committed `.gitlab-ci.yml`
+- execute selected jobs in sandboxed containers through the official GitLab
+  Runner
+- stream traces, statuses, artifacts, and cache interactions back into the
+  emulator
+- validate client tooling such as raw HTTP clients, `git`, `glab`, and CI
+  automation against a local deterministic target

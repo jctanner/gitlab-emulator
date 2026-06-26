@@ -1,0 +1,4 @@
+{$GITLAB_EMULATOR_HOSTNAME:glemu.local} {
+    tls internal
+    reverse_proxy 127.0.0.1:8000
+}
