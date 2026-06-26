@@ -13,7 +13,7 @@ from sqlalchemy.sql import Select
 from app.api.deps import AuthUser, CurrentUser, DbSession
 from app.api.pagination import paginated_json
 from app.config import settings
-from app.models.ci import CiVariable
+from app.models.ci import CiSecret, CiVariable
 from app.models.group import Group
 from app.models.organization import OrgMembership
 from app.models.project import Project
@@ -47,6 +47,27 @@ class GroupVariableUpdate(BaseModel):
     raw: bool | None = None
     environment_scope: str | None = None
     description: str | None = None
+
+
+class GroupSecretCreate(BaseModel):
+    name: str
+    value: str
+    description: str | None = None
+    environment_scope: str = "*"
+    branch_scope: str = "*"
+    protected: bool = False
+    rotation_reminder_days: int | None = None
+    status: str = "healthy"
+
+
+class GroupSecretUpdate(BaseModel):
+    value: str | None = None
+    description: str | None = None
+    environment_scope: str | None = None
+    branch_scope: str | None = None
+    protected: bool | None = None
+    rotation_reminder_days: int | None = None
+    status: str | None = None
 
 
 async def _get_group_or_404(group_ref: str, db: DbSession) -> Group:
@@ -91,6 +112,13 @@ def _validate_variable_type(variable_type: str) -> str:
     return normalized
 
 
+def _validate_secret_name(name: str) -> str:
+    normalized = str(name or "").strip()
+    if not VARIABLE_KEY_RE.match(normalized):
+        raise HTTPException(status_code=400, detail="Invalid secret name")
+    return normalized
+
+
 def _variable_visibility(masked: bool, hidden: bool) -> str:
     if hidden:
         return "masked_and_hidden"
@@ -113,6 +141,43 @@ def _variable_json(variable: CiVariable) -> dict:
         "environment_scope": variable.environment_scope,
         "description": variable.description,
     }
+
+
+def _secret_json(secret: CiSecret) -> dict:
+    return {
+        "name": secret.name,
+        "value": None,
+        "description": secret.description,
+        "environment_scope": secret.environment_scope,
+        "branch_scope": secret.branch_scope,
+        "protected": secret.protected,
+        "rotation_reminder_days": secret.rotation_reminder_days,
+        "status": secret.status,
+        "last_accessed_at": _fmt_dt(secret.last_accessed_at),
+        "last_accessed_by_job_id": secret.last_accessed_by_job_id,
+        "created_at": _fmt_dt(secret.created_at),
+        "updated_at": _fmt_dt(secret.updated_at),
+    }
+
+
+async def _get_group_secret_or_404(
+    group: Group,
+    db: DbSession,
+    name: str,
+    environment_scope: str | None = None,
+    branch_scope: str | None = None,
+) -> CiSecret:
+    query = select(CiSecret).where(
+        CiSecret.scope_type == "group",
+        CiSecret.scope_id == group.id,
+        CiSecret.name == _validate_secret_name(name),
+        CiSecret.environment_scope == (environment_scope if environment_scope is not None else "*"),
+        CiSecret.branch_scope == (branch_scope if branch_scope is not None else "*"),
+    )
+    secret = (await db.execute(query)).scalar_one_or_none()
+    if secret is None:
+        raise HTTPException(status_code=404, detail="404 Secret Not Found")
+    return secret
 
 
 async def _get_group_variable_or_404(
@@ -698,6 +763,151 @@ async def delete_group_variable(
     await _require_group_owner(group, user, db)
     variable = await _get_group_variable_or_404(group, db, key, environment_scope)
     await db.delete(variable)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/groups/{group_ref:path}/secrets")
+async def list_group_secrets(
+    group_ref: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    branch_scope: str | None = Query(None, alias="filter[branch_scope]"),
+):
+    """List group CI/CD secrets."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    query = select(CiSecret).where(
+        CiSecret.scope_type == "group",
+        CiSecret.scope_id == group.id,
+    )
+    if environment_scope is not None:
+        query = query.where(CiSecret.environment_scope == environment_scope)
+    if branch_scope is not None:
+        query = query.where(CiSecret.branch_scope == branch_scope)
+    query = query.order_by(CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope)
+    secrets = (await db.execute(query)).scalars().all()
+    return [_secret_json(secret) for secret in secrets]
+
+
+@router.post("/groups/{group_ref:path}/secrets", status_code=201)
+async def create_group_secret(
+    group_ref: str,
+    body: GroupSecretCreate,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Create a group CI/CD secret."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    secret = CiSecret(
+        scope_type="group",
+        scope_id=group.id,
+        name=_validate_secret_name(body.name),
+        value=body.value,
+        description=body.description,
+        environment_scope=body.environment_scope or "*",
+        branch_scope=body.branch_scope or "*",
+        protected=body.protected,
+        rotation_reminder_days=body.rotation_reminder_days,
+        status=body.status or "healthy",
+    )
+    db.add(secret)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Secret already exists") from exc
+    await db.refresh(secret)
+    return _secret_json(secret)
+
+
+@router.get("/groups/{group_ref:path}/secrets/{name}")
+async def get_group_secret(
+    group_ref: str,
+    name: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    branch_scope: str | None = Query(None, alias="filter[branch_scope]"),
+):
+    """Get a group CI/CD secret by name."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    secret = await _get_group_secret_or_404(
+        group,
+        db,
+        name,
+        environment_scope,
+        branch_scope,
+    )
+    return _secret_json(secret)
+
+
+@router.put("/groups/{group_ref:path}/secrets/{name}")
+async def update_group_secret(
+    group_ref: str,
+    name: str,
+    body: GroupSecretUpdate,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    branch_scope: str | None = Query(None, alias="filter[branch_scope]"),
+):
+    """Update a group CI/CD secret."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    secret = await _get_group_secret_or_404(
+        group,
+        db,
+        name,
+        environment_scope,
+        branch_scope,
+    )
+    if body.value is not None:
+        secret.value = body.value
+    if body.description is not None:
+        secret.description = body.description
+    if body.environment_scope is not None:
+        secret.environment_scope = body.environment_scope or "*"
+    if body.branch_scope is not None:
+        secret.branch_scope = body.branch_scope or "*"
+    if body.protected is not None:
+        secret.protected = body.protected
+    if body.rotation_reminder_days is not None:
+        secret.rotation_reminder_days = body.rotation_reminder_days
+    if body.status is not None:
+        secret.status = body.status or "healthy"
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Secret already exists") from exc
+    await db.refresh(secret)
+    return _secret_json(secret)
+
+
+@router.delete("/groups/{group_ref:path}/secrets/{name}", status_code=204)
+async def delete_group_secret(
+    group_ref: str,
+    name: str,
+    user: AuthUser,
+    db: DbSession,
+    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    branch_scope: str | None = Query(None, alias="filter[branch_scope]"),
+):
+    """Delete a group CI/CD secret."""
+    group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
+    secret = await _get_group_secret_or_404(
+        group,
+        db,
+        name,
+        environment_scope,
+        branch_scope,
+    )
+    await db.delete(secret)
     await db.commit()
     return Response(status_code=204)
 

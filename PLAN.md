@@ -82,6 +82,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 - Group CI/CD variable CRUD and admin-only instance CI/CD variable APIs exist,
   and runner payload resolution applies instance, parent group, child group,
   and project variable precedence.
+- Project and group CI/CD secrets have emulator CRUD APIs backed by
+  `ci_secrets`; secret values are write-only on API reads, and access-event
+  storage exists for the later job delivery slice.
 - Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
   tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.

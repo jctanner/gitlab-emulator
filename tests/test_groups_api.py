@@ -636,6 +636,156 @@ async def test_site_admin_can_manage_group_variables(
 
 
 @pytest.mark.asyncio
+async def test_group_secrets_crud_scope_and_hidden_value(
+    client, test_user, test_token
+):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "secret-group", "name": "Secret Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+
+    created = await client.post(
+        f"{API}/groups/{group_id}/secrets",
+        json={
+            "name": "DATABASE_PASSWORD",
+            "value": "super-secret-value",
+            "description": "database credential",
+            "rotation_reminder_days": 30,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    data = created.json()
+    assert data["name"] == "DATABASE_PASSWORD"
+    assert data["value"] is None
+    assert data["description"] == "database credential"
+    assert data["environment_scope"] == "*"
+    assert data["branch_scope"] == "*"
+    assert data["rotation_reminder_days"] == 30
+    assert "super-secret-value" not in json.dumps(data)
+
+    scoped = await client.post(
+        f"{API}/groups/{group_id}/secrets",
+        json={
+            "name": "DATABASE_PASSWORD",
+            "value": "prod-secret",
+            "environment_scope": "production",
+            "branch_scope": "main",
+            "protected": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert scoped.status_code == 201
+
+    duplicate = await client.post(
+        f"{API}/groups/{group_id}/secrets",
+        json={"name": "DATABASE_PASSWORD", "value": "again"},
+        headers=auth_headers(test_token),
+    )
+    assert duplicate.status_code == 400
+
+    listed = await client.get(
+        f"{API}/groups/{group_id}/secrets",
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert [(item["name"], item["environment_scope"], item["branch_scope"]) for item in listed.json()] == [
+        ("DATABASE_PASSWORD", "*", "*"),
+        ("DATABASE_PASSWORD", "production", "main"),
+    ]
+
+    fetched = await client.get(
+        f"{API}/groups/{group_id}/secrets/DATABASE_PASSWORD",
+        params={
+            "filter[environment_scope]": "production",
+            "filter[branch_scope]": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["value"] is None
+    assert fetched.json()["protected"] is True
+
+    updated = await client.put(
+        f"{API}/groups/{group_id}/secrets/DATABASE_PASSWORD",
+        json={"description": "updated", "status": "rotating"},
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["description"] == "updated"
+    assert updated.json()["status"] == "rotating"
+
+    deleted = await client.delete(
+        f"{API}/groups/{group_id}/secrets/DATABASE_PASSWORD",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.get(
+        f"{API}/groups/{group_id}/secrets/DATABASE_PASSWORD",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_group_secrets_accept_encoded_nested_group_path(
+    client, test_user, test_token
+):
+    parent = await client.post(
+        f"{API}/groups",
+        json={"path": "secret-parent", "name": "Secret Parent"},
+        headers=auth_headers(test_token),
+    )
+    assert parent.status_code == 201
+    child = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "child",
+            "name": "Secret Child",
+            "parent_id": parent.json()["id"],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert child.status_code == 201
+
+    created = await client.post(
+        f"{API}/groups/secret-parent%2Fchild/secrets",
+        json={"name": "NESTED_SECRET", "value": "nested"},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+
+    fetched = await client.get(
+        f"{API}/groups/secret-parent%2Fchild/secrets/NESTED_SECRET",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["value"] is None
+
+
+@pytest.mark.asyncio
+async def test_group_secret_rejects_invalid_name(client, test_user, test_token):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "invalid-secret-group", "name": "Invalid Secret Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+
+    resp = await client.post(
+        f"{API}/groups/{group.json()['id']}/secrets",
+        json={"name": "BAD NAME", "value": "value"},
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_gitlab_nested_group_hooks_list_with_pagination(client, test_token):
     parent = await client.post(
         f"{API}/groups",

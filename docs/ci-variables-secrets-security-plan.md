@@ -582,6 +582,10 @@ Deliver:
 
 ### Slice 5: Secrets Data Model and Emulator APIs
 
+Status: implemented for the MVP. Project and group secrets have emulator API
+CRUD, secret values are write-only on read responses, and access-event storage
+is modeled for the later delivery slice.
+
 Deliver:
 
 - `ci_secrets` model.

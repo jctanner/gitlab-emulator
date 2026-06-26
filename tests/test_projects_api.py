@@ -355,6 +355,121 @@ async def test_project_variable_rejects_invalid_key(client, test_user, test_toke
 
 
 @pytest.mark.asyncio
+async def test_project_secrets_crud_scope_and_hidden_value(
+    client, test_user, test_token
+):
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "secret-project"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    created = await client.post(
+        f"{API}/projects/{project_id}/secrets",
+        json={
+            "name": "DATABASE_PASSWORD",
+            "value": "super-secret-value",
+            "description": "database credential",
+            "rotation_reminder_days": 30,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    created_data = created.json()
+    assert created_data["name"] == "DATABASE_PASSWORD"
+    assert created_data["value"] is None
+    assert created_data["description"] == "database credential"
+    assert created_data["environment_scope"] == "*"
+    assert created_data["branch_scope"] == "*"
+    assert created_data["rotation_reminder_days"] == 30
+    assert "super-secret-value" not in json.dumps(created_data)
+
+    scoped = await client.post(
+        f"{API}/projects/{project_id}/secrets",
+        json={
+            "name": "DATABASE_PASSWORD",
+            "value": "prod-secret",
+            "environment_scope": "production",
+            "branch_scope": "main",
+            "protected": True,
+            "status": "healthy",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert scoped.status_code == 201
+
+    duplicate = await client.post(
+        f"{API}/projects/{project_id}/secrets",
+        json={"name": "DATABASE_PASSWORD", "value": "again"},
+        headers=auth_headers(test_token),
+    )
+    assert duplicate.status_code == 400
+
+    listed = await client.get(
+        f"{API}/projects/{project_id}/secrets",
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert [(item["name"], item["environment_scope"], item["branch_scope"]) for item in listed.json()] == [
+        ("DATABASE_PASSWORD", "*", "*"),
+        ("DATABASE_PASSWORD", "production", "main"),
+    ]
+
+    fetched = await client.get(
+        f"{API}/projects/{project_id}/secrets/DATABASE_PASSWORD",
+        params={
+            "filter[environment_scope]": "production",
+            "filter[branch_scope]": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["value"] is None
+    assert fetched.json()["protected"] is True
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}/secrets/DATABASE_PASSWORD",
+        json={"description": "updated", "status": "rotating"},
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["description"] == "updated"
+    assert updated.json()["status"] == "rotating"
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/secrets/DATABASE_PASSWORD",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.get(
+        f"{API}/projects/{project_id}/secrets/DATABASE_PASSWORD",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_project_secret_rejects_invalid_name(client, test_user, test_token):
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "invalid-secret-project"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{create_resp.json()['id']}/secrets",
+        json={"name": "BAD NAME", "value": "value"},
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_create_project_in_group_namespace_by_id(client, test_user, test_token):
     org_resp = await client.post(
         f"{API}/orgs",

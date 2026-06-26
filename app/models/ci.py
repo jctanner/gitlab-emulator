@@ -108,6 +108,60 @@ class CiVariable(Base):
     )
 
 
+class CiSecret(Base):
+    __tablename__ = "ci_secrets"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_type",
+            "scope_id",
+            "name",
+            "environment_scope",
+            "branch_scope",
+            name="uq_ci_secret_scope_name_environment_branch",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scope_type: Mapped[str] = mapped_column(String, nullable=False)
+    scope_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    environment_scope: Mapped[str] = mapped_column(String, default="*")
+    branch_scope: Mapped[str] = mapped_column(String, default="*")
+    protected: Mapped[bool] = mapped_column(Boolean, default=False)
+    rotation_reminder_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="healthy")
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_accessed_by_job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("pipeline_jobs.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    last_accessed_by_job = relationship("PipelineJob", lazy="selectin")
+
+
+class CiSecretAccessEvent(Base):
+    __tablename__ = "ci_secret_access_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    secret_id: Mapped[int] = mapped_column(Integer, ForeignKey("ci_secrets.id"), nullable=False)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("repositories.id"), nullable=False)
+    pipeline_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipelines.id"), nullable=False)
+    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipeline_jobs.id"), nullable=False)
+    ref: Mapped[str] = mapped_column(String, nullable=False)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True)
+    accessed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    secret = relationship("CiSecret", lazy="selectin")
+    project = relationship("Repository", lazy="selectin")
+    pipeline = relationship("Pipeline", lazy="selectin")
+    job = relationship("PipelineJob", lazy="selectin")
+
+
 class CiRunner(Base):
     __tablename__ = "ci_runners"
 
