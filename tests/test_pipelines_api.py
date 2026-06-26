@@ -806,6 +806,146 @@ project_probe:
     assert "SCOPED_OUT" not in variables
 
 
+async def test_protected_project_variables_require_protected_ref(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+protected_probe:
+  script:
+    - echo protected variables
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add protected variable ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    protected_var = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+        json={"key": "PROTECTED_ONLY", "value": "protected", "protected": True},
+    )
+    assert protected_var.status_code == 201
+
+    unprotected_pipeline = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert unprotected_pipeline.status_code == 201
+    unprotected_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert unprotected_request.status_code == 201
+    unprotected_variables = {
+        item["key"]: item["value"] for item in unprotected_request.json()["variables"]
+    }
+    assert "PROTECTED_ONLY" not in unprotected_variables
+    finish = await client.put(
+        f"{API}/jobs/{unprotected_request.json()['id']}",
+        headers={"JOB-TOKEN": unprotected_request.json()["token"]},
+        json={"token": unprotected_request.json()["token"], "state": "success"},
+    )
+    assert finish.status_code == 200
+
+    protect = await client.post(
+        f"{API}/projects/{project['id']}/protected_branches",
+        headers=auth_headers(test_token),
+        json={"name": "main"},
+    )
+    assert protect.status_code == 201
+
+    protected_pipeline = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert protected_pipeline.status_code == 201
+    protected_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert protected_request.status_code == 201
+    protected_variables = {
+        item["key"]: item["value"] for item in protected_request.json()["variables"]
+    }
+    assert protected_variables["PROTECTED_ONLY"] == "protected"
+
+
+async def test_project_variable_environment_scope_matches_job_environment(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+production_job:
+  environment: production
+  script:
+    - echo production
+
+staging_job:
+  environment:
+    name: staging
+  script:
+    - echo staging
+
+review_job:
+  environment: review/app
+  script:
+    - echo review
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add environment variable ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    for payload in [
+        {"key": "ENV_VALUE", "value": "default"},
+        {"key": "ENV_VALUE", "value": "production", "environment_scope": "production"},
+        {"key": "ENV_VALUE", "value": "review", "environment_scope": "review/*"},
+    ]:
+        variable = await client.post(
+            f"{API}/projects/{project['id']}/variables",
+            headers=auth_headers(test_token),
+            json=payload,
+        )
+        assert variable.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert pipeline_resp.status_code == 201
+
+    values_by_job = {}
+    for _ in range(3):
+        request = await client.post(
+            f"{API}/jobs/request",
+            headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+            json={"token": RUNNER_TOKEN},
+        )
+        assert request.status_code == 201
+        payload = request.json()
+        variables = {item["key"]: item["value"] for item in payload["variables"]}
+        values_by_job[payload["job_info"]["name"]] = variables["ENV_VALUE"]
+
+    assert values_by_job == {
+        "production_job": "production",
+        "staging_job": "default",
+        "review_job": "review",
+    }
+
+
 async def test_variable_metadata_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

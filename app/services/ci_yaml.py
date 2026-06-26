@@ -51,6 +51,7 @@ class ParsedCiJob:
     artifacts_paths: list[str] = field(default_factory=list)
     artifacts: dict = field(default_factory=dict)
     when: str = "on_success"
+    environment: str | None = None
 
 
 def _string_list(value: Any) -> list[str]:
@@ -107,6 +108,16 @@ def _image_name(value: Any, fallback: str) -> str:
     if isinstance(value, dict) and value.get("name"):
         return str(value["name"])
     return fallback
+
+
+def _environment_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and value.get("name"):
+        return str(value["name"])
+    return None
 
 
 def _needs(value: Any) -> list[dict] | None:
@@ -560,6 +571,7 @@ def parse_gitlab_ci(
                 artifacts_paths=artifact_paths,
                 artifacts=artifact_config,
                 when=decision.when,
+                environment=_environment_name(config.get("environment")),
             )
         )
 

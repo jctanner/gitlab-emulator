@@ -554,9 +554,10 @@ Deliver:
 
 ### Slice 3: File, Masked, Protected, and Scoped Variables
 
-Status: partially implemented. File/masked/raw metadata reaches runner
-payloads, and masked project variable values are redacted from stored traces.
-Protected ref filtering and environment-scope matching remain.
+Status: implemented for project variables in the MVP. File/masked/raw metadata
+reaches runner payloads, protected variables are filtered by protected refs,
+environment scopes match job environments, and masked values are redacted from
+stored traces.
 
 Deliver:
 

@@ -735,7 +735,6 @@ async def _create_pipeline(
         sha = await _resolve_ref(project, body.ref)
 
     if body.job is not None:
-        project_variable_metadata = await project_variable_entries(project, db)
         parsed_jobs = [
             ParsedCiJob(
                 name=body.job.name,
@@ -771,14 +770,18 @@ async def _create_pipeline(
         ]
     else:
         try:
-            project_variable_metadata = await project_variable_entries(project, db)
+            rule_project_variable_entries = await project_variable_entries(
+                project,
+                db,
+                ref=body.ref,
+            )
             pipeline_variable_entries = _pipeline_variable_entries(body.variables)
             parsed_jobs = parse_gitlab_ci(
                 await _read_gitlab_ci_with_includes(project, body.ref, db),
                 ref=body.ref,
                 variables=_simple_variable_values(
                     {
-                        **project_variable_metadata,
+                        **rule_project_variable_entries,
                         **pipeline_variable_entries,
                     }
                 ),
@@ -808,6 +811,12 @@ async def _create_pipeline(
 
     pipeline_variable_entries = _pipeline_variable_entries(body.variables)
     for parsed_job in parsed_jobs:
+        project_variable_metadata = await project_variable_entries(
+            project,
+            db,
+            ref=body.ref,
+            environment=parsed_job.environment,
+        )
         variables = {
             **project_variable_metadata,
             **pipeline_variable_entries,

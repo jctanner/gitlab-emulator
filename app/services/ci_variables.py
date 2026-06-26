@@ -1,8 +1,11 @@
 """CI/CD variable resolution helpers."""
 
+import fnmatch
+
 from sqlalchemy import select
 
 from app.api.deps import DbSession
+from app.models.branch import Branch
 from app.models.ci import CiVariable
 from app.models.project import Project
 
@@ -18,22 +21,60 @@ def ci_variable_entry(variable: CiVariable) -> dict:
     }
 
 
-async def project_variable_entries(project: Project, db: DbSession) -> dict[str, dict]:
-    """Return MVP project variables eligible for all project jobs.
+def _environment_matches(scope: str, environment: str | None) -> bool:
+    if scope == "*":
+        return True
+    if not environment:
+        return False
+    return fnmatch.fnmatchcase(environment, scope)
 
-    Environment-scope matching is a later slice. Until job environments are
-    modeled, only the default `*` scope participates in runner payloads.
-    """
+
+def _scope_specificity(scope: str) -> tuple[int, int]:
+    if scope == "*":
+        return (0, 0)
+    wildcard_count = scope.count("*") + scope.count("?")
+    return (1, len(scope) - wildcard_count)
+
+
+async def project_ref_is_protected(project: Project, ref: str, db: DbSession) -> bool:
+    result = await db.execute(
+        select(Branch.protected).where(
+            Branch.repo_id == project.id,
+            Branch.name == ref,
+            Branch.protected.is_(True),
+        )
+    )
+    return bool(result.scalar_one_or_none())
+
+
+async def project_variable_entries(
+    project: Project,
+    db: DbSession,
+    *,
+    ref: str,
+    environment: str | None = None,
+) -> dict[str, dict]:
+    """Return project variables eligible for a job on a ref/environment."""
+    protected_ref = await project_ref_is_protected(project, ref, db)
     result = await db.execute(
         select(CiVariable)
         .where(
             CiVariable.scope_type == "project",
             CiVariable.scope_id == project.id,
-            CiVariable.environment_scope == "*",
         )
-        .order_by(CiVariable.key.asc())
+        .order_by(CiVariable.key.asc(), CiVariable.environment_scope.asc())
     )
+    selected: dict[str, tuple[tuple[int, int], CiVariable]] = {}
+    for variable in result.scalars().all():
+        if variable.protected and not protected_ref:
+            continue
+        if not _environment_matches(variable.environment_scope or "*", environment):
+            continue
+        specificity = _scope_specificity(variable.environment_scope or "*")
+        existing = selected.get(variable.key)
+        if existing is None or specificity >= existing[0]:
+            selected[variable.key] = (specificity, variable)
     return {
-        variable.key: ci_variable_entry(variable)
-        for variable in result.scalars().all()
+        key: ci_variable_entry(variable)
+        for key, (_specificity, variable) in selected.items()
     }

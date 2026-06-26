@@ -77,6 +77,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   model.
 - Masked project CI/CD variable values are redacted in the runner trace append
   path before traces are persisted or returned through job trace APIs.
+- Project CI/CD variable resolution honors protected refs and job environment
+  scopes, including exact and wildcard environment-scope matches.
 - Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
   tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.
