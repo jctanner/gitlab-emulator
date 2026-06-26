@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -29,6 +30,30 @@ async def init_db():
     """Create all tables and set WAL mode."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_sqlite_compat_columns(conn)
         await conn.execute(
-            __import__("sqlalchemy").text("PRAGMA journal_mode=WAL")
+            text("PRAGMA journal_mode=WAL")
         )
+
+
+async def _ensure_sqlite_compat_columns(conn) -> None:
+    """Add JSON columns introduced after early VM databases were created."""
+    if engine.url.get_backend_name() != "sqlite":
+        return
+
+    async def ensure_column(table: str, column: str, ddl: str) -> None:
+        result = await conn.execute(text(f"PRAGMA table_info({table})"))
+        existing = {row[1] for row in result.fetchall()}
+        if column not in existing:
+            await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+
+    await ensure_column(
+        "repositories",
+        "ci_security_settings",
+        "ci_security_settings JSON DEFAULT '{}'",
+    )
+    await ensure_column(
+        "pipelines",
+        "security_warnings",
+        "security_warnings JSON DEFAULT '[]'",
+    )

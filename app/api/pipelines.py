@@ -18,13 +18,27 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 import yaml
 
-from app.api.deps import DbSession
+from app.api.deps import CurrentUser, DbSession
 from app.api.pagination import paginated_json
 from app.api.runner import explain_job_scheduling
 from app.config import settings
-from app.models.ci import CiRunner, JobTrace, Pipeline, PipelineJob, PipelineSchedule, PipelineTrigger
+from app.models.ci import (
+    CiRunner,
+    CiSecretAccessEvent,
+    JobTrace,
+    Pipeline,
+    PipelineJob,
+    PipelineSchedule,
+    PipelineTrigger,
+)
 from app.models.project import Project
 from app.schemas.user import _fmt_dt
+from app.services.ci_security import (
+    pipeline_security_warnings,
+    pipeline_variables_allowed_for_user,
+    strict_security_blocks,
+)
+from app.services.ci_secrets import project_secret_entries
 from app.services.ci_variables import project_variable_entries
 from app.services.ci_yaml import ParsedCiJob, parse_gitlab_ci
 
@@ -488,6 +502,7 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "ref": pipeline.ref,
         "status": pipeline.status,
         "source": pipeline.source,
+        "security_warnings": pipeline.security_warnings or [],
         "created_at": _fmt_dt(pipeline.created_at),
         "updated_at": _fmt_dt(pipeline.updated_at),
         "web_url": f"{settings.BASE_URL}/{pipeline.project.full_name}/-/pipelines/{pipeline.id}"
@@ -726,13 +741,25 @@ async def _create_pipeline(
     db: DbSession,
     *,
     source: str = "api",
+    actor=None,
 ) -> Pipeline:
     """Create a persisted pipeline from a direct job or `.gitlab-ci.yml`."""
     project = await _get_project(project_id, db)
     parsed_jobs: list[ParsedCiJob]
+    ci_content = ""
     sha = body.sha
     if sha == "0000000000000000000000000000000000000000":
         sha = await _resolve_ref(project, body.ref)
+
+    if body.variables and not pipeline_variables_allowed_for_user(
+        settings=project.ci_security_settings,
+        project_owner_id=project.owner_id,
+        user=actor,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Pipeline variables are not allowed by project CI security settings",
+        )
 
     if body.job is not None:
         parsed_jobs = [
@@ -776,8 +803,15 @@ async def _create_pipeline(
                 ref=body.ref,
             )
             pipeline_variable_entries = _pipeline_variable_entries(body.variables)
+            ci_content = await _read_repo_file(
+                project,
+                body.ref,
+                ".gitlab-ci.yml",
+                ".gitlab-ci.yml not found",
+            )
+            merged_ci_content = await _read_gitlab_ci_with_includes(project, body.ref, db)
             parsed_jobs = parse_gitlab_ci(
-                await _read_gitlab_ci_with_includes(project, body.ref, db),
+                merged_ci_content,
                 ref=body.ref,
                 variables=_simple_variable_values(
                     {
@@ -798,6 +832,23 @@ async def _create_pipeline(
             select(func.max(Pipeline.iid)).where(Pipeline.project_id == project.id)
         )
     ).scalar()
+    security_warnings = pipeline_security_warnings(
+        ci_content=ci_content,
+        parsed_jobs=parsed_jobs,
+        pipeline_variables=body.variables,
+        settings=project.ci_security_settings,
+    )
+    blocking_warnings = strict_security_blocks(
+        security_warnings,
+        project.ci_security_settings,
+    )
+    if blocking_warnings:
+        messages = "; ".join(warning["message"] for warning in blocking_warnings)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Pipeline blocked by CI strict security mode: {messages}",
+        )
+
     pipeline = Pipeline(
         project_id=project.id,
         iid=(max_iid or 0) + 1,
@@ -805,6 +856,7 @@ async def _create_pipeline(
         sha=sha,
         status="pending",
         source=source,
+        security_warnings=security_warnings,
     )
     db.add(pipeline)
     await db.flush()
@@ -829,6 +881,17 @@ async def _create_pipeline(
                 }
             ),
         }
+        try:
+            secret_entries, resolved_secrets = await project_secret_entries(
+                project,
+                db,
+                ref=body.ref,
+                environment=parsed_job.environment,
+                secrets=parsed_job.secrets,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        variables.update(secret_entries)
         job = PipelineJob(
             pipeline_id=pipeline.id,
             project_id=project.id,
@@ -848,6 +911,21 @@ async def _create_pipeline(
         )
         db.add(job)
         await db.flush()
+        now = datetime.now(timezone.utc)
+        for resolved_secret in resolved_secrets:
+            resolved_secret.secret.last_accessed_at = now
+            resolved_secret.secret.last_accessed_by_job_id = job.id
+            db.add(
+                CiSecretAccessEvent(
+                    secret_id=resolved_secret.secret.id,
+                    project_id=project.id,
+                    pipeline_id=pipeline.id,
+                    job_id=job.id,
+                    ref=body.ref,
+                    environment=parsed_job.environment,
+                    accessed_at=now,
+                )
+            )
         db.add(JobTrace(job_id=job.id, content="", size=0))
     await db.commit()
     await db.refresh(pipeline)
@@ -1047,10 +1125,21 @@ async def play_pipeline_schedule(project_id: int, schedule_id: int, db: DbSessio
 
 
 @router.post("/projects/{project_ref:path}/pipeline", status_code=201)
-async def create_pipeline(project_ref: str, body: CreatePipelineRequest, db: DbSession):
+async def create_pipeline(
+    project_ref: str,
+    body: CreatePipelineRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
     """Create a minimal pipeline from a direct job or `.gitlab-ci.yml`."""
     project = await _get_project_ref(project_ref, db)
-    pipeline = await _create_pipeline(project.id, body, db, source="api")
+    pipeline = await _create_pipeline(
+        project.id,
+        body,
+        db,
+        source="api",
+        actor=current_user,
+    )
     return _pipeline_json(pipeline)
 
 
@@ -1165,6 +1254,7 @@ async def get_pipeline_diagnostics(project_ref: str, pipeline_id: int, db: DbSes
     explanations = explain_job_scheduling(list(pipeline.jobs), runner)
     return {
         "pipeline": _pipeline_json(pipeline),
+        "security_warnings": pipeline.security_warnings or [],
         "runner": None
         if runner is None
         else {

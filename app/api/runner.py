@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import DbSession
 from app.config import settings
 from app.models.ci import CiRunner, JobArtifact, JobTrace, Pipeline, PipelineJob
+from app.services.ci_redaction import redact_trace_text
 
 router = APIRouter(tags=["runner"])
 
@@ -457,22 +458,8 @@ def _variables_from_dict(values: dict[str, object]) -> list[dict]:
     return [_variable_payload_item(key, value) for key, value in values.items()]
 
 
-def _masked_values_for_job(job: PipelineJob) -> list[str]:
-    values: list[str] = []
-    for variable in (job.variables or {}).values():
-        if not isinstance(variable, dict) or not variable.get("masked"):
-            continue
-        value = str(variable.get("value", ""))
-        if value:
-            values.append(value)
-    return sorted(set(values), key=len, reverse=True)
-
-
 def _redact_trace_text(text: str, job: PipelineJob) -> str:
-    redacted = text
-    for value in _masked_values_for_job(job):
-        redacted = redacted.replace(value, "[MASKED]")
-    return redacted
+    return redact_trace_text(text, job.variables or {})
 
 
 def _repo_url_with_job_token(repo_url: str, job_token: str) -> str:

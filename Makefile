@@ -137,7 +137,7 @@ clean: down
 
 # Vagrant VM (Debian 12 + Docker, via libvirt/KVM)
 
-.PHONY: vm-net vm-up vm-sync vm-build vm-start vm-reset vm-stop vm-logs vm-deploy vm-deploy-reset vm-destroy vm-ssh vm-ip vm-test vm-git-test vm-glab vm-ci-lab-smoke vm-validate vm-validate-current vm-runner-validate vm-runner-variable-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test vm-client-scripts-sync vm-client-install-glab vm-client-install-ca vm-client-sync vm-client-ssh vm-runner-sync vm-runner-ssh vm-runner-status vm-runner-cache-config vm-runner-ensure-ca vm-runner-install-ca vm-runner-register vm-k8s-runner-up vm-k8s-runner-sync vm-k8s-runner-ssh vm-k8s-runner-status vm-k8s-runner-logs vm-k8s-runner-pods vm-k8s-runner-install-ca vm-k8s-runner-register vm-k8s-runner-validate vm-k8s-incluster-sync vm-k8s-incluster-deploy vm-k8s-incluster-status vm-k8s-incluster-logs vm-k8s-incluster-pods vm-k8s-incluster-validate
+.PHONY: vm-net vm-up vm-sync vm-build vm-start vm-reset vm-stop vm-logs vm-deploy vm-deploy-reset vm-destroy vm-ssh vm-ip vm-test vm-git-test vm-glab vm-ci-lab-smoke vm-validate vm-validate-current vm-runner-validate vm-runner-variable-test vm-runner-secret-file-test vm-runner-secret-env-test vm-runner-redaction-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test vm-client-scripts-sync vm-client-install-glab vm-client-install-ca vm-client-sync vm-client-ssh vm-runner-sync vm-runner-ssh vm-runner-status vm-runner-cache-config vm-runner-ensure-ca vm-runner-install-ca vm-runner-register vm-k8s-runner-up vm-k8s-runner-sync vm-k8s-runner-ssh vm-k8s-runner-status vm-k8s-runner-logs vm-k8s-runner-pods vm-k8s-runner-install-ca vm-k8s-runner-register vm-k8s-runner-validate vm-k8s-incluster-sync vm-k8s-incluster-deploy vm-k8s-incluster-status vm-k8s-incluster-logs vm-k8s-incluster-pods vm-k8s-incluster-validate
 
 VM_IP := 192.168.124.10
 RUNNER_IP := 192.168.124.12
@@ -251,12 +251,24 @@ vm-validate: vm-deploy vm-validate-current
 ## Validate currently deployed server with client and runner VMs
 vm-validate-current: vm-test vm-runner-validate
 
-## Validate official runner registration, rules, extends, variables, includes, cache, and needs:artifacts
-vm-runner-validate: vm-runner-install-ca vm-runner-register vm-runner-variable-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test
+## Validate official runner registration, rules, extends, variables, secrets, includes, cache, and needs:artifacts
+vm-runner-validate: vm-runner-install-ca vm-runner-register vm-runner-variable-test vm-runner-secret-file-test vm-runner-secret-env-test vm-runner-redaction-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test
 
 ## Validate official runner CI variable precedence
 vm-runner-variable-test: vm-client-scripts-sync
 	vagrant ssh client -c "bash /srv/scripts/runner-variable-validation.sh"
+
+## Validate official runner file-mode CI secrets
+vm-runner-secret-file-test: vm-client-scripts-sync
+	vagrant ssh client -c "SECRET_VALIDATION_MODE=file bash /srv/scripts/runner-secret-validation.sh"
+
+## Validate official runner env-mode CI secrets
+vm-runner-secret-env-test: vm-client-scripts-sync
+	vagrant ssh client -c "SECRET_VALIDATION_MODE=env bash /srv/scripts/runner-secret-validation.sh"
+
+## Validate official runner secret trace redaction
+vm-runner-redaction-test: vm-client-scripts-sync
+	vagrant ssh client -c "SECRET_VALIDATION_MODE=redaction bash /srv/scripts/runner-secret-validation.sh"
 
 ## Validate official runner CI rules job selection
 vm-runner-rules-test: vm-client-scripts-sync

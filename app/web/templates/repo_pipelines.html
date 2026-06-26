@@ -71,6 +71,16 @@
         <span class="branch-name">{{ selected_pipeline.ref }}</span>
         <span class="color-fg-muted ml-2">{{ selected_pipeline.sha[:8] }}</span>
     </div>
+    {% if selected_pipeline.security_warnings %}
+    <div class="Box-row">
+        <div class="text-bold color-fg-attention mb-1">Security warnings</div>
+        <ul class="ml-3 mb-0">
+            {% for warning in selected_pipeline.security_warnings %}
+            <li>{{ warning.message }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
     {% if jobs %}
     {% for job in jobs %}
     <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">

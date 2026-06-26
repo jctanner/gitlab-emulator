@@ -597,6 +597,11 @@ Deliver:
 
 ### Slice 6: `secrets:` YAML Resolution
 
+Status: implemented for the MVP. Job-level `secrets:` entries using
+`gitlab_secrets_manager` are parsed, resolved from eligible project/group
+secrets, injected into the runner variable payload as masked values, and logged
+to `ci_secret_access_events` when jobs are created.
+
 Deliver:
 
 - Parser support for `gitlab_secrets_manager`.
@@ -607,7 +612,19 @@ Deliver:
 - Secret access event creation.
 - Pipeline/job UI avoids value leaks while showing non-sensitive secret names.
 
+Deferred from this slice:
+
+- Pipeline/job UI display for requested secret names without values.
+
 ### Slice 7: Secret Redaction and Runner Validation
+
+Status: implemented for the MVP. Trace redaction now uses a shared service fed
+by masked job variables, including resolved secrets. Local API tests cover
+masked variables and `secrets:` values. Official Docker runner validation is
+available through `make vm-runner-secret-file-test`,
+`make vm-runner-secret-env-test`, and `make vm-runner-redaction-test`; the
+redaction target validates both file-mode and env-mode secret delivery plus
+stored trace masking.
 
 Deliver:
 
@@ -615,7 +632,18 @@ Deliver:
 - Official runner Docker validation.
 - Kubernetes runner validation.
 
+Deferred from this slice:
+
+- Kubernetes executor and in-cluster runner secret validation.
+
 ### Slice 8: Pipeline Security Settings and Diagnostics
+
+Status: implemented for the MVP. Projects expose emulator CI security settings
+for pipeline variable override policy and strict security mode. Pipeline
+creation stores warning diagnostics for mutable image refs, variable image refs,
+remote include risks, and predefined `CI_*`/`GITLAB_*` pipeline variable
+overrides. Warnings are returned in pipeline JSON, pipeline diagnostics, the CI
+Lab, and repository pipeline detail views.
 
 Deliver:
 
@@ -624,13 +652,27 @@ Deliver:
   unpinned includes, and pipeline-variable overrides.
 - CI Lab and repo pipeline detail warning display.
 
+Deferred from this slice:
+
+- Strict-mode blocking and role-gated pipeline variable rejection.
+
 ### Slice 9: Strict Mode and Permission Gates
+
+Status: implemented for the MVP. Strict security mode blocks pipeline creation
+for mutable image refs, variable image refs, unsafe remote includes, and
+unpinned remote includes. Pipeline variable override policy is enforced for
+`no_one_allowed`, and owner/maintainer settings require an authenticated
+project owner or site admin in the emulator's current role model.
 
 Deliver:
 
 - Pipeline variable minimum role enforcement using current owner/admin model.
 - Strict-mode blocks for unsafe includes/images.
 - Tests for blocked pipeline creation and diagnostics.
+
+Deferred from this slice:
+
+- Full GitLab role/member-level permission evaluation beyond owner/admin.
 
 ## Open Questions
 

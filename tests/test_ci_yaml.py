@@ -158,6 +158,28 @@ job:
     assert job.variable_metadata["MASKED_SECRET"]["public"] is False
 
 
+def test_parse_gitlab_ci_preserves_job_secret_requests():
+    jobs = parse_gitlab_ci(
+        """
+secret_probe:
+  secrets:
+    DB_PASSWORD:
+      gitlab_secrets_manager:
+        name: DATABASE_PASSWORD
+    API_TOKEN:
+      gitlab_secrets_manager: GROUP_TOKEN
+      file: false
+  script:
+    - echo secrets
+"""
+    )
+
+    assert jobs[0].secrets == {
+        "DB_PASSWORD": {"name": "DATABASE_PASSWORD", "file": True},
+        "API_TOKEN": {"name": "GROUP_TOKEN", "file": False},
+    }
+
+
 def test_parse_gitlab_ci_rejects_empty_pipeline():
     try:
         parse_gitlab_ci("stages: [test]\n")

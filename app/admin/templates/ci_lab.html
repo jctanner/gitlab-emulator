@@ -136,6 +136,16 @@
         <h3 class="f4">Jobs for pipeline #{{ selected_pipeline.id }}</h3>
         <span class="status-{{ selected_pipeline.status }}">{{ selected_pipeline.status }}</span>
     </div>
+    {% if selected_pipeline.security_warnings %}
+    <div class="flash flash-warn mb-3">
+        <strong>Security warnings</strong>
+        <ul class="mb-0">
+            {% for warning in selected_pipeline.security_warnings %}
+            <li>{{ warning.message }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
     {% if jobs %}
     <table class="admin-table">
         <thead>

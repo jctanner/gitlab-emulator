@@ -19,6 +19,7 @@ RESERVED_TOP_LEVEL_KEYS = {
     "include",
     "image",
     "only",
+    "secrets",
     "services",
     "stages",
     "variables",
@@ -52,6 +53,7 @@ class ParsedCiJob:
     artifacts: dict = field(default_factory=dict)
     when: str = "on_success"
     environment: str | None = None
+    secrets: dict[str, dict] = field(default_factory=dict)
 
 
 def _string_list(value: Any) -> list[str]:
@@ -118,6 +120,45 @@ def _environment_name(value: Any) -> str | None:
     if isinstance(value, dict) and value.get("name"):
         return str(value["name"])
     return None
+
+
+def _secret_entries(value: Any) -> dict[str, dict]:
+    if not isinstance(value, dict):
+        return {}
+    entries: dict[str, dict] = {}
+    for key, raw_value in value.items():
+        variable_key = str(key)
+        if isinstance(raw_value, str):
+            entries[variable_key] = {
+                "name": raw_value,
+                "file": True,
+            }
+            continue
+        if not isinstance(raw_value, dict):
+            continue
+
+        provider = raw_value.get("gitlab_secrets_manager")
+        provider_config: dict[str, Any]
+        if isinstance(provider, str):
+            provider_config = {"name": provider}
+        elif isinstance(provider, dict):
+            provider_config = provider
+        elif raw_value.get("name"):
+            provider_config = raw_value
+        else:
+            provider_config = {}
+
+        entries[variable_key] = {
+            "name": str(provider_config.get("name") or variable_key),
+            "file": bool(raw_value.get("file", provider_config.get("file", True))),
+        }
+        if provider_config.get("environment_scope"):
+            entries[variable_key]["environment_scope"] = str(
+                provider_config["environment_scope"]
+            )
+        if provider_config.get("branch_scope"):
+            entries[variable_key]["branch_scope"] = str(provider_config["branch_scope"])
+    return entries
 
 
 def _needs(value: Any) -> list[dict] | None:
@@ -572,6 +613,7 @@ def parse_gitlab_ci(
                 artifacts=artifact_config,
                 when=decision.when,
                 environment=_environment_name(config.get("environment")),
+                secrets=_secret_entries(config.get("secrets")),
             )
         )
 

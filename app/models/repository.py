@@ -41,6 +41,7 @@ class Repository(Base):
     allow_forking: Mapped[bool] = mapped_column(Boolean, default=True)
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     web_commit_signoff_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    ci_security_settings: Mapped[dict] = mapped_column(JSON, default=dict)
 
     forks_count: Mapped[int] = mapped_column(Integer, default=0)
     stargazers_count: Mapped[int] = mapped_column(Integer, default=0)

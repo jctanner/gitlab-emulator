@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from sqlalchemy import select
 
-from app.models.ci import CiVariable, PipelineJob
+from app.models.ci import CiSecretAccessEvent, CiVariable, PipelineJob
 from app.models.group import Group
 from tests.conftest import API, auth_headers
 
@@ -51,6 +51,120 @@ async def test_create_pipeline_with_one_job(client, test_token):
     assert jobs.status_code == 200
     assert jobs.json()[0]["name"] == "smoke"
     assert jobs.json()[0]["status"] == "pending"
+
+
+async def test_pipeline_security_warnings_are_stored_and_diagnosed(client, test_token):
+    project = await _create_project(client, test_token)
+    settings = await client.put(
+        f"{API}/projects/{project['id']}/ci/security_settings",
+        headers=auth_headers(test_token),
+        json={"ci_strict_security_mode": False},
+    )
+    assert settings.status_code == 200
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "variables": [{"key": "CI_COMMIT_SHA", "value": "override"}],
+            "job": {
+                "name": "security_probe",
+                "image": "alpine:latest",
+                "script": ["echo security"],
+            },
+        },
+    )
+    assert resp.status_code == 201
+    pipeline = resp.json()
+    warning_types = {warning["type"] for warning in pipeline["security_warnings"]}
+    assert warning_types == {
+        "mutable_image_ref",
+        "predefined_variable_override",
+    }
+    assert all(warning["strict_mode"] is False for warning in pipeline["security_warnings"])
+
+    diagnostics = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/diagnostics"
+    )
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["security_warnings"] == pipeline["security_warnings"]
+
+
+async def test_strict_security_mode_blocks_unsafe_pipeline(client, test_token):
+    project = await _create_project(client, test_token)
+    settings = await client.put(
+        f"{API}/projects/{project['id']}/ci/security_settings",
+        headers=auth_headers(test_token),
+        json={"ci_strict_security_mode": True},
+    )
+    assert settings.status_code == 200
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {
+                "name": "strict_probe",
+                "image": "alpine:latest",
+                "script": ["echo blocked"],
+            },
+        },
+    )
+    assert resp.status_code == 400
+    assert "strict security mode" in resp.text
+    assert "mutable image" in resp.text
+
+
+async def test_pipeline_variable_security_gate_blocks_and_allows_owner(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    no_one = await client.put(
+        f"{API}/projects/{project['id']}/ci/security_settings",
+        headers=auth_headers(test_token),
+        json={"ci_pipeline_variables_minimum_override_role": "no_one_allowed"},
+    )
+    assert no_one.status_code == 200
+
+    blocked = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(test_token),
+        json={
+            "ref": "main",
+            "variables": [{"key": "CUSTOM", "value": "blocked"}],
+            "job": {"name": "vars", "script": ["echo vars"]},
+        },
+    )
+    assert blocked.status_code == 400
+    assert "Pipeline variables are not allowed" in blocked.text
+
+    owner_only = await client.put(
+        f"{API}/projects/{project['id']}/ci/security_settings",
+        headers=auth_headers(test_token),
+        json={"ci_pipeline_variables_minimum_override_role": "owner"},
+    )
+    assert owner_only.status_code == 200
+
+    anonymous = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "variables": [{"key": "CUSTOM", "value": "anonymous"}],
+            "job": {"name": "vars", "script": ["echo vars"]},
+        },
+    )
+    assert anonymous.status_code == 400
+
+    allowed = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(test_token),
+        json={
+            "ref": "main",
+            "variables": [{"key": "CUSTOM", "value": "owner"}],
+            "job": {"name": "vars", "script": ["echo vars"]},
+        },
+    )
+    assert allowed.status_code == 201
 
 
 async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
@@ -947,6 +1061,165 @@ review_job:
     }
 
 
+async def test_job_secrets_resolve_to_runner_payload_and_access_events(
+    client, test_token, db_session
+):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "secret-ci", "name": "Secret CI"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "secret-project",
+            "namespace_path": "secret-ci",
+            "initialize_with_readme": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    ci_yaml = """
+secret_probe:
+  environment: production
+  secrets:
+    DB_PASSWORD:
+      gitlab_secrets_manager:
+        name: DATABASE_PASSWORD
+    API_TOKEN:
+      gitlab_secrets_manager:
+        name: GROUP_TOKEN
+      file: false
+  script:
+    - echo secrets
+"""
+    write = await client.post(
+        f"{API}/projects/{project_id}/repository/files/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "commit_message": "add secrets ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "encoding": "base64",
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    group_secret = await client.post(
+        f"{API}/groups/{group.json()['id']}/secrets",
+        headers=auth_headers(test_token),
+        json={"name": "GROUP_TOKEN", "value": "group-secret"},
+    )
+    assert group_secret.status_code == 201
+    project_secret = await client.post(
+        f"{API}/projects/{project_id}/secrets",
+        headers=auth_headers(test_token),
+        json={"name": "DATABASE_PASSWORD", "value": "project-secret"},
+    )
+    assert project_secret.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project_id}/pipeline",
+        json={"ref": "main"},
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    variables = {item["key"]: item for item in request.json()["variables"]}
+    assert variables["DB_PASSWORD"] == {
+        "key": "DB_PASSWORD",
+        "value": "project-secret",
+        "public": False,
+        "file": True,
+        "masked": True,
+        "raw": True,
+    }
+    assert variables["API_TOKEN"] == {
+        "key": "API_TOKEN",
+        "value": "group-secret",
+        "public": False,
+        "file": False,
+        "masked": True,
+        "raw": True,
+    }
+
+    access_events = (
+        await db_session.execute(
+            select(CiSecretAccessEvent).where(
+                CiSecretAccessEvent.pipeline_id == pipeline["id"]
+            )
+        )
+    ).scalars().all()
+    assert len(access_events) == 2
+    assert {event.environment for event in access_events} == {"production"}
+    assert {event.job_id for event in access_events} == {request.json()["id"]}
+
+
+async def test_job_secret_must_exist_and_be_eligible(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+secret_probe:
+  secrets:
+    DB_PASSWORD:
+      gitlab_secrets_manager:
+        name: DATABASE_PASSWORD
+  script:
+    - echo missing
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add missing secret ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    missing = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert missing.status_code == 400
+    assert "DATABASE_PASSWORD" in missing.text
+
+    secret = await client.post(
+        f"{API}/projects/{project['id']}/secrets",
+        headers=auth_headers(test_token),
+        json={"name": "DATABASE_PASSWORD", "value": "protected-secret", "protected": True},
+    )
+    assert secret.status_code == 201
+
+    unprotected = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert unprotected.status_code == 400
+
+    protect = await client.post(
+        f"{API}/projects/{project['id']}/protected_branches",
+        headers=auth_headers(test_token),
+        json={"name": "main"},
+    )
+    assert protect.status_code == 201
+
+    protected = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert protected.status_code == 201
+
+
 async def test_instance_group_and_project_variable_precedence(
     client,
     test_token,
@@ -1264,6 +1537,64 @@ redaction_probe:
     assert raw_trace.status_code == 200
     assert raw_trace.text == "before [MASKED] after"
     assert "super-secret-token" not in raw_trace.text
+
+
+async def test_job_secrets_are_redacted_from_trace(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+secret_redaction:
+  secrets:
+    DB_PASSWORD:
+      gitlab_secrets_manager:
+        name: DATABASE_PASSWORD
+  script:
+    - echo secret redaction
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add secret redaction ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    secret = await client.post(
+        f"{API}/projects/{project['id']}/secrets",
+        headers=auth_headers(test_token),
+        json={"name": "DATABASE_PASSWORD", "value": "database-secret-value"},
+    )
+    assert secret.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+
+    trace = await client.patch(
+        f"{API}/jobs/{payload['id']}/trace?debug_trace=false",
+        headers={"JOB-TOKEN": payload["token"], "Content-Range": "0-34"},
+        content=b"before database-secret-value after",
+    )
+    assert trace.status_code == 202
+
+    raw_trace = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{payload['id']}/trace"
+    )
+    assert raw_trace.status_code == 200
+    assert raw_trace.text == "before [MASKED] after"
+    assert "database-secret-value" not in raw_trace.text
 
 
 async def test_pipeline_trigger_creates_trigger_source_pipeline(client, test_token):

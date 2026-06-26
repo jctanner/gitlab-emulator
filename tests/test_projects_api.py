@@ -470,6 +470,48 @@ async def test_project_secret_rejects_invalid_name(client, test_user, test_token
 
 
 @pytest.mark.asyncio
+async def test_project_ci_security_settings_round_trip(client, test_user, test_token):
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "ci-security-settings-project"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    defaults = await client.get(
+        f"{API}/projects/{project_id}/ci/security_settings",
+        headers=auth_headers(test_token),
+    )
+    assert defaults.status_code == 200
+    assert defaults.json() == {
+        "ci_pipeline_variables_minimum_override_role": "developer",
+        "ci_strict_security_mode": False,
+    }
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}/ci/security_settings",
+        headers=auth_headers(test_token),
+        json={
+            "ci_pipeline_variables_minimum_override_role": "no_one_allowed",
+            "ci_strict_security_mode": True,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json() == {
+        "ci_pipeline_variables_minimum_override_role": "no_one_allowed",
+        "ci_strict_security_mode": True,
+    }
+
+    project = await client.get(
+        f"{API}/projects/{project_id}",
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 200
+    assert project.json()["ci_security_settings"]["ci_strict_security_mode"] is True
+
+
+@pytest.mark.asyncio
 async def test_create_project_in_group_namespace_by_id(client, test_user, test_token):
     org_resp = await client.post(
         f"{API}/orgs",

@@ -20,6 +20,7 @@ class Pipeline(Base):
     sha: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending")
     source: Mapped[str] = mapped_column(String, default="api")
+    security_warnings: Mapped[list] = mapped_column(JSON, default=list)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

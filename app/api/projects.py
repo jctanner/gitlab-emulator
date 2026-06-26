@@ -30,6 +30,7 @@ from app.models.organization import OrgMembership
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import _fmt_dt
+from app.services.ci_security import normalize_ci_security_settings
 
 router = APIRouter(tags=["projects"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -78,6 +79,11 @@ class ProjectSecretUpdate(BaseModel):
     protected: bool | None = None
     rotation_reminder_days: int | None = None
     status: str | None = None
+
+
+class ProjectCiSecuritySettingsUpdate(BaseModel):
+    ci_pipeline_variables_minimum_override_role: str | None = None
+    ci_strict_security_mode: bool | None = None
 
 
 def _decode_gitlab_ref(value: str) -> str:
@@ -361,6 +367,9 @@ async def _project_json(project: Project, base_url: str, db: DbSession) -> dict:
         "ci_default_git_depth": 20,
         "ci_forward_deployment_enabled": True,
         "ci_separated_caches": True,
+        "ci_security_settings": normalize_ci_security_settings(
+            project.ci_security_settings
+        ),
         "autoclose_referenced_issues": True,
         "suggestion_commit_message": None,
         "import_status": "none",
@@ -1123,6 +1132,42 @@ async def list_project_variables(
     query = query.order_by(CiVariable.key, CiVariable.environment_scope)
     variables = (await db.execute(query)).scalars().all()
     return [_variable_json(variable) for variable in variables]
+
+
+@router.get("/projects/{project_ref:path}/ci/security_settings")
+async def get_project_ci_security_settings(
+    project_ref: str,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Get emulator CI security settings for a project."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    return normalize_ci_security_settings(project.ci_security_settings)
+
+
+@router.put("/projects/{project_ref:path}/ci/security_settings")
+async def update_project_ci_security_settings(
+    project_ref: str,
+    body: ProjectCiSecuritySettingsUpdate,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Update emulator CI security settings for a project."""
+    project = await _get_project_or_404(project_ref, db, user)
+    _require_project_owner(project, user)
+    settings = normalize_ci_security_settings(project.ci_security_settings)
+    if body.ci_pipeline_variables_minimum_override_role is not None:
+        role = body.ci_pipeline_variables_minimum_override_role
+        if role not in {"developer", "maintainer", "owner", "no_one_allowed"}:
+            raise HTTPException(status_code=400, detail="Invalid CI variable role")
+        settings["ci_pipeline_variables_minimum_override_role"] = role
+    if body.ci_strict_security_mode is not None:
+        settings["ci_strict_security_mode"] = body.ci_strict_security_mode
+    project.ci_security_settings = settings
+    await db.commit()
+    await db.refresh(project)
+    return normalize_ci_security_settings(project.ci_security_settings)
 
 
 @router.post("/projects/{project_ref:path}/variables", status_code=201)

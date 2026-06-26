@@ -869,6 +869,7 @@ async def repo_create_pipeline(
             CreatePipelineRequest(ref=ref.strip() or repo.default_branch or "main"),
             db,
             source="web",
+            actor=current_user,
         )
     except Exception as exc:
         await db.rollback()
