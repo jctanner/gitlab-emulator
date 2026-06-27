@@ -237,6 +237,149 @@ async def test_ui_repo_settings_update_ci_security_controls(client, test_user):
 
 
 @pytest.mark.asyncio
+async def test_ui_project_ci_variables_management(client, test_user):
+    """The project UI can create, update, and delete CI/CD variables."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-ci-vars", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    variables_page = await client.get("/ui/testuser/ui-ci-vars/-/variables")
+    assert variables_page.status_code == 200
+    assert "CI/CD variables" in variables_page.text
+    assert "Add variable" in variables_page.text
+    assert 'href="/ui/testuser/ui-ci-vars/-/variables">CI/CD variables</a>' in variables_page.text
+
+    create_variable = await client.post(
+        "/ui/testuser/ui-ci-vars/-/variables",
+        data={
+            "key": "DEPLOY_TOKEN",
+            "value": "super-secret-variable",
+            "variable_type": "env_var",
+            "environment_scope": "production",
+            "description": "Deploy credential",
+            "masked": "1",
+            "hidden": "1",
+            "protected": "1",
+        },
+        follow_redirects=False,
+    )
+    assert create_variable.status_code in (302, 303)
+
+    variables_page = await client.get("/ui/testuser/ui-ci-vars/-/variables")
+    assert variables_page.status_code == 200
+    assert "DEPLOY_TOKEN" in variables_page.text
+    assert "production" in variables_page.text
+    assert "Deploy credential" in variables_page.text
+    assert "super-secret-variable" not in variables_page.text
+    assert "Value: hidden" in variables_page.text
+
+    update_variable = await client.post(
+        "/ui/testuser/ui-ci-vars/-/variables/1/update",
+        data={
+            "value": "rotated-variable",
+            "variable_type": "file",
+            "environment_scope": "staging",
+            "description": "Rotated credential",
+            "masked": "1",
+            "raw": "1",
+        },
+        follow_redirects=False,
+    )
+    assert update_variable.status_code in (302, 303)
+
+    variables_page = await client.get("/ui/testuser/ui-ci-vars/-/variables")
+    assert variables_page.status_code == 200
+    assert "staging" in variables_page.text
+    assert "Rotated credential" in variables_page.text
+    assert "rotated-variable" not in variables_page.text
+
+    delete_variable = await client.post(
+        "/ui/testuser/ui-ci-vars/-/variables/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_variable.status_code in (302, 303)
+    variables_page = await client.get("/ui/testuser/ui-ci-vars/-/variables")
+    assert "No CI/CD variables yet." in variables_page.text
+
+
+@pytest.mark.asyncio
+async def test_ui_project_secrets_management(client, test_user):
+    """The project UI can create, update, and delete CI/CD secrets."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-ci-secrets", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    secrets_page = await client.get("/ui/testuser/ui-ci-secrets/-/secrets")
+    assert secrets_page.status_code == 200
+    assert "Secrets" in secrets_page.text
+    assert "Add secret" in secrets_page.text
+    assert 'href="/ui/testuser/ui-ci-secrets/-/secrets">Secrets</a>' in secrets_page.text
+
+    create_secret = await client.post(
+        "/ui/testuser/ui-ci-secrets/-/secrets",
+        data={
+            "name": "DATABASE_PASSWORD",
+            "value": "database-password-value",
+            "environment_scope": "production",
+            "branch_scope": "main",
+            "description": "Database password",
+            "rotation_reminder_days": "30",
+            "protected": "1",
+            "status": "healthy",
+        },
+        follow_redirects=False,
+    )
+    assert create_secret.status_code in (302, 303)
+
+    secrets_page = await client.get("/ui/testuser/ui-ci-secrets/-/secrets")
+    assert secrets_page.status_code == 200
+    assert "DATABASE_PASSWORD" in secrets_page.text
+    assert "production" in secrets_page.text
+    assert "main" in secrets_page.text
+    assert "Database password" in secrets_page.text
+    assert "database-password-value" not in secrets_page.text
+
+    update_secret = await client.post(
+        "/ui/testuser/ui-ci-secrets/-/secrets/1/update",
+        data={
+            "value": "rotated-database-password",
+            "environment_scope": "staging",
+            "branch_scope": "release/*",
+            "description": "Rotated database password",
+            "rotation_reminder_days": "60",
+            "status": "healthy",
+        },
+        follow_redirects=False,
+    )
+    assert update_secret.status_code in (302, 303)
+
+    secrets_page = await client.get("/ui/testuser/ui-ci-secrets/-/secrets")
+    assert secrets_page.status_code == 200
+    assert "staging" in secrets_page.text
+    assert "release/*" in secrets_page.text
+    assert "Rotated database password" in secrets_page.text
+    assert "rotated-database-password" not in secrets_page.text
+
+    delete_secret = await client.post(
+        "/ui/testuser/ui-ci-secrets/-/secrets/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_secret.status_code in (302, 303)
+    secrets_page = await client.get("/ui/testuser/ui-ci-secrets/-/secrets")
+    assert "No secrets yet." in secrets_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_repo_pipeline_and_job_interface(client, test_user):
     """The web UI can create repository pipelines and inspect job runs."""
     _ui_session(client, test_user.login)

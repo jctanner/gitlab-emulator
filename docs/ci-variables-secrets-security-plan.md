@@ -406,7 +406,10 @@ Add an Admin > CI/CD settings page:
 
 ### Project Settings UI
 
-Extend project Settings or add Settings > CI/CD:
+Status: implemented for project-scoped CI/CD variables and secrets. The project
+sidebar exposes `Secure > CI/CD variables` and `Secure > Secrets`; repository
+settings continue to expose pipeline variable policy and strict CI security
+mode.
 
 - Variables table with add/edit/delete.
 - Visibility, protected, file type, raw/expand, environment scope fields.
@@ -416,47 +419,23 @@ Extend project Settings or add Settings > CI/CD:
 
 ### Secrets Manager UI
 
-Add a project-level `Secure > Secrets Manager` page, matching the reference
-screenshots closely enough for operator workflows:
+Status: implemented for MVP project workflows as `Secure > Secrets`.
 
 - Route: `/ui/:owner/:repo/-/secrets`
 - Left nav group: `Secure`
-- Nav item: `Secrets Manager`
-- Heading: `GitLab Secrets Manager`
+- Nav item: `Secrets`
+- Heading: `Secrets`
 - Description: secrets can be API tokens, database credentials, or private
   keys; unlike CI/CD variables, they must be explicitly requested by a job.
 - Stored secrets table:
   - `Name`
-  - `Created`
   - `Status`
-  - row actions menu placeholder
-- Name is a link to future detail/edit page.
-- Badges under each name:
-  - `env <environment_scope>`
-  - branch/ref scope, for example `main` or wildcard branch pattern
-- Status badge initially supports `Healthy`; additional statuses can exist in
-  the data model before UI workflows need them.
-- `New secret` button.
-
-Add a project-level new secret page:
-
-- Route: `/ui/:owner/:repo/-/secrets/new`
-- Fields:
-  - `Name`, unique in project; letters, digits, and `_`
-  - `Value`, multi-line textarea
-  - `Description`, max 200 characters
-  - `Environments`, select or wildcard input
-  - `Branches`, select or wildcard input
-  - `Rotation reminder period`, optional; minimum 7 days
-- Buttons:
-  - `Add secret`
-  - `Cancel`
-
-Later edit/detail page:
-
-- Show metadata, status, scopes, last access, and rotation reminder.
-- Do not show value after creation.
-- Allow value replacement, scope updates, and deletion.
+  - environment scope
+  - branch/ref scope
+  - protected flag
+  - last access metadata
+- Inline create/update/delete forms support value replacement without showing
+  stored secret values after creation.
 
 ### CI Lab
 

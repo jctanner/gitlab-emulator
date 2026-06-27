@@ -102,6 +102,23 @@
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Container registry</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Model registry</span>
         </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ history(16) }}</span>
+                <span>Secure</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_variables' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables">CI/CD variables</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_secrets' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/secrets">Secrets</a>
+            {% else %}
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">CI/CD variables</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Secrets</span>
+            {% endif %}
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Security policies</span>
+        </div>
         <span class="gl-sidebar-link disabled">Operate <span class="gl-sidebar-caret">›</span></span>
         <span class="gl-sidebar-link disabled">Monitor <span class="gl-sidebar-caret">›</span></span>
         <span class="gl-sidebar-link disabled">Analyze <span class="gl-sidebar-caret">›</span></span>

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}CI/CD variables - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "ci_variables" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">CI/CD variables</div>
+    <div class="Subhead-description">Store project variables for pipeline jobs. Hidden values are never shown after save.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Add variable</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables">
+            <div class="d-flex flex-wrap" style="gap:12px;">
+                <label>Key<br><input class="form-control" name="key" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label>
+                <label>Value<br><input class="form-control" name="value" required autocomplete="off"></label>
+                <label>Type<br>
+                    <select class="form-select" name="variable_type">
+                        <option value="env_var">env_var</option>
+                        <option value="file">file</option>
+                    </select>
+                </label>
+                <label>Environment scope<br><input class="form-control" name="environment_scope" value="*"></label>
+                <label>Description<br><input class="form-control" name="description"></label>
+            </div>
+            <div class="d-flex flex-wrap mt-3" style="gap:16px;">
+                <label><input type="checkbox" name="masked" value="1"> Masked</label>
+                <label><input type="checkbox" name="hidden" value="1"> Hidden</label>
+                <label><input type="checkbox" name="protected" value="1"> Protected</label>
+                <label><input type="checkbox" name="raw" value="1"> Raw</label>
+            </div>
+            <button class="btn btn-primary mt-3" type="submit">Add variable</button>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project variables</h3></div>
+    {% if variables %}
+    {% for variable in variables %}
+    {% set flags = variable_flags(variable) %}
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables/{{ variable.id }}/update">
+            <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
+                <div class="text-bold" style="min-width:180px;"><code>{{ variable.key }}</code></div>
+                <label>New value<br><input class="form-control" name="value" placeholder="leave unchanged" autocomplete="off"></label>
+                <label>Type<br>
+                    <select class="form-select" name="variable_type">
+                        <option value="env_var" {% if variable.variable_type == "env_var" %}selected{% endif %}>env_var</option>
+                        <option value="file" {% if variable.variable_type == "file" %}selected{% endif %}>file</option>
+                    </select>
+                </label>
+                <label>Environment scope<br><input class="form-control" name="environment_scope" value="{{ variable.environment_scope }}"></label>
+                <label>Description<br><input class="form-control" name="description" value="{{ variable.description or '' }}"></label>
+            </div>
+            <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                <label><input type="checkbox" name="masked" value="1" {% if flags.masked %}checked{% endif %}> Masked</label>
+                <label><input type="checkbox" name="hidden" value="1" {% if flags.hidden %}checked{% endif %}> Hidden</label>
+                <label><input type="checkbox" name="protected" value="1" {% if variable.protected %}checked{% endif %}> Protected</label>
+                <label><input type="checkbox" name="raw" value="1" {% if variable.raw %}checked{% endif %}> Raw</label>
+                <span class="color-fg-muted">Value: {% if flags.hidden %}hidden{% else %}stored{% endif %}</span>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+        </form>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables/{{ variable.id }}/delete" class="mt-2"
+              onsubmit="return confirm('Delete variable {{ variable.key }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No CI/CD variables yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

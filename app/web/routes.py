@@ -1,6 +1,7 @@
 """Public web frontend routes for browsing repos, issues, PRs, and code."""
 
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWSError, jws
 from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,7 +30,6 @@ from app.git.bare_repo import (
     get_commit_count,
     get_commit_diff,
     get_commit_info,
-    get_default_branch,
     get_file_content,
     get_log,
     get_tags,
@@ -36,7 +37,7 @@ from app.git.bare_repo import (
     write_file,
 )
 from app.models.comment import IssueComment
-from app.models.ci import Pipeline, PipelineJob
+from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
 from app.models.issue import Issue
 from app.models.organization import Organization
 from app.models.pull_request import PullRequest
@@ -55,6 +56,8 @@ templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 router = APIRouter(prefix="/ui", tags=["web"])
 
 _URL_PREFIX = "/ui"
+_CI_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CI_VARIABLE_TYPES = {"env_var", "file"}
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +111,49 @@ def _ctx(request: Request, **extra) -> dict:
 def _can_manage_repo(user: Optional[User], repo: Repository) -> bool:
     """Return whether a UI user can mutate repository settings or source."""
     return bool(user and (user.site_admin or user.id == repo.owner_id))
+
+
+def _ci_visibility(masked: bool, hidden: bool) -> str:
+    if hidden:
+        return "masked_and_hidden"
+    if masked:
+        return "masked"
+    return "visible"
+
+
+def _ci_variable_flags(variable: CiVariable) -> dict:
+    return {
+        "masked": variable.visibility in {"masked", "masked_and_hidden"},
+        "hidden": variable.visibility == "masked_and_hidden",
+    }
+
+
+def _validate_ci_key(value: str, label: str = "Key") -> str:
+    normalized = (value or "").strip()
+    if not _CI_KEY_RE.match(normalized):
+        raise ValueError(f"{label} must start with a letter or underscore and contain only letters, numbers, and underscores.")
+    return normalized
+
+
+def _bool_form(value: str | None) -> bool:
+    return value == "1"
+
+
+async def _managed_repo_or_response(
+    request: Request,
+    db: AsyncSession,
+    owner: str,
+    repo_name: str,
+) -> tuple[User | None, Repository | None, HTMLResponse | RedirectResponse | None]:
+    current_user = await _get_current_user(request, db)
+    if not current_user:
+        return None, None, RedirectResponse(url="/ui/login", status_code=302)
+    repo = await _get_repo(db, owner, repo_name)
+    if repo is None:
+        return current_user, None, HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    if not _can_manage_repo(current_user, repo):
+        return current_user, repo, HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
+    return current_user, repo, None
 
 
 def _repo_ci_redirect(
@@ -678,6 +724,373 @@ async def repo_delete_submit(
 
     await repo_service.delete_repo(db, repo)
     return RedirectResponse(url="/ui/", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Repository CI/CD variables and secrets
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/variables", response_class=HTMLResponse)
+async def repo_variables_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project CI/CD variables."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+
+    result = await db.execute(
+        select(CiVariable)
+        .where(CiVariable.scope_type == "project", CiVariable.scope_id == repo.id)
+        .order_by(CiVariable.key, CiVariable.environment_scope)
+    )
+    variables = result.scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_ci_variables.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            variables=variables,
+            variable_flags=_ci_variable_flags,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/variables", response_class=HTMLResponse)
+async def repo_variable_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    key: str = Form(...),
+    value: str = Form(...),
+    variable_type: str = Form("env_var"),
+    environment_scope: str = Form("*"),
+    description: str = Form(""),
+    masked: str = Form(""),
+    hidden: str = Form(""),
+    protected: str = Form(""),
+    raw: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project CI/CD variable from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/variables"
+    try:
+        normalized_key = _validate_ci_key(key)
+        if variable_type not in _CI_VARIABLE_TYPES:
+            raise ValueError("Variable type must be env_var or file.")
+        variable = CiVariable(
+            scope_type="project",
+            scope_id=repo.id,
+            key=normalized_key,
+            value=value,
+            variable_type=variable_type,
+            visibility=_ci_visibility(_bool_form(masked), _bool_form(hidden)),
+            protected=_bool_form(protected),
+            raw=_bool_form(raw),
+            environment_scope=environment_scope.strip() or "*",
+            description=description.strip() or None,
+        )
+        db.add(variable)
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Variable already exists for that environment scope." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': message})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Variable created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/variables/{variable_id}/update", response_class=HTMLResponse)
+async def repo_variable_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    variable_id: int,
+    value: str = Form(""),
+    variable_type: str = Form("env_var"),
+    environment_scope: str = Form("*"),
+    description: str = Form(""),
+    masked: str = Form(""),
+    hidden: str = Form(""),
+    protected: str = Form(""),
+    raw: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project CI/CD variable. Empty value keeps the existing value."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/variables"
+    variable = (
+        await db.execute(
+            select(CiVariable).where(
+                CiVariable.id == variable_id,
+                CiVariable.scope_type == "project",
+                CiVariable.scope_id == repo.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if variable is None:
+        return RedirectResponse(url=f"{redirect}?error=Variable%20not%20found.", status_code=302)
+    try:
+        if variable_type not in _CI_VARIABLE_TYPES:
+            raise ValueError("Variable type must be env_var or file.")
+        if value:
+            variable.value = value
+        variable.variable_type = variable_type
+        variable.environment_scope = environment_scope.strip() or "*"
+        variable.description = description.strip() or None
+        variable.visibility = _ci_visibility(_bool_form(masked), _bool_form(hidden))
+        variable.protected = _bool_form(protected)
+        variable.raw = _bool_form(raw)
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Variable already exists for that environment scope." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': message})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Variable updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/variables/{variable_id}/delete", response_class=HTMLResponse)
+async def repo_variable_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    variable_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project CI/CD variable."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    variable = (
+        await db.execute(
+            select(CiVariable).where(
+                CiVariable.id == variable_id,
+                CiVariable.scope_type == "project",
+                CiVariable.scope_id == repo.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if variable is not None:
+        await db.delete(variable)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/variables?message={urlencode({'x': 'Variable deleted.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.get("/{owner}/{repo_name}/-/secrets", response_class=HTMLResponse)
+async def repo_secrets_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project CI/CD secrets."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    result = await db.execute(
+        select(CiSecret)
+        .where(CiSecret.scope_type == "project", CiSecret.scope_id == repo.id)
+        .order_by(CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope)
+    )
+    secrets = result.scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_ci_secrets.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            secrets=secrets,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/secrets", response_class=HTMLResponse)
+async def repo_secret_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    name: str = Form(...),
+    value: str = Form(...),
+    environment_scope: str = Form("*"),
+    branch_scope: str = Form("*"),
+    description: str = Form(""),
+    rotation_reminder_days: str = Form(""),
+    protected: str = Form(""),
+    status: str = Form("healthy"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project CI/CD secret from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/secrets"
+    try:
+        normalized_name = _validate_ci_key(name, "Name")
+        reminder = int(rotation_reminder_days) if rotation_reminder_days.strip() else None
+        secret = CiSecret(
+            scope_type="project",
+            scope_id=repo.id,
+            name=normalized_name,
+            value=value,
+            description=description.strip() or None,
+            environment_scope=environment_scope.strip() or "*",
+            branch_scope=branch_scope.strip() or "*",
+            protected=_bool_form(protected),
+            rotation_reminder_days=reminder,
+            status=status.strip() or "healthy",
+        )
+        db.add(secret)
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Secret already exists for those scopes." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': message})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Secret created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/secrets/{secret_id}/update", response_class=HTMLResponse)
+async def repo_secret_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    secret_id: int,
+    value: str = Form(""),
+    environment_scope: str = Form("*"),
+    branch_scope: str = Form("*"),
+    description: str = Form(""),
+    rotation_reminder_days: str = Form(""),
+    protected: str = Form(""),
+    status: str = Form("healthy"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project CI/CD secret. Empty value keeps the existing value."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/secrets"
+    secret = (
+        await db.execute(
+            select(CiSecret).where(
+                CiSecret.id == secret_id,
+                CiSecret.scope_type == "project",
+                CiSecret.scope_id == repo.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if secret is None:
+        return RedirectResponse(url=f"{redirect}?error=Secret%20not%20found.", status_code=302)
+    try:
+        if value:
+            secret.value = value
+        secret.description = description.strip() or None
+        secret.environment_scope = environment_scope.strip() or "*"
+        secret.branch_scope = branch_scope.strip() or "*"
+        secret.protected = _bool_form(protected)
+        secret.rotation_reminder_days = (
+            int(rotation_reminder_days) if rotation_reminder_days.strip() else None
+        )
+        secret.status = status.strip() or "healthy"
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Secret already exists for those scopes." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': message})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Secret updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/secrets/{secret_id}/delete", response_class=HTMLResponse)
+async def repo_secret_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    secret_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project CI/CD secret."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    secret = (
+        await db.execute(
+            select(CiSecret).where(
+                CiSecret.id == secret_id,
+                CiSecret.scope_type == "project",
+                CiSecret.scope_id == repo.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if secret is not None:
+        await db.delete(secret)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/secrets?message={urlencode({'x': 'Secret deleted.'})[2:]}",
+        status_code=302,
+    )
 
 
 # ---------------------------------------------------------------------------
