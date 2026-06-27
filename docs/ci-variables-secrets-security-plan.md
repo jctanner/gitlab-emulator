@@ -637,10 +637,8 @@ Deliver:
 - Analyzer warnings for mutable images, variable image refs, unsafe includes,
   unpinned includes, and pipeline-variable overrides.
 - CI Lab and repo pipeline detail warning display.
-
-Deferred from this slice:
-
-- Strict-mode blocking and role-gated pipeline variable rejection.
+- Strict-mode blocking and role-gated pipeline variable rejection are covered
+  by Slice 9.
 
 ### Slice 9: Strict Mode and Permission Gates
 
