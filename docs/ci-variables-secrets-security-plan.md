@@ -643,7 +643,8 @@ for pipeline variable override policy and strict security mode. Pipeline
 creation stores warning diagnostics for mutable image refs, variable image refs,
 remote include risks, and predefined `CI_*`/`GITLAB_*` pipeline variable
 overrides. Warnings are returned in pipeline JSON, pipeline diagnostics, the CI
-Lab, and repository pipeline detail views.
+Lab, and repository pipeline detail views. Repository settings now include UI
+controls for pipeline variable policy and strict CI security mode.
 
 Deliver:
 

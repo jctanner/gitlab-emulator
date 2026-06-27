@@ -43,6 +43,7 @@ from app.models.pull_request import PullRequest
 from app.models.repository import Repository
 from app.models.user import User
 from app.services.auth_service import verify_password
+from app.services.ci_security import normalize_ci_security_settings
 from app.services import issue_service, pr_service, repo_service
 from app.services.repo_service import REPO_NAME_PATTERN
 
@@ -519,6 +520,9 @@ async def repo_settings_page(
         context=_ctx(
             request, owner=owner, repo=repo, repo_name=repo.name,
             current_user=current_user, error=None,
+            ci_security_settings=normalize_ci_security_settings(
+                repo.ci_security_settings
+            ),
             message="Repository settings saved." if saved else None,
         ),
     )
@@ -533,6 +537,8 @@ async def repo_settings_submit(
     description: str = Form(""),
     default_branch: str = Form("main"),
     private: str = Form(""),
+    ci_pipeline_variables_minimum_override_role: str = Form("developer"),
+    ci_strict_security_mode: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     """Update repository metadata from the web UI."""
@@ -553,7 +559,30 @@ async def repo_settings_submit(
             context=_ctx(
                 request, owner=owner, repo=repo, repo_name=repo.name,
                 current_user=current_user,
+                ci_security_settings=normalize_ci_security_settings(
+                    repo.ci_security_settings
+                ),
                 error="Repository name may only contain letters, numbers, dots, dashes, and underscores.",
+                message=None,
+            ),
+        )
+
+    if ci_pipeline_variables_minimum_override_role not in {
+        "developer",
+        "maintainer",
+        "owner",
+        "no_one_allowed",
+    }:
+        return templates.TemplateResponse(
+            request=request,
+            name="repo_settings.html",
+            context=_ctx(
+                request, owner=owner, repo=repo, repo_name=repo.name,
+                current_user=current_user,
+                ci_security_settings=normalize_ci_security_settings(
+                    repo.ci_security_settings
+                ),
+                error="Invalid CI pipeline variable permission.",
                 message=None,
             ),
         )
@@ -567,12 +596,15 @@ async def repo_settings_submit(
             return templates.TemplateResponse(
                 request=request,
                 name="repo_settings.html",
-                context=_ctx(
-                    request, owner=owner, repo=repo, repo_name=repo.name,
-                    current_user=current_user,
-                    error=f"Repository '{new_full_name}' already exists.",
-                    message=None,
-                ),
+                    context=_ctx(
+                        request, owner=owner, repo=repo, repo_name=repo.name,
+                        current_user=current_user,
+                        ci_security_settings=normalize_ci_security_settings(
+                            repo.ci_security_settings
+                        ),
+                        error=f"Repository '{new_full_name}' already exists.",
+                        message=None,
+                    ),
             )
         old_disk_path = repo.disk_path
         new_disk_path = os.path.join(settings.DATA_DIR, owner, f"{new_name}.git")
@@ -585,6 +617,9 @@ async def repo_settings_submit(
                     context=_ctx(
                         request, owner=owner, repo=repo, repo_name=repo.name,
                         current_user=current_user,
+                        ci_security_settings=normalize_ci_security_settings(
+                            repo.ci_security_settings
+                        ),
                         error=f"Repository storage already exists for '{new_name}'.",
                         message=None,
                     ),
@@ -598,6 +633,12 @@ async def repo_settings_submit(
     repo.default_branch = default_branch.strip() or "main"
     repo.private = private == "1"
     repo.visibility = "private" if repo.private else "public"
+    repo.ci_security_settings = {
+        "ci_pipeline_variables_minimum_override_role": (
+            ci_pipeline_variables_minimum_override_role
+        ),
+        "ci_strict_security_mode": ci_strict_security_mode == "1",
+    }
     await db.commit()
     await db.refresh(repo)
 

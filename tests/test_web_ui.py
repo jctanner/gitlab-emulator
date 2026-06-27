@@ -60,6 +60,7 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
     assert settings_page.status_code == 200
     assert "Repository settings" in settings_page.text
     assert "Delete repository" in settings_page.text
+    assert "CI/CD security" in settings_page.text
 
     rename_repo = await client.post(
         "/ui/testuser/ui-source-repo/settings",
@@ -68,6 +69,7 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
             "description": "Updated from UI",
             "default_branch": "main",
             "private": "1",
+            "ci_pipeline_variables_minimum_override_role": "developer",
         },
         follow_redirects=False,
     )
@@ -189,6 +191,49 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
 
     missing_repo = await client.get("/ui/testuser/ui-source-renamed")
     assert missing_repo.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ui_repo_settings_update_ci_security_controls(client, test_user):
+    """Repository settings can update project CI security controls."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-ci-security", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    update_settings = await client.post(
+        "/ui/testuser/ui-ci-security/settings",
+        data={
+            "name": "ui-ci-security",
+            "description": "",
+            "default_branch": "main",
+            "ci_pipeline_variables_minimum_override_role": "no_one_allowed",
+            "ci_strict_security_mode": "1",
+        },
+        follow_redirects=False,
+    )
+    assert update_settings.status_code in (302, 303)
+    assert update_settings.headers["location"] == "/ui/testuser/ui-ci-security/settings?saved=1"
+
+    settings_page = await client.get("/ui/testuser/ui-ci-security/settings?saved=1")
+    assert settings_page.status_code == 200
+    assert 'value="no_one_allowed" selected' in settings_page.text
+    assert "Strict CI security mode" in settings_page.text
+    assert "checked" in settings_page.text
+
+    create_pipeline = await client.post(
+        "/api/v4/projects/testuser%2Fui-ci-security/pipeline",
+        json={
+            "ref": "main",
+            "variables": [{"key": "CUSTOM", "value": "blocked"}],
+            "job": {"name": "blocked", "script": ["echo blocked"]},
+        },
+    )
+    assert create_pipeline.status_code == 400
 
 
 @pytest.mark.asyncio
