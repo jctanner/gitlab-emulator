@@ -865,6 +865,61 @@ async def test_project_branch_delete_rejects_default_branch(client, test_user, t
 
 
 @pytest.mark.asyncio
+async def test_project_repository_writes_require_developer(
+    client, db_session, test_user, test_token
+):
+    developer, developer_token = await _create_user_and_token(
+        db_session, "repo-write-developer"
+    )
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "repo-write-reporter"
+    )
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "repo-write-roles", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    for user, level in ((developer, 30), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    branch_allowed = await client.post(
+        f"{API}/projects/{project_id}/repository/branches",
+        json={"branch": "developer-branch", "ref": "main"},
+        headers=auth_headers(developer_token),
+    )
+    assert branch_allowed.status_code == 201
+
+    tag_allowed = await client.post(
+        f"{API}/projects/{project_id}/repository/tags",
+        json={"tag_name": "developer-tag", "ref": "main"},
+        headers=auth_headers(developer_token),
+    )
+    assert tag_allowed.status_code == 201
+
+    branch_denied = await client.post(
+        f"{API}/projects/{project_id}/repository/branches",
+        json={"branch": "reporter-branch", "ref": "main"},
+        headers=auth_headers(reporter_token),
+    )
+    assert branch_denied.status_code == 403
+
+    tag_denied = await client.post(
+        f"{API}/projects/{project_id}/repository/tags",
+        json={"tag_name": "reporter-tag", "ref": "main"},
+        headers=auth_headers(reporter_token),
+    )
+    assert tag_denied.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_project_protected_branch_crud(client, test_user, test_token):
     create_resp = await client.post(
         f"{API}/projects",
@@ -929,6 +984,59 @@ async def test_project_protected_branch_crud(client, test_user, test_token):
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_project_protected_branch_management_requires_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "protected-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "protected-developer"
+    )
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "protected-role-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    for user, level in ((maintainer, 40), (developer, 30)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/projects/{project_id}/protected_branches",
+        json={"name": "main"},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    protected = await client.post(
+        f"{API}/projects/{project_id}/protected_branches",
+        json={"name": "main"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert protected.status_code == 201
+
+    unprotect_denied = await client.delete(
+        f"{API}/projects/{project_id}/protected_branches/main",
+        headers=auth_headers(developer_token),
+    )
+    assert unprotect_denied.status_code == 403
+
+    unprotected = await client.delete(
+        f"{API}/projects/{project_id}/protected_branches/main",
+        headers=auth_headers(maintainer_token),
+    )
+    assert unprotected.status_code == 204
 
 
 @pytest.mark.asyncio

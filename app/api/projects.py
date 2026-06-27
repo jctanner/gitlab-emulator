@@ -31,7 +31,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import _fmt_dt
 from app.services.ci_security import normalize_ci_security_settings
-from app.services.permissions import MAINTAINER, require_project_access
+from app.services.permissions import DEVELOPER, MAINTAINER, require_project_access
 
 router = APIRouter(tags=["projects"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -166,6 +166,10 @@ def _require_project_owner(project: Project, user: User) -> None:
 
 async def _require_project_maintainer(project: Project, user: User, db: DbSession) -> None:
     await require_project_access(project, user, db, MAINTAINER)
+
+
+async def _require_project_developer(project: Project, user: User, db: DbSession) -> None:
+    await require_project_access(project, user, db, DEVELOPER)
 
 
 def _validate_variable_key(key: str) -> str:
@@ -820,6 +824,7 @@ async def create_project_branch(
 ):
     """Create a repository branch for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, user)
+    await _require_project_developer(project, user, db)
     payload = body or {}
     branch_name = unquote(str(payload.get("branch") or branch or "")).strip()
     source_ref = str(payload.get("ref") or ref or "").strip()
@@ -866,6 +871,7 @@ async def delete_project_branch(
 ):
     """Delete a repository branch for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, user)
+    await _require_project_developer(project, user, db)
     decoded_name = unquote(branch_name)
     if decoded_name == project.default_branch:
         raise HTTPException(status_code=400, detail="Cannot delete default branch")
@@ -905,6 +911,7 @@ async def create_project_tag(
 ):
     """Create a lightweight repository tag for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, user)
+    await _require_project_developer(project, user, db)
     payload = body or {}
     name = unquote(str(payload.get("tag_name") or tag_name or "")).strip()
     source_ref = str(payload.get("ref") or ref or "").strip()
@@ -951,6 +958,7 @@ async def delete_project_tag(
 ):
     """Delete a repository tag for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, user)
+    await _require_project_developer(project, user, db)
     decoded_name = unquote(tag_name)
     await _get_tag_json(project, decoded_name, settings.BASE_URL)
     try:
@@ -1007,6 +1015,7 @@ async def protect_project_branch(
 ):
     """Protect a branch for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, user)
+    await _require_project_maintainer(project, user, db)
     payload = body or {}
     branch_name = unquote(str(payload.get("name") or name or "")).strip()
     if not branch_name:
@@ -1107,6 +1116,7 @@ async def unprotect_project_branch(
 ):
     """Unprotect a branch for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, user)
+    await _require_project_maintainer(project, user, db)
     decoded_name = unquote(branch_name)
     record = await _get_branch_record(project, decoded_name, db)
     if record is None or not record.protected:

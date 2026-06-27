@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.schemas.user import _make_node_id
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["contents"])
 
@@ -150,6 +151,7 @@ async def create_or_update_file(
 ):
     """Create or update a file."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
 
     if not repository.disk_path or not os.path.isdir(repository.disk_path):
         raise HTTPException(status_code=404, detail="Repository not found on disk")
@@ -228,6 +230,7 @@ async def delete_file(
 ):
     """Delete a file (stub -- returns 200 with commit info)."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     message = body.get("message", f"Delete {path}")
     sha = body.get("sha", "")
 

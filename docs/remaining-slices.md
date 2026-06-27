@@ -331,7 +331,9 @@ Done when:
 - Full GitLab GraphQL parity.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
-  variable/secret and pipeline-variable gates now use GitLab-shaped access
-  levels, but most non-CI endpoints still need broader permission hardening.
+  variable/secret, pipeline-variable, repository write, git ref write, and
+  protected-branch management gates now use GitLab-shaped access levels, but
+  remaining project/group settings, member administration, and other non-CI
+  endpoints still need broader permission hardening.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
 - Production security hardening.

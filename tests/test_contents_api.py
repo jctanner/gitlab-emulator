@@ -5,6 +5,7 @@ import base64
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -99,6 +100,42 @@ async def test_create_file_requires_auth(client, test_user, test_token, test_rep
         json={"message": "test", "content": content_b64},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_contents_write_requires_developer(
+    client, db_session, test_user, test_token, test_repo_with_init
+):
+    """Repository content writes require Developer or higher."""
+    owner, repo_name, repo_data = test_repo_with_init
+    developer, developer_token = await _create_user_and_token(
+        db_session, "contents-developer"
+    )
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "contents-reporter"
+    )
+    for user, level in ((developer, 30), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{repo_data['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    content_b64 = base64.b64encode(b"developer content\n").decode()
+    allowed = await client.put(
+        f"{API}/repos/{owner}/{repo_name}/contents/developer.txt",
+        json={"message": "developer write", "content": content_b64},
+        headers=auth_headers(developer_token),
+    )
+    assert allowed.status_code == 201
+
+    denied = await client.put(
+        f"{API}/repos/{owner}/{repo_name}/contents/reporter.txt",
+        json={"message": "reporter write", "content": content_b64},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied.status_code == 403
 
 
 @pytest.mark.asyncio
