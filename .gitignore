@@ -9,6 +9,7 @@ build/
 
 # Data (runtime-generated)
 data/
+screenshots/
 
 # IDE
 .vscode/
