@@ -332,8 +332,9 @@ Done when:
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, git ref write, and
-  protected-branch management gates now use GitLab-shaped access levels, but
-  remaining project/group settings, member administration, and other non-CI
-  endpoints still need broader permission hardening.
+  protected-branch management gates now use GitLab-shaped access levels.
+  Project member/collaborator writes require Maintainer or higher, and group
+  member writes require Owner. Remaining project/group settings and other
+  non-CI configuration endpoints still need broader permission hardening.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
 - Production security hardening.

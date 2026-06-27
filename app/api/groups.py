@@ -594,6 +594,7 @@ async def add_group_member(
 ):
     """Add or update a GitLab-shaped group member."""
     group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
     user_id = body.get("user_id")
     if user_id is None:
         raise HTTPException(status_code=422, detail="user_id is required")
@@ -637,6 +638,7 @@ async def delete_group_member(
 ):
     """Remove a GitLab-shaped group member."""
     group = await _get_group_or_404(group_ref, db)
+    await _require_group_owner(group, user, db)
     result = await db.execute(
         select(OrgMembership).where(
             OrgMembership.org_id == group.id,

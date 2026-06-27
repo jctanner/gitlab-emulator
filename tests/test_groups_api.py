@@ -364,6 +364,64 @@ async def test_gitlab_group_members_crud(client, test_user, test_token, admin_us
 
 
 @pytest.mark.asyncio
+async def test_group_member_writes_require_owner(client, db_session, test_token):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "group-member-maintainer"
+    )
+    target, _ = await _create_user_and_token(db_session, "group-member-target")
+    second_target, _ = await _create_user_and_token(
+        db_session, "group-member-target-two"
+    )
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "member-owner-gate", "name": "Member Owner Gate"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+
+    maintainer_member = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert maintainer_member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": target.id, "access_level": 30},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": target.id, "access_level": 30},
+        headers=auth_headers(test_token),
+    )
+    assert allowed.status_code == 201
+
+    delete_denied = await client.delete(
+        f"{API}/groups/{group_id}/members/{target.id}",
+        headers=auth_headers(maintainer_token),
+    )
+    assert delete_denied.status_code == 403
+
+    deleted = await client.delete(
+        f"{API}/groups/{group_id}/members/{target.id}",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    owner_can_still_add = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": second_target.id, "access_level": 10},
+        headers=auth_headers(test_token),
+    )
+    assert owner_can_still_add.status_code == 201
+
+
+@pytest.mark.asyncio
 async def test_gitlab_group_members_all_and_duplicate_edge_cases(
     client, test_user, test_token
 ):

@@ -289,9 +289,10 @@ Done when:
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, git ref write, and
-  protected-branch management gates now use GitLab-shaped access levels, but
-  remaining project/group settings, member administration, and other non-CI
-  endpoints still need broader permission hardening.
+  protected-branch management gates now use GitLab-shaped access levels.
+  Project member/collaborator writes require Maintainer or higher, and group
+  member writes require Owner. Remaining project/group settings and other
+  non-CI configuration endpoints still need broader permission hardening.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Kubernetes runner/executor support. The current validation path is a true
   runner VM with the official runner and Docker executor.

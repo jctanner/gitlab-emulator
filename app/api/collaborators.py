@@ -11,6 +11,7 @@ from app.models.project import Project
 from app.models.repository import Collaborator
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import MAINTAINER, require_project_access
 
 router = APIRouter(tags=["collaborators"])
 
@@ -170,6 +171,7 @@ async def add_project_member(
 ):
     """Add or update a GitLab-shaped project member."""
     project = await _get_project_or_404(project_ref, db)
+    await require_project_access(project, user, db, MAINTAINER)
     user_id = body.get("user_id")
     if user_id is None:
         raise HTTPException(status_code=422, detail="user_id is required")
@@ -211,6 +213,7 @@ async def delete_project_member(
 ):
     """Remove a GitLab-shaped project member."""
     project = await _get_project_or_404(project_ref, db)
+    await require_project_access(project, user, db, MAINTAINER)
     result = await db.execute(
         select(Collaborator).where(
             Collaborator.repo_id == project.id,
@@ -274,6 +277,7 @@ async def add_collaborator(
 ):
     """Add a collaborator to a repository."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     permission = body.get("permission", "push")
 
     result = await db.execute(select(User).where(User.login == username))
@@ -309,6 +313,7 @@ async def remove_collaborator(
 ):
     """Remove a collaborator."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     result = await db.execute(
         select(Collaborator)

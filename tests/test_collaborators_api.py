@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -178,6 +179,114 @@ async def test_gitlab_project_members_crud(client, test_user, test_token, admin_
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_gitlab_project_member_writes_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "member-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "member-developer"
+    )
+    target, _ = await _create_user_and_token(db_session, "member-target")
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "members-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    for user, level in ((maintainer, 40), (developer, 30)):
+        created = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert created.status_code == 201
+
+    denied = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": target.id, "access_level": 20},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": target.id, "access_level": 20},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
+
+    delete_denied = await client.delete(
+        f"{API}/projects/{project_id}/members/{target.id}",
+        headers=auth_headers(developer_token),
+    )
+    assert delete_denied.status_code == 403
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/members/{target.id}",
+        headers=auth_headers(maintainer_token),
+    )
+    assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_github_collaborator_writes_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "collab-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "collab-developer"
+    )
+    target, _ = await _create_user_and_token(db_session, "collab-target")
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "collab-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    for user, level in ((maintainer, 40), (developer, 30)):
+        created = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert created.status_code == 201
+
+    denied = await client.put(
+        f"{API}/repos/testuser/collab-role-gate/collaborators/{target.login}",
+        json={"permission": "pull"},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.put(
+        f"{API}/repos/testuser/collab-role-gate/collaborators/{target.login}",
+        json={"permission": "pull"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
+
+    delete_denied = await client.delete(
+        f"{API}/repos/testuser/collab-role-gate/collaborators/{target.login}",
+        headers=auth_headers(developer_token),
+    )
+    assert delete_denied.status_code == 403
+
+    deleted = await client.delete(
+        f"{API}/repos/testuser/collab-role-gate/collaborators/{target.login}",
+        headers=auth_headers(maintainer_token),
+    )
+    assert deleted.status_code == 204
 
 
 @pytest.mark.asyncio
