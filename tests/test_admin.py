@@ -1,10 +1,19 @@
 """Tests for the Admin UI endpoints."""
 
 import pytest
+from sqlalchemy import select
 
+from app.models.ci import CiSecret, CiVariable
+from app.models.organization import Organization
 from tests.conftest import auth_headers
 
 API = "/api/v4"
+
+
+def _admin_session(client, username: str = "admin") -> None:
+    from app.admin.routes import _sign_session
+
+    client.cookies.set("admin_session", _sign_session(username), path="/admin")
 
 
 @pytest.mark.asyncio
@@ -84,6 +93,148 @@ async def test_admin_logout(client, admin_user):
     cookies = login_resp.cookies
     resp = await client.get("/admin/logout", cookies=cookies, follow_redirects=False)
     assert resp.status_code in (200, 302, 303)
+
+
+@pytest.mark.asyncio
+async def test_admin_instance_ci_variables_management(client, admin_user, db_session):
+    """Admin UI can create, update, and delete instance CI/CD variables."""
+    _admin_session(client)
+
+    page = await client.get("/admin/ci-variables")
+    assert page.status_code == 200
+    assert "Instance CI/CD variables" in page.text
+
+    create = await client.post(
+        "/admin/ci-variables",
+        data={
+            "key": "GLOBAL_TOKEN",
+            "value": "global-secret-value",
+            "variable_type": "env_var",
+            "environment_scope": "production",
+            "description": "Global token",
+            "masked": "1",
+            "hidden": "1",
+        },
+        follow_redirects=False,
+    )
+    assert create.status_code in (302, 303)
+
+    variable = (
+        await db_session.execute(select(CiVariable).where(CiVariable.key == "GLOBAL_TOKEN"))
+    ).scalar_one()
+    page = await client.get("/admin/ci-variables")
+    assert "GLOBAL_TOKEN" in page.text
+    assert "production" in page.text
+    assert "Global token" in page.text
+    assert "global-secret-value" not in page.text
+    assert "Value: hidden" in page.text
+
+    update = await client.post(
+        f"/admin/ci-variables/{variable.id}/update",
+        data={
+            "value": "rotated-global-value",
+            "variable_type": "file",
+            "environment_scope": "staging",
+            "description": "Rotated global token",
+            "masked": "1",
+            "raw": "1",
+        },
+        follow_redirects=False,
+    )
+    assert update.status_code in (302, 303)
+    page = await client.get("/admin/ci-variables")
+    assert "staging" in page.text
+    assert "Rotated global token" in page.text
+    assert "rotated-global-value" not in page.text
+
+    delete = await client.post(
+        f"/admin/ci-variables/{variable.id}/delete",
+        follow_redirects=False,
+    )
+    assert delete.status_code in (302, 303)
+    page = await client.get("/admin/ci-variables")
+    assert "No instance variables yet." in page.text
+
+
+@pytest.mark.asyncio
+async def test_admin_group_ci_variables_and_secrets_management(
+    client, admin_user, db_session
+):
+    """Admin group page can manage group CI variables and secrets."""
+    _admin_session(client)
+
+    create_org = await client.post(
+        "/admin/orgs/create",
+        data={"login": "ci-group", "name": "CI Group"},
+        follow_redirects=False,
+    )
+    assert create_org.status_code in (302, 303)
+    org = (
+        await db_session.execute(select(Organization).where(Organization.login == "ci-group"))
+    ).scalar_one()
+
+    group_page = await client.get(f"/admin/orgs/{org.id}")
+    assert group_page.status_code == 200
+    assert "Group CI/CD variables" in group_page.text
+    assert "Group secrets" in group_page.text
+
+    create_variable = await client.post(
+        f"/admin/orgs/{org.id}/variables",
+        data={
+            "key": "GROUP_TOKEN",
+            "value": "group-variable-secret",
+            "variable_type": "env_var",
+            "environment_scope": "production",
+            "description": "Group variable",
+            "hidden": "1",
+        },
+        follow_redirects=False,
+    )
+    assert create_variable.status_code in (302, 303)
+
+    create_secret = await client.post(
+        f"/admin/orgs/{org.id}/secrets",
+        data={
+            "name": "GROUP_PASSWORD",
+            "value": "group-secret-value",
+            "environment_scope": "production",
+            "branch_scope": "main",
+            "description": "Group secret",
+            "rotation_reminder_days": "30",
+            "protected": "1",
+            "status": "healthy",
+        },
+        follow_redirects=False,
+    )
+    assert create_secret.status_code in (302, 303)
+
+    variable = (
+        await db_session.execute(select(CiVariable).where(CiVariable.key == "GROUP_TOKEN"))
+    ).scalar_one()
+    secret = (
+        await db_session.execute(select(CiSecret).where(CiSecret.name == "GROUP_PASSWORD"))
+    ).scalar_one()
+    group_page = await client.get(f"/admin/orgs/{org.id}")
+    assert "GROUP_TOKEN" in group_page.text
+    assert "Group variable" in group_page.text
+    assert "group-variable-secret" not in group_page.text
+    assert "GROUP_PASSWORD" in group_page.text
+    assert "Group secret" in group_page.text
+    assert "group-secret-value" not in group_page.text
+
+    delete_variable = await client.post(
+        f"/admin/orgs/{org.id}/variables/{variable.id}/delete",
+        follow_redirects=False,
+    )
+    delete_secret = await client.post(
+        f"/admin/orgs/{org.id}/secrets/{secret.id}/delete",
+        follow_redirects=False,
+    )
+    assert delete_variable.status_code in (302, 303)
+    assert delete_secret.status_code in (302, 303)
+    group_page = await client.get(f"/admin/orgs/{org.id}")
+    assert "No group variables yet." in group_page.text
+    assert "No group secrets yet." in group_page.text
 
 
 @pytest.mark.asyncio

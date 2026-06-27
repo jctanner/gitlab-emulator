@@ -45,4 +45,125 @@
         </div>
     </form>
 </div>
+
+{% if edit_org %}
+<div class="Subhead mt-5">
+    <div class="Subhead-heading">Group CI/CD variables</div>
+    <div class="Subhead-description">Variables inherited by projects under this group path unless overridden by project variables.</div>
+</div>
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Add group variable</h3></div>
+    <div class="Box-row">
+        <form method="post" action="/admin/orgs/{{ edit_org.id }}/variables">
+            <div class="d-flex flex-wrap" style="gap:12px;">
+                <label>Key<br><input class="form-control" name="key" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label>
+                <label>Value<br><input class="form-control" name="value" required autocomplete="off"></label>
+                <label>Type<br>
+                    <select class="form-select" name="variable_type">
+                        <option value="env_var">env_var</option>
+                        <option value="file">file</option>
+                    </select>
+                </label>
+                <label>Environment scope<br><input class="form-control" name="environment_scope" value="*"></label>
+                <label>Description<br><input class="form-control" name="description"></label>
+            </div>
+            <div class="d-flex flex-wrap mt-3" style="gap:16px;">
+                <label><input type="checkbox" name="masked" value="1"> Masked</label>
+                <label><input type="checkbox" name="hidden" value="1"> Hidden</label>
+                <label><input type="checkbox" name="protected" value="1"> Protected</label>
+                <label><input type="checkbox" name="raw" value="1"> Raw</label>
+            </div>
+            <button class="btn btn-primary mt-3" type="submit">Add variable</button>
+        </form>
+    </div>
+    {% if group_variables %}
+    {% for variable in group_variables %}
+    {% set flags = variable_flags(variable) %}
+    <div class="Box-row">
+        <form method="post" action="/admin/orgs/{{ edit_org.id }}/variables/{{ variable.id }}/update">
+            <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
+                <strong style="min-width:180px;"><code>{{ variable.key }}</code></strong>
+                <label>New value<br><input class="form-control" name="value" placeholder="leave unchanged" autocomplete="off"></label>
+                <label>Type<br>
+                    <select class="form-select" name="variable_type">
+                        <option value="env_var" {% if variable.variable_type == "env_var" %}selected{% endif %}>env_var</option>
+                        <option value="file" {% if variable.variable_type == "file" %}selected{% endif %}>file</option>
+                    </select>
+                </label>
+                <label>Environment scope<br><input class="form-control" name="environment_scope" value="{{ variable.environment_scope }}"></label>
+                <label>Description<br><input class="form-control" name="description" value="{{ variable.description or '' }}"></label>
+            </div>
+            <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                <label><input type="checkbox" name="masked" value="1" {% if flags.masked %}checked{% endif %}> Masked</label>
+                <label><input type="checkbox" name="hidden" value="1" {% if flags.hidden %}checked{% endif %}> Hidden</label>
+                <label><input type="checkbox" name="protected" value="1" {% if variable.protected %}checked{% endif %}> Protected</label>
+                <label><input type="checkbox" name="raw" value="1" {% if variable.raw %}checked{% endif %}> Raw</label>
+                <span class="color-fg-muted">Value: {% if flags.hidden %}hidden{% else %}stored{% endif %}</span>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+        </form>
+        <form method="post" action="/admin/orgs/{{ edit_org.id }}/variables/{{ variable.id }}/delete" class="mt-2" onsubmit="return confirm('Delete variable {{ variable.key }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No group variables yet.</div>
+    {% endif %}
+</div>
+
+<div class="Subhead mt-5">
+    <div class="Subhead-heading">Group secrets</div>
+    <div class="Subhead-description">Secrets inherited by projects under this group path when jobs explicitly request them.</div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Add group secret</h3></div>
+    <div class="Box-row">
+        <form method="post" action="/admin/orgs/{{ edit_org.id }}/secrets">
+            <div class="d-flex flex-wrap" style="gap:12px;">
+                <label>Name<br><input class="form-control" name="name" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label>
+                <label>Value<br><input class="form-control" name="value" required autocomplete="off"></label>
+                <label>Environment scope<br><input class="form-control" name="environment_scope" value="*"></label>
+                <label>Branch scope<br><input class="form-control" name="branch_scope" value="*"></label>
+                <label>Status<br><input class="form-control" name="status" value="healthy"></label>
+                <label>Rotation days<br><input class="form-control" name="rotation_reminder_days" type="number" min="1"></label>
+                <label>Description<br><input class="form-control" name="description"></label>
+            </div>
+            <div class="form-checkbox mt-3">
+                <label><input type="checkbox" name="protected" value="1"> Protected</label>
+            </div>
+            <button class="btn btn-primary mt-3" type="submit">Add secret</button>
+        </form>
+    </div>
+    {% if group_secrets %}
+    {% for secret in group_secrets %}
+    <div class="Box-row">
+        <form method="post" action="/admin/orgs/{{ edit_org.id }}/secrets/{{ secret.id }}/update">
+            <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
+                <strong style="min-width:180px;"><code>{{ secret.name }}</code></strong>
+                <label>New value<br><input class="form-control" name="value" placeholder="leave unchanged" autocomplete="off"></label>
+                <label>Environment scope<br><input class="form-control" name="environment_scope" value="{{ secret.environment_scope }}"></label>
+                <label>Branch scope<br><input class="form-control" name="branch_scope" value="{{ secret.branch_scope }}"></label>
+                <label>Status<br><input class="form-control" name="status" value="{{ secret.status }}"></label>
+                <label>Rotation days<br><input class="form-control" name="rotation_reminder_days" type="number" min="1" value="{{ secret.rotation_reminder_days or '' }}"></label>
+                <label>Description<br><input class="form-control" name="description" value="{{ secret.description or '' }}"></label>
+            </div>
+            <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                <label><input type="checkbox" name="protected" value="1" {% if secret.protected %}checked{% endif %}> Protected</label>
+                <span class="color-fg-muted">Last accessed: {{ secret.last_accessed_at or "never" }}</span>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+        </form>
+        <form method="post" action="/admin/orgs/{{ edit_org.id }}/secrets/{{ secret.id }}/delete" class="mt-2" onsubmit="return confirm('Delete secret {{ secret.name }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No group secrets yet.</div>
+    {% endif %}
+</div>
+{% endif %}
 {% endblock %}

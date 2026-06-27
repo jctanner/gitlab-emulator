@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Instance CI/CD variables - GitLab Emulator Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-items-center flex-justify-between mb-3">
+    <div>
+        <h2 class="f2 mb-1">Instance CI/CD variables</h2>
+        <p class="color-fg-muted mb-0">Variables available to all projects unless overridden by group or project scopes.</p>
+    </div>
+</div>
+
+<section class="ci-lab-panel mb-4">
+    <h3 class="f4 mb-3">Add variable</h3>
+    <form method="post" action="/admin/ci-variables">
+        <div class="d-flex flex-wrap" style="gap:12px;">
+            <label>Key<br><input class="form-control" name="key" required pattern="[A-Za-z_][A-Za-z0-9_]*"></label>
+            <label>Value<br><input class="form-control" name="value" required autocomplete="off"></label>
+            <label>Type<br>
+                <select class="form-select" name="variable_type">
+                    <option value="env_var">env_var</option>
+                    <option value="file">file</option>
+                </select>
+            </label>
+            <label>Environment scope<br><input class="form-control" name="environment_scope" value="*"></label>
+            <label>Description<br><input class="form-control" name="description"></label>
+        </div>
+        <div class="d-flex flex-wrap mt-3" style="gap:16px;">
+            <label><input type="checkbox" name="masked" value="1"> Masked</label>
+            <label><input type="checkbox" name="hidden" value="1"> Hidden</label>
+            <label><input type="checkbox" name="protected" value="1"> Protected</label>
+            <label><input type="checkbox" name="raw" value="1"> Raw</label>
+        </div>
+        <button class="btn btn-primary mt-3" type="submit">Add variable</button>
+    </form>
+</section>
+
+<section class="ci-lab-panel">
+    <h3 class="f4 mb-3">Stored variables</h3>
+    {% if variables %}
+    {% for variable in variables %}
+    {% set flags = variable_flags(variable) %}
+    <div class="Box mb-2">
+        <div class="Box-row">
+            <form method="post" action="/admin/ci-variables/{{ variable.id }}/update">
+                <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
+                    <strong style="min-width:180px;"><code>{{ variable.key }}</code></strong>
+                    <label>New value<br><input class="form-control" name="value" placeholder="leave unchanged" autocomplete="off"></label>
+                    <label>Type<br>
+                        <select class="form-select" name="variable_type">
+                            <option value="env_var" {% if variable.variable_type == "env_var" %}selected{% endif %}>env_var</option>
+                            <option value="file" {% if variable.variable_type == "file" %}selected{% endif %}>file</option>
+                        </select>
+                    </label>
+                    <label>Environment scope<br><input class="form-control" name="environment_scope" value="{{ variable.environment_scope }}"></label>
+                    <label>Description<br><input class="form-control" name="description" value="{{ variable.description or '' }}"></label>
+                </div>
+                <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                    <label><input type="checkbox" name="masked" value="1" {% if flags.masked %}checked{% endif %}> Masked</label>
+                    <label><input type="checkbox" name="hidden" value="1" {% if flags.hidden %}checked{% endif %}> Hidden</label>
+                    <label><input type="checkbox" name="protected" value="1" {% if variable.protected %}checked{% endif %}> Protected</label>
+                    <label><input type="checkbox" name="raw" value="1" {% if variable.raw %}checked{% endif %}> Raw</label>
+                    <span class="color-fg-muted">Value: {% if flags.hidden %}hidden{% else %}stored{% endif %}</span>
+                    <button class="btn btn-sm" type="submit">Update</button>
+                </div>
+            </form>
+            <form method="post" action="/admin/ci-variables/{{ variable.id }}/delete" class="mt-2" onsubmit="return confirm('Delete variable {{ variable.key }}?');">
+                <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="color-fg-muted">No instance variables yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

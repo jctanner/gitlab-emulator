@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from jose import JWSError, jws
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +34,7 @@ from app.api.repository_files import _commit_file_change, _file_metadata
 from app.api.runner import explain_job_scheduling, registered_runner_diagnostics
 from app.config import settings
 from app.database import get_db
-from app.models.ci import CiRunner, Pipeline, PipelineJob
+from app.models.ci import CiRunner, CiSecret, CiVariable, Pipeline, PipelineJob
 from app.models.event import Event
 from app.models.issue import Issue
 from app.models.organization import Organization
@@ -249,6 +250,46 @@ def _runner_job_names(runner: CiRunner) -> set[str]:
     return {name for name in [runner.runner_name, runner.description] if name}
 
 
+_CI_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CI_VARIABLE_TYPES = {"env_var", "file"}
+
+
+def _ci_visibility(masked: bool, hidden: bool) -> str:
+    if hidden:
+        return "masked_and_hidden"
+    if masked:
+        return "masked"
+    return "visible"
+
+
+def _ci_variable_flags(variable: CiVariable) -> dict:
+    return {
+        "masked": variable.visibility in {"masked", "masked_and_hidden"},
+        "hidden": variable.visibility == "masked_and_hidden",
+    }
+
+
+def _bool_form(value: str | None) -> bool:
+    return value == "1"
+
+
+def _validate_ci_key(value: str, label: str = "Key") -> str:
+    normalized = (value or "").strip()
+    if not _CI_KEY_RE.match(normalized):
+        raise ValueError(
+            f"{label} must start with a letter or underscore and contain only letters, numbers, and underscores."
+        )
+    return normalized
+
+
+def _admin_error_url(base_url: str, message: str) -> str:
+    return f"{base_url}?flash_type=error&flash_message={urlencode({'x': message})[2:]}"
+
+
+def _admin_success_url(base_url: str, message: str) -> str:
+    return f"{base_url}?flash_type=success&flash_message={urlencode({'x': message})[2:]}"
+
+
 async def _runner_recent_jobs(
     db: AsyncSession,
     runner: CiRunner,
@@ -266,6 +307,178 @@ async def _runner_recent_jobs(
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Routes: Instance CI/CD variables
+# ---------------------------------------------------------------------------
+
+@router.get("/ci-variables", response_class=HTMLResponse)
+async def instance_ci_variables_page(
+    request: Request,
+    flash_message: str | None = None,
+    flash_type: str = "info",
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage instance-scoped CI/CD variables."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    result = await db.execute(
+        select(CiVariable)
+        .where(CiVariable.scope_type == "instance", CiVariable.scope_id.is_(None))
+        .order_by(CiVariable.key, CiVariable.environment_scope)
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="ci_variables.html",
+        context=_ctx(
+            request,
+            admin_user=admin_user,
+            flash_message=flash_message,
+            flash_type=flash_type,
+            variables=result.scalars().all(),
+            variable_flags=_ci_variable_flags,
+        ),
+    )
+
+
+@router.post("/ci-variables", response_class=HTMLResponse)
+async def create_instance_ci_variable(
+    request: Request,
+    key: str = Form(...),
+    value: str = Form(...),
+    variable_type: str = Form("env_var"),
+    environment_scope: str = Form("*"),
+    description: str = Form(""),
+    masked: str = Form(""),
+    hidden: str = Form(""),
+    protected: str = Form(""),
+    raw: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create an instance-scoped CI/CD variable."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    redirect = "/admin/ci-variables"
+    try:
+        if variable_type not in _CI_VARIABLE_TYPES:
+            raise ValueError("Variable type must be env_var or file.")
+        db.add(
+            CiVariable(
+                scope_type="instance",
+                scope_id=None,
+                key=_validate_ci_key(key),
+                value=value,
+                variable_type=variable_type,
+                visibility=_ci_visibility(_bool_form(masked), _bool_form(hidden)),
+                protected=_bool_form(protected),
+                raw=_bool_form(raw),
+                environment_scope=environment_scope.strip() or "*",
+                description=description.strip() or None,
+            )
+        )
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = (
+            "Variable already exists for that environment scope."
+            if isinstance(exc, IntegrityError)
+            else str(exc)
+        )
+        return RedirectResponse(url=_admin_error_url(redirect, message), status_code=302)
+    return RedirectResponse(
+        url=_admin_success_url(redirect, "Variable created."),
+        status_code=302,
+    )
+
+
+@router.post("/ci-variables/{variable_id}/update", response_class=HTMLResponse)
+async def update_instance_ci_variable(
+    request: Request,
+    variable_id: int,
+    value: str = Form(""),
+    variable_type: str = Form("env_var"),
+    environment_scope: str = Form("*"),
+    description: str = Form(""),
+    masked: str = Form(""),
+    hidden: str = Form(""),
+    protected: str = Form(""),
+    raw: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an instance-scoped CI/CD variable."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    redirect = "/admin/ci-variables"
+    variable = (
+        await db.execute(
+            select(CiVariable).where(
+                CiVariable.id == variable_id,
+                CiVariable.scope_type == "instance",
+                CiVariable.scope_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if variable is None:
+        return RedirectResponse(
+            url=_admin_error_url(redirect, "Variable not found."),
+            status_code=302,
+        )
+    try:
+        if variable_type not in _CI_VARIABLE_TYPES:
+            raise ValueError("Variable type must be env_var or file.")
+        if value:
+            variable.value = value
+        variable.variable_type = variable_type
+        variable.environment_scope = environment_scope.strip() or "*"
+        variable.description = description.strip() or None
+        variable.visibility = _ci_visibility(_bool_form(masked), _bool_form(hidden))
+        variable.protected = _bool_form(protected)
+        variable.raw = _bool_form(raw)
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = (
+            "Variable already exists for that environment scope."
+            if isinstance(exc, IntegrityError)
+            else str(exc)
+        )
+        return RedirectResponse(url=_admin_error_url(redirect, message), status_code=302)
+    return RedirectResponse(
+        url=_admin_success_url(redirect, "Variable updated."),
+        status_code=302,
+    )
+
+
+@router.post("/ci-variables/{variable_id}/delete", response_class=HTMLResponse)
+async def delete_instance_ci_variable(
+    request: Request,
+    variable_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an instance-scoped CI/CD variable."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    variable = (
+        await db.execute(
+            select(CiVariable).where(
+                CiVariable.id == variable_id,
+                CiVariable.scope_type == "instance",
+                CiVariable.scope_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if variable is not None:
+        await db.delete(variable)
+        await db.commit()
+    return RedirectResponse(
+        url=_admin_success_url("/admin/ci-variables", "Variable deleted."),
+        status_code=302,
+    )
 
 
 async def _selected_ci_lab_state(
@@ -1377,6 +1590,8 @@ async def create_org_handler(
 async def edit_org_page(
     request: Request,
     org_id: int,
+    flash_message: str | None = None,
+    flash_type: str = "info",
     db: AsyncSession = Depends(get_db),
 ):
     """Render the edit-organization form."""
@@ -1391,10 +1606,34 @@ async def edit_org_page(
     if not org:
         return RedirectResponse(url="/admin/orgs", status_code=302)
 
+    variables = (
+        await db.execute(
+            select(CiVariable)
+            .where(CiVariable.scope_type == "group", CiVariable.scope_id == org.id)
+            .order_by(CiVariable.key, CiVariable.environment_scope)
+        )
+    ).scalars().all()
+    secrets = (
+        await db.execute(
+            select(CiSecret)
+            .where(CiSecret.scope_type == "group", CiSecret.scope_id == org.id)
+            .order_by(CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope)
+        )
+    ).scalars().all()
+
     return templates.TemplateResponse(
         request=request,
         name="org_form.html",
-        context=_ctx(request, admin_user=admin_user, edit_org=org),
+        context=_ctx(
+            request,
+            admin_user=admin_user,
+            edit_org=org,
+            group_variables=variables,
+            group_secrets=secrets,
+            variable_flags=_ci_variable_flags,
+            flash_message=flash_message,
+            flash_type=flash_type,
+        ),
     )
 
 
@@ -1435,6 +1674,265 @@ async def update_org_handler(
     await db.commit()
 
     return RedirectResponse(url="/admin/orgs", status_code=302)
+
+
+@router.post("/orgs/{org_id}/variables", response_class=HTMLResponse)
+async def create_group_ci_variable(
+    request: Request,
+    org_id: int,
+    key: str = Form(...),
+    value: str = Form(...),
+    variable_type: str = Form("env_var"),
+    environment_scope: str = Form("*"),
+    description: str = Form(""),
+    masked: str = Form(""),
+    hidden: str = Form(""),
+    protected: str = Form(""),
+    raw: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a group-scoped CI/CD variable from the admin group page."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    redirect = f"/admin/orgs/{org_id}"
+    org = (await db.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
+    if org is None:
+        return RedirectResponse(url="/admin/orgs", status_code=302)
+    try:
+        if variable_type not in _CI_VARIABLE_TYPES:
+            raise ValueError("Variable type must be env_var or file.")
+        db.add(
+            CiVariable(
+                scope_type="group",
+                scope_id=org.id,
+                key=_validate_ci_key(key),
+                value=value,
+                variable_type=variable_type,
+                visibility=_ci_visibility(_bool_form(masked), _bool_form(hidden)),
+                protected=_bool_form(protected),
+                raw=_bool_form(raw),
+                environment_scope=environment_scope.strip() or "*",
+                description=description.strip() or None,
+            )
+        )
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = (
+            "Variable already exists for that environment scope."
+            if isinstance(exc, IntegrityError)
+            else str(exc)
+        )
+        return RedirectResponse(url=_admin_error_url(redirect, message), status_code=302)
+    return RedirectResponse(url=_admin_success_url(redirect, "Group variable created."), status_code=302)
+
+
+@router.post("/orgs/{org_id}/variables/{variable_id}/update", response_class=HTMLResponse)
+async def update_group_ci_variable(
+    request: Request,
+    org_id: int,
+    variable_id: int,
+    value: str = Form(""),
+    variable_type: str = Form("env_var"),
+    environment_scope: str = Form("*"),
+    description: str = Form(""),
+    masked: str = Form(""),
+    hidden: str = Form(""),
+    protected: str = Form(""),
+    raw: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a group-scoped CI/CD variable."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    redirect = f"/admin/orgs/{org_id}"
+    variable = (
+        await db.execute(
+            select(CiVariable).where(
+                CiVariable.id == variable_id,
+                CiVariable.scope_type == "group",
+                CiVariable.scope_id == org_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if variable is None:
+        return RedirectResponse(url=_admin_error_url(redirect, "Variable not found."), status_code=302)
+    try:
+        if variable_type not in _CI_VARIABLE_TYPES:
+            raise ValueError("Variable type must be env_var or file.")
+        if value:
+            variable.value = value
+        variable.variable_type = variable_type
+        variable.environment_scope = environment_scope.strip() or "*"
+        variable.description = description.strip() or None
+        variable.visibility = _ci_visibility(_bool_form(masked), _bool_form(hidden))
+        variable.protected = _bool_form(protected)
+        variable.raw = _bool_form(raw)
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = (
+            "Variable already exists for that environment scope."
+            if isinstance(exc, IntegrityError)
+            else str(exc)
+        )
+        return RedirectResponse(url=_admin_error_url(redirect, message), status_code=302)
+    return RedirectResponse(url=_admin_success_url(redirect, "Group variable updated."), status_code=302)
+
+
+@router.post("/orgs/{org_id}/variables/{variable_id}/delete", response_class=HTMLResponse)
+async def delete_group_ci_variable(
+    request: Request,
+    org_id: int,
+    variable_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a group-scoped CI/CD variable."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    variable = (
+        await db.execute(
+            select(CiVariable).where(
+                CiVariable.id == variable_id,
+                CiVariable.scope_type == "group",
+                CiVariable.scope_id == org_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if variable is not None:
+        await db.delete(variable)
+        await db.commit()
+    return RedirectResponse(
+        url=_admin_success_url(f"/admin/orgs/{org_id}", "Group variable deleted."),
+        status_code=302,
+    )
+
+
+@router.post("/orgs/{org_id}/secrets", response_class=HTMLResponse)
+async def create_group_ci_secret(
+    request: Request,
+    org_id: int,
+    name: str = Form(...),
+    value: str = Form(...),
+    environment_scope: str = Form("*"),
+    branch_scope: str = Form("*"),
+    description: str = Form(""),
+    rotation_reminder_days: str = Form(""),
+    protected: str = Form(""),
+    status: str = Form("healthy"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a group-scoped CI/CD secret from the admin group page."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    redirect = f"/admin/orgs/{org_id}"
+    org = (await db.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
+    if org is None:
+        return RedirectResponse(url="/admin/orgs", status_code=302)
+    try:
+        reminder = int(rotation_reminder_days) if rotation_reminder_days.strip() else None
+        db.add(
+            CiSecret(
+                scope_type="group",
+                scope_id=org.id,
+                name=_validate_ci_key(name, "Name"),
+                value=value,
+                description=description.strip() or None,
+                environment_scope=environment_scope.strip() or "*",
+                branch_scope=branch_scope.strip() or "*",
+                protected=_bool_form(protected),
+                rotation_reminder_days=reminder,
+                status=status.strip() or "healthy",
+            )
+        )
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Secret already exists for those scopes." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(url=_admin_error_url(redirect, message), status_code=302)
+    return RedirectResponse(url=_admin_success_url(redirect, "Group secret created."), status_code=302)
+
+
+@router.post("/orgs/{org_id}/secrets/{secret_id}/update", response_class=HTMLResponse)
+async def update_group_ci_secret(
+    request: Request,
+    org_id: int,
+    secret_id: int,
+    value: str = Form(""),
+    environment_scope: str = Form("*"),
+    branch_scope: str = Form("*"),
+    description: str = Form(""),
+    rotation_reminder_days: str = Form(""),
+    protected: str = Form(""),
+    status: str = Form("healthy"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a group-scoped CI/CD secret."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    redirect = f"/admin/orgs/{org_id}"
+    secret = (
+        await db.execute(
+            select(CiSecret).where(
+                CiSecret.id == secret_id,
+                CiSecret.scope_type == "group",
+                CiSecret.scope_id == org_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if secret is None:
+        return RedirectResponse(url=_admin_error_url(redirect, "Secret not found."), status_code=302)
+    try:
+        if value:
+            secret.value = value
+        secret.description = description.strip() or None
+        secret.environment_scope = environment_scope.strip() or "*"
+        secret.branch_scope = branch_scope.strip() or "*"
+        secret.protected = _bool_form(protected)
+        secret.rotation_reminder_days = (
+            int(rotation_reminder_days) if rotation_reminder_days.strip() else None
+        )
+        secret.status = status.strip() or "healthy"
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Secret already exists for those scopes." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(url=_admin_error_url(redirect, message), status_code=302)
+    return RedirectResponse(url=_admin_success_url(redirect, "Group secret updated."), status_code=302)
+
+
+@router.post("/orgs/{org_id}/secrets/{secret_id}/delete", response_class=HTMLResponse)
+async def delete_group_ci_secret(
+    request: Request,
+    org_id: int,
+    secret_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a group-scoped CI/CD secret."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    secret = (
+        await db.execute(
+            select(CiSecret).where(
+                CiSecret.id == secret_id,
+                CiSecret.scope_type == "group",
+                CiSecret.scope_id == org_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if secret is not None:
+        await db.delete(secret)
+        await db.commit()
+    return RedirectResponse(
+        url=_admin_success_url(f"/admin/orgs/{org_id}", "Group secret deleted."),
+        status_code=302,
+    )
 
 
 @router.post("/orgs/{org_id}/delete", response_class=HTMLResponse)

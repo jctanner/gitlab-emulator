@@ -332,5 +332,4 @@ Done when:
 - Full GitLab UI parity.
 - Full GitLab authorization and permission model.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
-- Kubernetes runner/executor support.
 - Production security hardening.

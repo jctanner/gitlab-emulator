@@ -193,7 +193,8 @@ Fields:
 
 ### Group Variables
 
-Second slice:
+Status: implemented for the MVP. Group variable CRUD is available through the
+GitLab-shaped API and through the Admin > Groups edit page.
 
 - `GET /api/v4/groups/:id/variables`
 - `POST /api/v4/groups/:id/variables`
@@ -201,17 +202,17 @@ Second slice:
 - `PUT /api/v4/groups/:id/variables/:key`
 - `DELETE /api/v4/groups/:id/variables/:key`
 
-Group inheritance should traverse parent groups once nested group lookup is
-stable. For MVP, support direct group variables and record a backlog item for
-closest-subgroup precedence.
+Group inheritance traverses parent group paths in the resolver. UI management
+is admin-oriented for now because there is no dedicated group frontend shell.
 
 ### Instance Variables
 
-Admin-only third slice:
+Status: implemented for the MVP. Instance variables are managed through
+Admin > Instance variables and participate in runner payload resolution below
+group and project variables.
 
-- Add admin API or internal admin UI support for instance variables.
-- GitLab has admin-managed instance variables; emulator can expose them under
-  admin UI first and add REST later if client workflows need it.
+- Add REST endpoints later if client workflows need direct instance-variable
+  API access.
 
 ### Secrets Manager
 
@@ -398,10 +399,11 @@ Strict mode:
 
 ### Admin UI
 
-Add an Admin > CI/CD settings page:
+Status: implemented for MVP CI variable management.
 
-- Instance variables table.
-- Project/group variable search helpers.
+- Instance variables table with create/update/delete.
+- Group variables and secrets are available from Admin > Groups edit pages.
+- Project variables and secrets are available from project `Secure` pages.
 - Pipeline security defaults.
 
 ### Project Settings UI
@@ -554,21 +556,23 @@ Deliver:
 ### Slice 4: Group and Instance Variables
 
 Status: implemented for the MVP. Group variable CRUD and instance admin
-variable APIs are available, and runner payload resolution applies instance,
+variable UI are available, and runner payload resolution applies instance,
 parent group, child group, and project variable precedence.
 
 Deliver:
 
 - Group variable CRUD.
 - Direct group inheritance.
-- Instance variable admin model/UI or API.
+- Instance variable admin UI.
 - Precedence tests across instance/group/project.
 
 ### Slice 5: Secrets Data Model and Emulator APIs
 
 Status: implemented for the MVP. Project and group secrets have emulator API
 CRUD, secret values are write-only on read responses, and access-event storage
-is modeled for the later delivery slice.
+is modeled for the later delivery slice. Project secrets are managed from the
+project `Secure > Secrets` page, and group secrets are managed from Admin >
+Groups edit pages.
 
 Deliver:
 
