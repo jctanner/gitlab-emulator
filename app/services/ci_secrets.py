@@ -97,6 +97,21 @@ def ci_secret_variable_entry(secret: CiSecret, *, file: bool) -> dict:
     }
 
 
+def ci_secret_metadata_entry(resolved: ResolvedJobSecret) -> dict:
+    """Return non-sensitive metadata for UI/API job inspection."""
+    return {
+        "key": resolved.variable_key,
+        "name": resolved.secret.name,
+        "mode": "file" if resolved.file else "env",
+        "file": resolved.file,
+        "scope_type": resolved.secret.scope_type,
+        "scope_id": resolved.secret.scope_id,
+        "environment_scope": resolved.secret.environment_scope or "*",
+        "branch_scope": resolved.secret.branch_scope or "*",
+        "protected": bool(resolved.secret.protected),
+    }
+
+
 async def project_secret_entries(
     project: Project,
     db: DbSession,

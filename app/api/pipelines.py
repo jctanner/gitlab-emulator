@@ -38,7 +38,7 @@ from app.services.ci_security import (
     pipeline_variables_allowed_for_user,
     strict_security_blocks,
 )
-from app.services.ci_secrets import project_secret_entries
+from app.services.ci_secrets import ci_secret_metadata_entry, project_secret_entries
 from app.services.ci_variables import project_variable_entries
 from app.services.ci_yaml import ParsedCiJob, parse_gitlab_ci
 
@@ -703,6 +703,7 @@ def _job_json(job: PipelineJob) -> dict:
         if job.project
         else None,
         "artifacts": artifacts,
+        "secret_metadata": job.secret_metadata or [],
         "runner": {"description": job.runner_name} if job.runner_name else None,
     }
 
@@ -906,6 +907,10 @@ async def _create_pipeline(
             cache=parsed_job.cache,
             artifacts_paths=parsed_job.artifacts_paths,
             artifacts_config=parsed_job.artifacts,
+            secret_metadata=[
+                ci_secret_metadata_entry(resolved_secret)
+                for resolved_secret in resolved_secrets
+            ],
             job_token=f"gljt-persisted-{secrets.token_urlsafe(24)}",
             status="manual" if parsed_job.when == "manual" else "pending",
         )

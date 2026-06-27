@@ -210,6 +210,7 @@ class PipelineJob(Base):
     cache: Mapped[list] = mapped_column(JSON, default=list)
     artifacts_paths: Mapped[list] = mapped_column(JSON, default=list)
     artifacts_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    secret_metadata: Mapped[list] = mapped_column(JSON, default=list)
     job_token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     runner_name: Mapped[str | None] = mapped_column(String, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String, nullable=True)

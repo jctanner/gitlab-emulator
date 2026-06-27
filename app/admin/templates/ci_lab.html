@@ -181,6 +181,14 @@
                         {% endfor %}
                     </ul>
                     {% endif %}
+                    {% if job.secret_metadata %}
+                    <div class="color-fg-muted">
+                        Secrets:
+                        {% for secret in job.secret_metadata %}
+                        <code>{{ secret.key }}</code> from <code>{{ secret.name }}</code> ({{ secret.mode }}){% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </td>
                 <td class="actions">
                     <form method="post" action="/admin/ci-lab/jobs/{{ job.id }}/play" class="inline-delete">
@@ -230,6 +238,20 @@
             <tr><td>Status</td><td><span class="status-{{ selected_job.status }}">{{ selected_job.status }}</span></td></tr>
             <tr><td>Image</td><td>{{ selected_job.image }}</td></tr>
             <tr><td>Needs</td><td>{{ selected_job.needs or [] }}</td></tr>
+            <tr>
+                <td>Secrets</td>
+                <td>
+                    {% if selected_job.secret_metadata %}
+                    <ul class="ci-lab-artifacts">
+                        {% for secret in selected_job.secret_metadata %}
+                        <li><code>{{ secret.key }}</code> from <code>{{ secret.name }}</code> as {{ secret.mode }} ({{ secret.scope_type }} {{ secret.environment_scope }}/{{ secret.branch_scope }})</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    none
+                    {% endif %}
+                </td>
+            </tr>
             <tr><td>Job API</td><td><a href="{{ selected_job_api_url }}">{{ selected_job_api_url }}</a></td></tr>
             <tr><td>Trace API</td><td><a href="{{ selected_job_trace_api_url }}">{{ selected_job_trace_api_url }}</a></td></tr>
             <tr>

@@ -600,7 +600,9 @@ Deliver:
 Status: implemented for the MVP. Job-level `secrets:` entries using
 `gitlab_secrets_manager` are parsed, resolved from eligible project/group
 secrets, injected into the runner variable payload as masked values, and logged
-to `ci_secret_access_events` when jobs are created.
+to `ci_secret_access_events` when jobs are created. Pipeline and job API/UI
+surfaces show non-sensitive secret metadata such as variable key, backing secret
+name, scope, and file/env delivery mode without exposing secret values.
 
 Deliver:
 
@@ -611,10 +613,6 @@ Deliver:
 - Runner payload integration.
 - Secret access event creation.
 - Pipeline/job UI avoids value leaks while showing non-sensitive secret names.
-
-Deferred from this slice:
-
-- Pipeline/job UI display for requested secret names without values.
 
 ### Slice 7: Secret Redaction and Runner Validation
 

@@ -93,6 +93,14 @@
                 {% if job.runner_name %} · {{ job.runner_name }}{% endif %}
                 {% if job.tags %} · {{ job.tags|join(", ") }}{% endif %}
             </div>
+            {% if job.secret_metadata %}
+            <div class="color-fg-muted f6 mt-1">
+                Secrets:
+                {% for secret in job.secret_metadata %}
+                <code>{{ secret.key }}</code> from <code>{{ secret.name }}</code> ({{ secret.mode }}){% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
         {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
         <div class="d-flex flex-items-center" style="gap:6px;">
@@ -128,6 +136,21 @@
             <span>Stage: {{ selected_job.stage }}</span>
         </div>
     </div>
+    {% if selected_job.secret_metadata %}
+    <div class="Box-row">
+        <div class="text-bold mb-2">Secrets</div>
+        <ul class="mb-0">
+            {% for secret in selected_job.secret_metadata %}
+            <li>
+                <code>{{ secret.key }}</code> uses <code>{{ secret.name }}</code>
+                as {{ secret.mode }} from {{ secret.scope_type }}
+                scope {{ secret.environment_scope }}/{{ secret.branch_scope }}
+                {% if secret.protected %}<span class="Label Label--secondary ml-1">protected</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
     <div class="Box-row">
         <div class="mb-2">
             <a href="/api/v4/projects/{{ repo.id }}/jobs/{{ selected_job.id }}/trace">Trace API</a>

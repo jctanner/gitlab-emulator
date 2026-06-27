@@ -10,6 +10,8 @@ project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.
 GitLab-shaped global search now covers projects, issues, merge requests, and
 indexed code blobs.
+Pipeline and job API/UI surfaces now expose non-sensitive CI secret metadata
+for requested secrets without exposing secret values.
 Nested group namespaces are represented as organization-backed full paths and
 projects can be created under those nested namespaces.
 Validation currently passes locally and in the VM stack. The latest validation

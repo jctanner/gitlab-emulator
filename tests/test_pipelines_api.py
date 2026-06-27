@@ -2,6 +2,7 @@
 
 import base64
 import io
+import json
 import zipfile
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -1127,6 +1128,35 @@ secret_probe:
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
+    jobs = await client.get(f"{API}/projects/{project_id}/pipelines/{pipeline['id']}/jobs")
+    assert jobs.status_code == 200
+    job_payload = jobs.json()[0]
+    secret_metadata = {item["key"]: item for item in job_payload["secret_metadata"]}
+    assert secret_metadata["DB_PASSWORD"] == {
+        "key": "DB_PASSWORD",
+        "name": "DATABASE_PASSWORD",
+        "mode": "file",
+        "file": True,
+        "scope_type": "project",
+        "scope_id": project_id,
+        "environment_scope": "*",
+        "branch_scope": "*",
+        "protected": False,
+    }
+    assert secret_metadata["API_TOKEN"] == {
+        "key": "API_TOKEN",
+        "name": "GROUP_TOKEN",
+        "mode": "env",
+        "file": False,
+        "scope_type": "group",
+        "scope_id": group.json()["id"],
+        "environment_scope": "*",
+        "branch_scope": "*",
+        "protected": False,
+    }
+    serialized_job = json.dumps(job_payload)
+    assert "project-secret" not in serialized_job
+    assert "group-secret" not in serialized_job
 
     request = await client.post(
         f"{API}/jobs/request",
