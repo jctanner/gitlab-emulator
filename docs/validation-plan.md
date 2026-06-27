@@ -80,7 +80,9 @@ For Kubernetes executor validation, use:
 ```bash
 make vm-k8s-runner-up
 make vm-k8s-runner-validate
+make vm-k8s-runner-secret-validate
 make vm-k8s-incluster-validate
+make vm-k8s-incluster-secret-file-test
 ```
 
 This provisions k3s on the `k8s-runner` VM, registers an official GitLab

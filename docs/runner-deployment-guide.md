@@ -346,12 +346,14 @@ Kubernetes executor with runner on VM:
 
 ```bash
 make vm-k8s-runner-validate
+make vm-k8s-runner-secret-validate
 ```
 
 Kubernetes executor with runner manager in k3s:
 
 ```bash
 make vm-k8s-incluster-validate
+make vm-k8s-incluster-secret-file-test
 ```
 
 Useful inspection commands:

@@ -248,6 +248,16 @@ Validated on 2026-06-26:
 - The emulator now creates a distinct persisted runner token for each
   registration after the first backward-compatible static runner token.
 
+Validated on 2026-06-27:
+
+- `make vm-k8s-runner-secret-validate` passed.
+- File-mode secrets were readable from Kubernetes executor job pods and were
+  masked in stored traces.
+- Env-mode secrets were readable from Kubernetes executor job pods and were
+  masked in stored traces.
+- The redaction validation confirmed both secret values were absent from job
+  traces.
+
 ## In-Cluster Runner Slice
 
 Now that the VM-service runner works, validate running the runner itself inside
@@ -292,3 +302,9 @@ Validated on 2026-06-26:
 - k3s showed both the manager pod and a separate CI job pod in
   `gitlab-runner-incluster`.
 - Trace markers and artifact metadata were recorded by the emulator.
+
+Validated on 2026-06-27:
+
+- `make vm-k8s-incluster-secret-file-test` passed.
+- File-mode secrets were readable from a job pod created by the in-cluster
+  runner manager and were masked in stored traces.

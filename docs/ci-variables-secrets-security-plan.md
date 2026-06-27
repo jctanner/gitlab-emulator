@@ -509,6 +509,11 @@ Add Make targets:
 - `make vm-runner-secret-file-test`
 - `make vm-runner-secret-env-test`
 - `make vm-runner-redaction-test`
+- `make vm-k8s-runner-secret-file-test`
+- `make vm-k8s-runner-secret-env-test`
+- `make vm-k8s-runner-redaction-test`
+- `make vm-k8s-runner-secret-validate`
+- `make vm-k8s-incluster-secret-file-test`
 - `make vm-runner-security-diagnostics-test`
 
 Scenarios:
@@ -622,17 +627,16 @@ masked variables and `secrets:` values. Official Docker runner validation is
 available through `make vm-runner-secret-file-test`,
 `make vm-runner-secret-env-test`, and `make vm-runner-redaction-test`; the
 redaction target validates both file-mode and env-mode secret delivery plus
-stored trace masking.
+stored trace masking. Kubernetes executor validation reuses the same secret
+validation script with the `k8s` and `k8s-incluster` runner tags through
+`make vm-k8s-runner-secret-validate` and
+`make vm-k8s-incluster-secret-file-test`.
 
 Deliver:
 
 - Shared redaction engine for masked variables and secrets.
 - Official runner Docker validation.
 - Kubernetes runner validation.
-
-Deferred from this slice:
-
-- Kubernetes executor and in-cluster runner secret validation.
 
 ### Slice 8: Pipeline Security Settings and Diagnostics
 

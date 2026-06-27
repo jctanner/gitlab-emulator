@@ -22,7 +22,9 @@ The Kubernetes executor validation slice now provisions a `k8s-runner` VM with
 k3s, registers an official GitLab Runner using `executor = "kubernetes"`,
 passes `make vm-k8s-runner-validate` with trace and artifact round trips, and
 also passes `make vm-k8s-incluster-validate` with the runner manager itself
-running as a pod inside k3s.
+running as a pod inside k3s. Kubernetes secret validation now also passes for
+file-mode secrets, env-mode secrets, and trace redaction on the VM-service
+runner, plus file-mode secrets on the in-cluster runner.
 The first deeper resource-compatibility pass adds top-level project/group
 listing, project deletion, repository tree/raw file reads, merge request
 commits/changes, exact GitLab pagination totals plus query-preserving `Link`

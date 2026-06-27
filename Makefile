@@ -137,7 +137,7 @@ clean: down
 
 # Vagrant VM (Debian 12 + Docker, via libvirt/KVM)
 
-.PHONY: vm-net vm-up vm-sync vm-build vm-start vm-reset vm-stop vm-logs vm-deploy vm-deploy-reset vm-destroy vm-ssh vm-ip vm-test vm-git-test vm-glab vm-ci-lab-smoke vm-validate vm-validate-current vm-runner-validate vm-runner-variable-test vm-runner-secret-file-test vm-runner-secret-env-test vm-runner-redaction-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test vm-client-scripts-sync vm-client-install-glab vm-client-install-ca vm-client-sync vm-client-ssh vm-runner-sync vm-runner-ssh vm-runner-status vm-runner-cache-config vm-runner-ensure-ca vm-runner-install-ca vm-runner-register vm-k8s-runner-up vm-k8s-runner-sync vm-k8s-runner-ssh vm-k8s-runner-status vm-k8s-runner-logs vm-k8s-runner-pods vm-k8s-runner-install-ca vm-k8s-runner-register vm-k8s-runner-validate vm-k8s-incluster-sync vm-k8s-incluster-deploy vm-k8s-incluster-status vm-k8s-incluster-logs vm-k8s-incluster-pods vm-k8s-incluster-validate
+.PHONY: vm-net vm-up vm-sync vm-build vm-start vm-reset vm-stop vm-logs vm-deploy vm-deploy-reset vm-destroy vm-ssh vm-ip vm-test vm-git-test vm-glab vm-ci-lab-smoke vm-validate vm-validate-current vm-runner-validate vm-runner-variable-test vm-runner-secret-file-test vm-runner-secret-env-test vm-runner-redaction-test vm-runner-rules-test vm-runner-extends-test vm-runner-include-test vm-runner-cache-test vm-runner-artifact-needs-test vm-client-scripts-sync vm-client-install-glab vm-client-install-ca vm-client-sync vm-client-ssh vm-runner-sync vm-runner-ssh vm-runner-status vm-runner-cache-config vm-runner-ensure-ca vm-runner-install-ca vm-runner-register vm-k8s-runner-up vm-k8s-runner-sync vm-k8s-runner-ssh vm-k8s-runner-status vm-k8s-runner-logs vm-k8s-runner-pods vm-k8s-runner-install-ca vm-k8s-runner-register vm-k8s-runner-validate vm-k8s-runner-secret-validate vm-k8s-runner-secret-file-test vm-k8s-runner-secret-env-test vm-k8s-runner-redaction-test vm-k8s-incluster-sync vm-k8s-incluster-deploy vm-k8s-incluster-status vm-k8s-incluster-logs vm-k8s-incluster-pods vm-k8s-incluster-validate vm-k8s-incluster-secret-file-test
 
 VM_IP := 192.168.124.10
 RUNNER_IP := 192.168.124.12
@@ -438,6 +438,21 @@ vm-k8s-runner-validate: vm-client-scripts-sync vm-k8s-runner-install-ca vm-k8s-r
 	vagrant ssh client -c "bash /srv/scripts/k8s-runner-validation.sh"
 	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner -o wide"
 
+## Validate Kubernetes executor file/env secrets and trace redaction
+vm-k8s-runner-secret-validate: vm-k8s-runner-secret-file-test vm-k8s-runner-secret-env-test vm-k8s-runner-redaction-test
+
+## Validate Kubernetes executor file-mode CI secrets
+vm-k8s-runner-secret-file-test: vm-client-scripts-sync vm-k8s-runner-install-ca vm-k8s-runner-register
+	vagrant ssh client -c "PROJECT_NAME=k8s-runner-secret-file RUNNER_TAG=k8s SECRET_VALIDATION_MODE=file bash /srv/scripts/runner-secret-validation.sh"
+
+## Validate Kubernetes executor env-mode CI secrets
+vm-k8s-runner-secret-env-test: vm-client-scripts-sync vm-k8s-runner-install-ca vm-k8s-runner-register
+	vagrant ssh client -c "PROJECT_NAME=k8s-runner-secret-env RUNNER_TAG=k8s SECRET_VALIDATION_MODE=env bash /srv/scripts/runner-secret-validation.sh"
+
+## Validate Kubernetes executor secret trace redaction
+vm-k8s-runner-redaction-test: vm-client-scripts-sync vm-k8s-runner-install-ca vm-k8s-runner-register
+	vagrant ssh client -c "PROJECT_NAME=k8s-runner-secret-redaction RUNNER_TAG=k8s SECRET_VALIDATION_MODE=redaction bash /srv/scripts/runner-secret-validation.sh"
+
 ## Rsync in-cluster Kubernetes runner deployment helper to the k8s runner VM
 vm-k8s-incluster-sync: vm-k8s-runner-sync
 
@@ -461,4 +476,9 @@ vm-k8s-incluster-pods:
 ## Validate official GitLab Runner running as an in-cluster k3s Deployment
 vm-k8s-incluster-validate: vm-client-scripts-sync vm-k8s-incluster-deploy
 	vagrant ssh client -c "PROJECT_NAME=k8s-incluster-runner-probe RUNNER_TAG=k8s-incluster bash /srv/scripts/k8s-runner-validation.sh"
+	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner-incluster -o wide"
+
+## Validate in-cluster Kubernetes executor file-mode CI secrets
+vm-k8s-incluster-secret-file-test: vm-client-scripts-sync vm-k8s-incluster-deploy
+	vagrant ssh client -c "PROJECT_NAME=k8s-incluster-secret-file RUNNER_TAG=k8s-incluster SECRET_VALIDATION_MODE=file bash /srv/scripts/runner-secret-validation.sh"
 	vagrant ssh k8s-runner -c "sudo kubectl get pods -n gitlab-runner-incluster -o wide"
