@@ -644,27 +644,39 @@ Deliver:
 
 Status: implemented for the MVP. Strict security mode blocks pipeline creation
 for mutable image refs, variable image refs, unsafe remote includes, and
-unpinned remote includes. Pipeline variable override policy is enforced for
-`no_one_allowed`, and owner/maintainer settings require an authenticated
-project owner or site admin in the emulator's current role model.
+unpinned remote includes. Pipeline variable override policy is enforced against
+the emulator's GitLab-shaped access levels:
+
+- `developer`: Developer and higher.
+- `maintainer`: Maintainer and higher.
+- `owner`: Owner/site admin.
+- `no_one_allowed`: nobody.
+
+Project and group CI variables and secrets now require Maintainer or higher.
+Trigger-token and schedule-created pipelines keep their credentialed variable
+flows, while direct project pipeline creation checks the requesting user's
+project access level.
 
 Deliver:
 
-- Pipeline variable minimum role enforcement using current owner/admin model.
+- Shared GitLab access-level helper for Guest, Reporter, Developer,
+  Maintainer, and Owner.
+- Pipeline variable minimum role enforcement using project membership,
+  inherited group membership, project ownership, and site-admin status.
+- Maintainer-plus gates for project/group CI variables and secrets.
 - Strict-mode blocks for unsafe includes/images.
-- Tests for blocked pipeline creation and diagnostics.
+- Tests for blocked pipeline creation, diagnostics, and Maintainer vs
+  Developer vs Guest CI variable/secret access.
 
 Deferred from this slice:
 
-- Full GitLab role/member-level permission evaluation beyond owner/admin.
+- Full GitLab authorization parity across every non-CI project/group endpoint.
 
 ## Open Questions
 
 - Should emulator-native secrets APIs intentionally differ from GitLab while
   GitLab Secrets Manager remains beta, or should we wait for a stable REST
   contract?
-- Do we need a true role/member model before enforcing variable permissions, or
-  is owner/admin enough for this phase?
 - Should protected refs be modeled minimally as exact branch/tag names first,
   or should this depend on the protected branches API work?
 - Do we want security diagnostics to be warnings-only by default in every

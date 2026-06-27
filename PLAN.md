@@ -287,7 +287,9 @@ Done when:
 - Full GitLab GraphQL parity.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
-- Full GitLab authorization and permission model.
+- Full GitLab authorization parity across all endpoints. The MVP CI
+  variable/secret and pipeline-variable gates now use GitLab-shaped access
+  levels, but most non-CI endpoints still need broader permission hardening.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Kubernetes runner/executor support. The current validation path is a true
   runner VM with the official runner and Docker executor.

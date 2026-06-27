@@ -31,6 +31,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import _fmt_dt
 from app.services.ci_security import normalize_ci_security_settings
+from app.services.permissions import MAINTAINER, require_project_access
 
 router = APIRouter(tags=["projects"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -161,6 +162,10 @@ async def _get_project_or_404(
 def _require_project_owner(project: Project, user: User) -> None:
     if not user.site_admin and project.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+async def _require_project_maintainer(project: Project, user: User, db: DbSession) -> None:
+    await require_project_access(project, user, db, MAINTAINER)
 
 
 def _validate_variable_key(key: str) -> str:
@@ -1122,7 +1127,7 @@ async def list_project_variables(
 ):
     """List project CI/CD variables."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     query = select(CiVariable).where(
         CiVariable.scope_type == "project",
         CiVariable.scope_id == project.id,
@@ -1142,7 +1147,7 @@ async def get_project_ci_security_settings(
 ):
     """Get emulator CI security settings for a project."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     return normalize_ci_security_settings(project.ci_security_settings)
 
 
@@ -1155,7 +1160,7 @@ async def update_project_ci_security_settings(
 ):
     """Update emulator CI security settings for a project."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     settings = normalize_ci_security_settings(project.ci_security_settings)
     if body.ci_pipeline_variables_minimum_override_role is not None:
         role = body.ci_pipeline_variables_minimum_override_role
@@ -1179,7 +1184,7 @@ async def create_project_variable(
 ):
     """Create a project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     variable = CiVariable(
         scope_type="project",
         scope_id=project.id,
@@ -1212,7 +1217,7 @@ async def get_project_variable(
 ):
     """Get one project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     variable = await _get_project_variable_or_404(project, db, key, environment_scope)
     return _variable_json(variable)
 
@@ -1228,7 +1233,7 @@ async def update_project_variable(
 ):
     """Update one project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     variable = await _get_project_variable_or_404(project, db, key, environment_scope)
     if body.value is not None:
         variable.value = body.value
@@ -1268,7 +1273,7 @@ async def delete_project_variable(
 ):
     """Delete one project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     variable = await _get_project_variable_or_404(project, db, key, environment_scope)
     await db.delete(variable)
     await db.commit()
@@ -1285,7 +1290,7 @@ async def list_project_secrets(
 ):
     """List project CI/CD secrets."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     query = select(CiSecret).where(
         CiSecret.scope_type == "project",
         CiSecret.scope_id == project.id,
@@ -1308,7 +1313,7 @@ async def create_project_secret(
 ):
     """Create a project CI/CD secret."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     secret = CiSecret(
         scope_type="project",
         scope_id=project.id,
@@ -1342,7 +1347,7 @@ async def get_project_secret(
 ):
     """Get a project CI/CD secret by name."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     secret = await _get_project_secret_or_404(
         project,
         db,
@@ -1365,7 +1370,7 @@ async def update_project_secret(
 ):
     """Update a project CI/CD secret."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     secret = await _get_project_secret_or_404(
         project,
         db,
@@ -1407,7 +1412,7 @@ async def delete_project_secret(
 ):
     """Delete a project CI/CD secret."""
     project = await _get_project_or_404(project_ref, db, user)
-    _require_project_owner(project, user)
+    await _require_project_maintainer(project, user, db)
     secret = await _get_project_secret_or_404(
         project,
         db,

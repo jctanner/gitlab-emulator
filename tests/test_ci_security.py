@@ -1,10 +1,11 @@
 """CI security diagnostic tests."""
 
 from app.services.ci_security import (
+    pipeline_variable_policy,
     pipeline_security_warnings,
-    pipeline_variables_allowed_for_user,
     strict_security_blocks,
 )
+from app.services.permissions import pipeline_variables_allowed_for_access_level
 from app.services.ci_yaml import ParsedCiJob
 
 
@@ -56,29 +57,19 @@ def test_ci_security_strict_blocks_only_strict_block_types():
     ]
 
 
-def test_ci_security_pipeline_variable_gate_uses_owner_admin_or_no_one():
-    class User:
-        def __init__(self, user_id, site_admin=False):
-            self.id = user_id
-            self.site_admin = site_admin
-
-    assert not pipeline_variables_allowed_for_user(
-        settings={"ci_pipeline_variables_minimum_override_role": "no_one_allowed"},
-        project_owner_id=1,
-        user=User(1),
+def test_ci_security_pipeline_variable_gate_uses_gitlab_access_levels():
+    assert pipeline_variable_policy(
+        {"ci_pipeline_variables_minimum_override_role": "owner"}
+    ) == "owner"
+    assert not pipeline_variables_allowed_for_access_level(
+        policy="no_one_allowed", access_level=50
     )
-    assert not pipeline_variables_allowed_for_user(
-        settings={"ci_pipeline_variables_minimum_override_role": "owner"},
-        project_owner_id=1,
-        user=None,
+    assert not pipeline_variables_allowed_for_access_level(
+        policy="owner", access_level=40
     )
-    assert pipeline_variables_allowed_for_user(
-        settings={"ci_pipeline_variables_minimum_override_role": "owner"},
-        project_owner_id=1,
-        user=User(1),
+    assert pipeline_variables_allowed_for_access_level(
+        policy="maintainer", access_level=40
     )
-    assert pipeline_variables_allowed_for_user(
-        settings={"ci_pipeline_variables_minimum_override_role": "maintainer"},
-        project_owner_id=1,
-        user=User(2, site_admin=True),
+    assert pipeline_variables_allowed_for_access_level(
+        policy="developer", access_level=30
     )

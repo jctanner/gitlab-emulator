@@ -1,14 +1,46 @@
 """Tests for GitLab-shaped project API endpoints."""
 
 import asyncio
+import hashlib
 import json
 import os
+import secrets
 
 import pytest
 
 from tests.conftest import auth_headers
 
 API = "/api/v4"
+
+
+async def _create_user_and_token(db_session, login: str):
+    from app.models.token import PersonalAccessToken
+    from app.models.user import User
+
+    user = User(
+        login=login,
+        hashed_password=hashlib.sha256(login.encode()).hexdigest(),
+        name=login,
+        email=f"{login}@test.com",
+        site_admin=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_token = f"ghp_{secrets.token_hex(20)}"
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    db_session.add(
+        PersonalAccessToken(
+            user_id=user.id,
+            name=f"{login}-token",
+            token_hash=token_hash,
+            token_prefix=raw_token[:8],
+            scopes=["repo", "user"],
+        )
+    )
+    await db_session.commit()
+    return user, raw_token
 
 
 @pytest.mark.asyncio
@@ -352,6 +384,63 @@ async def test_project_variable_rejects_invalid_key(client, test_user, test_toke
     )
 
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_project_ci_variables_and_secrets_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "project-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "project-developer"
+    )
+    guest, guest_token = await _create_user_and_token(db_session, "project-guest")
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "role-bound-project-ci"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    for user, level in ((maintainer, 40), (developer, 30), (guest, 10)):
+        resp = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert resp.status_code == 201
+
+    allowed_variable = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={"key": "MAINTAINER_ONLY", "value": "allowed"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed_variable.status_code == 201
+
+    allowed_secret = await client.post(
+        f"{API}/projects/{project_id}/secrets",
+        json={"name": "MAINTAINER_SECRET", "value": "allowed"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed_secret.status_code == 201
+
+    for token in (developer_token, guest_token):
+        denied_variable = await client.post(
+            f"{API}/projects/{project_id}/variables",
+            json={"key": "DENIED", "value": "nope"},
+            headers=auth_headers(token),
+        )
+        assert denied_variable.status_code == 403
+
+        denied_secret = await client.post(
+            f"{API}/projects/{project_id}/secrets",
+            json={"name": "DENIED_SECRET", "value": "nope"},
+            headers=auth_headers(token),
+        )
+        assert denied_secret.status_code == 403
 
 
 @pytest.mark.asyncio

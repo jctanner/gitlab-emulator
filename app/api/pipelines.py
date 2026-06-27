@@ -34,13 +34,17 @@ from app.models.ci import (
 from app.models.project import Project
 from app.schemas.user import _fmt_dt
 from app.services.ci_security import (
+    pipeline_variable_policy,
     pipeline_security_warnings,
-    pipeline_variables_allowed_for_user,
     strict_security_blocks,
 )
 from app.services.ci_secrets import ci_secret_metadata_entry, project_secret_entries
 from app.services.ci_variables import project_variable_entries
 from app.services.ci_yaml import ParsedCiJob, parse_gitlab_ci
+from app.services.permissions import (
+    pipeline_variables_allowed_for_access_level,
+    project_access_level,
+)
 
 router = APIRouter(tags=["pipelines"])
 
@@ -752,15 +756,16 @@ async def _create_pipeline(
     if sha == "0000000000000000000000000000000000000000":
         sha = await _resolve_ref(project, body.ref)
 
-    if body.variables and not pipeline_variables_allowed_for_user(
-        settings=project.ci_security_settings,
-        project_owner_id=project.owner_id,
-        user=actor,
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Pipeline variables are not allowed by project CI security settings",
-        )
+    if body.variables and source not in {"trigger", "schedule"}:
+        access_level = await project_access_level(project, actor, db)
+        if not pipeline_variables_allowed_for_access_level(
+            policy=pipeline_variable_policy(project.ci_security_settings),
+            access_level=access_level,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Pipeline variables are not allowed by project CI security settings",
+            )
 
     if body.job is not None:
         parsed_jobs = [

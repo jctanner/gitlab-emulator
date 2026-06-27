@@ -1,10 +1,41 @@
 """Tests for GitLab-shaped group API endpoints."""
 
+import hashlib
 import json
+import secrets
 
 import pytest
 
 from tests.conftest import API, auth_headers
+
+
+async def _create_user_and_token(db_session, login: str):
+    from app.models.token import PersonalAccessToken
+    from app.models.user import User
+
+    user = User(
+        login=login,
+        hashed_password=hashlib.sha256(login.encode()).hexdigest(),
+        name=login,
+        email=f"{login}@test.com",
+        site_admin=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_token = f"ghp_{secrets.token_hex(20)}"
+    db_session.add(
+        PersonalAccessToken(
+            user_id=user.id,
+            name=f"{login}-token",
+            token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+            token_prefix=raw_token[:8],
+            scopes=["repo", "user"],
+        )
+    )
+    await db_session.commit()
+    return user, raw_token
 
 
 @pytest.mark.asyncio
@@ -153,7 +184,10 @@ async def test_list_groups_owned_and_min_access_level_filters(client, test_token
         headers=auth_headers(test_token),
     )
     assert maintainers.status_code == 200
-    assert maintainers.json() == []
+    assert [group["full_path"] for group in maintainers.json()] == [
+        "owned-filter",
+        "owned-filter-two",
+    ]
 
 
 @pytest.mark.asyncio
@@ -576,6 +610,64 @@ async def test_group_variable_rejects_invalid_key(client, test_user, test_token)
     )
 
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_group_ci_variables_and_secrets_require_maintainer(
+    client, db_session, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "group-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "group-developer"
+    )
+    guest, guest_token = await _create_user_and_token(db_session, "group-guest")
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "role-bound-group-ci", "name": "Role Bound Group CI"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+
+    for user, level in ((maintainer, 40), (developer, 30), (guest, 10)):
+        resp = await client.post(
+            f"{API}/groups/{group_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["access_level"] == level
+
+    allowed_variable = await client.post(
+        f"{API}/groups/{group_id}/variables",
+        json={"key": "MAINTAINER_ONLY", "value": "allowed"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed_variable.status_code == 201
+
+    allowed_secret = await client.post(
+        f"{API}/groups/{group_id}/secrets",
+        json={"name": "MAINTAINER_SECRET", "value": "allowed"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed_secret.status_code == 201
+
+    for token in (developer_token, guest_token):
+        denied_variable = await client.post(
+            f"{API}/groups/{group_id}/variables",
+            json={"key": "DENIED", "value": "nope"},
+            headers=auth_headers(token),
+        )
+        assert denied_variable.status_code == 403
+
+        denied_secret = await client.post(
+            f"{API}/groups/{group_id}/secrets",
+            json={"name": "DENIED_SECRET", "value": "nope"},
+            headers=auth_headers(token),
+        )
+        assert denied_secret.status_code == 403
 
 
 @pytest.mark.asyncio

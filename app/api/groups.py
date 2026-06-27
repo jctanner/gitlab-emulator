@@ -20,6 +20,13 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import SimpleUser
 from app.schemas.user import _fmt_dt
+from app.services.permissions import (
+    MAINTAINER,
+    OWNER,
+    access_level_for_role,
+    group_role_for_access_level,
+    require_group_access,
+)
 
 router = APIRouter(tags=["groups"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -84,18 +91,11 @@ async def _get_group_or_404(group_ref: str, db: DbSession) -> Group:
 
 
 async def _require_group_owner(group: Group, user: User, db: DbSession) -> None:
-    if user.site_admin:
-        return
-    result = await db.execute(
-        select(OrgMembership).where(
-            OrgMembership.org_id == group.id,
-            OrgMembership.user_id == user.id,
-            OrgMembership.role == "admin",
-            OrgMembership.state == "active",
-        )
-    )
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    await require_group_access(group, user, db, OWNER)
+
+
+async def _require_group_maintainer(group: Group, user: User, db: DbSession) -> None:
+    await require_group_access(group, user, db, MAINTAINER)
 
 
 def _validate_variable_key(key: str) -> str:
@@ -303,11 +303,11 @@ def _ordered_groups_query(query: Select, order_by: str, sort: str) -> Select:
 
 
 def _group_access_level(role: str) -> int:
-    return 50 if role == "admin" else 30
+    return access_level_for_role(role)
 
 
 def _group_role(access_level: int) -> str:
-    return "admin" if access_level >= 50 else "member"
+    return group_role_for_access_level(access_level)
 
 
 def _member_json(
@@ -416,10 +416,20 @@ async def list_groups(
             if owned:
                 query = query.where(OrgMembership.role == "admin")
             if min_access_level is not None:
-                if min_access_level >= 50:
-                    query = query.where(OrgMembership.role == "admin")
-                elif min_access_level > 30:
-                    query = query.where(False)
+                eligible_roles = [
+                    role
+                    for role in {
+                        "guest",
+                        "reporter",
+                        "member",
+                        "developer",
+                        "maintainer",
+                        "admin",
+                        "owner",
+                    }
+                    if access_level_for_role(role) >= min_access_level
+                ]
+                query = query.where(OrgMembership.role.in_(eligible_roles))
     # ``all_available`` is accepted for GitLab client compatibility. This
     # emulator does not model private group visibility beyond membership yet.
     _ = all_available
@@ -650,7 +660,7 @@ async def list_group_variables(
 ):
     """List group CI/CD variables."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     query = select(CiVariable).where(
         CiVariable.scope_type == "group",
         CiVariable.scope_id == group.id,
@@ -671,7 +681,7 @@ async def create_group_variable(
 ):
     """Create a group CI/CD variable."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     variable = CiVariable(
         scope_type="group",
         scope_id=group.id,
@@ -704,7 +714,7 @@ async def get_group_variable(
 ):
     """Get a group CI/CD variable by key."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     variable = await _get_group_variable_or_404(group, db, key, environment_scope)
     return _variable_json(variable)
 
@@ -720,7 +730,7 @@ async def update_group_variable(
 ):
     """Update a group CI/CD variable."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     variable = await _get_group_variable_or_404(group, db, key, environment_scope)
     if body.value is not None:
         variable.value = body.value
@@ -760,7 +770,7 @@ async def delete_group_variable(
 ):
     """Delete a group CI/CD variable."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     variable = await _get_group_variable_or_404(group, db, key, environment_scope)
     await db.delete(variable)
     await db.commit()
@@ -777,7 +787,7 @@ async def list_group_secrets(
 ):
     """List group CI/CD secrets."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     query = select(CiSecret).where(
         CiSecret.scope_type == "group",
         CiSecret.scope_id == group.id,
@@ -800,7 +810,7 @@ async def create_group_secret(
 ):
     """Create a group CI/CD secret."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     secret = CiSecret(
         scope_type="group",
         scope_id=group.id,
@@ -834,7 +844,7 @@ async def get_group_secret(
 ):
     """Get a group CI/CD secret by name."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     secret = await _get_group_secret_or_404(
         group,
         db,
@@ -857,7 +867,7 @@ async def update_group_secret(
 ):
     """Update a group CI/CD secret."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     secret = await _get_group_secret_or_404(
         group,
         db,
@@ -899,7 +909,7 @@ async def delete_group_secret(
 ):
     """Delete a group CI/CD secret."""
     group = await _get_group_or_404(group_ref, db)
-    await _require_group_owner(group, user, db)
+    await _require_group_maintainer(group, user, db)
     secret = await _get_group_secret_or_404(
         group,
         db,

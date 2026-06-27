@@ -174,23 +174,8 @@ def strict_security_blocks(warnings: list[dict], settings: dict | None = None) -
     ]
 
 
-def pipeline_variables_allowed_for_user(
-    *,
-    settings: dict | None,
-    project_owner_id: int,
-    user: Any | None,
-) -> bool:
+def pipeline_variable_policy(settings: dict | None) -> str:
     role = normalize_ci_security_settings(settings)[
         "ci_pipeline_variables_minimum_override_role"
     ]
-    if role == "no_one_allowed":
-        return False
-    if role in {"owner", "maintainer"}:
-        return bool(
-            user
-            and (
-                getattr(user, "site_admin", False)
-                or getattr(user, "id", None) == project_owner_id
-            )
-        )
-    return True
+    return str(role)

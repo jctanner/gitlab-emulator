@@ -65,6 +65,7 @@ async def test_pipeline_security_warnings_are_stored_and_diagnosed(client, test_
 
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(test_token),
         json={
             "ref": "main",
             "variables": [{"key": "CI_COMMIT_SHA", "value": "override"}],
@@ -117,9 +118,25 @@ async def test_strict_security_mode_blocks_unsafe_pipeline(client, test_token):
 
 
 async def test_pipeline_variable_security_gate_blocks_and_allows_owner(
-    client, test_token
+    client, db_session, test_token
 ):
+    from tests.test_projects_api import _create_user_and_token
+
     project = await _create_project(client, test_token)
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "pipeline-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "pipeline-developer"
+    )
+    for user, level in ((maintainer, 40), (developer, 30)):
+        member = await client.post(
+            f"{API}/projects/{project['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
     no_one = await client.put(
         f"{API}/projects/{project['id']}/ci/security_settings",
         headers=auth_headers(test_token),
@@ -156,6 +173,17 @@ async def test_pipeline_variable_security_gate_blocks_and_allows_owner(
     )
     assert anonymous.status_code == 400
 
+    developer_denied = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(developer_token),
+        json={
+            "ref": "main",
+            "variables": [{"key": "CUSTOM", "value": "developer"}],
+            "job": {"name": "vars", "script": ["echo vars"]},
+        },
+    )
+    assert developer_denied.status_code == 400
+
     allowed = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         headers=auth_headers(test_token),
@@ -166,6 +194,24 @@ async def test_pipeline_variable_security_gate_blocks_and_allows_owner(
         },
     )
     assert allowed.status_code == 201
+
+    maintainer_only = await client.put(
+        f"{API}/projects/{project['id']}/ci/security_settings",
+        headers=auth_headers(test_token),
+        json={"ci_pipeline_variables_minimum_override_role": "maintainer"},
+    )
+    assert maintainer_only.status_code == 200
+
+    maintainer_allowed = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(maintainer_token),
+        json={
+            "ref": "main",
+            "variables": [{"key": "CUSTOM", "value": "maintainer"}],
+            "job": {"name": "vars", "script": ["echo vars"]},
+        },
+    )
+    assert maintainer_allowed.status_code == 201
 
 
 async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
@@ -811,6 +857,7 @@ vars:
 
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(test_token),
         json={
             "ref": "main",
             "variables": [
@@ -895,6 +942,7 @@ project_probe:
 
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(test_token),
         json={
             "ref": "main",
             "variables": [
@@ -1413,6 +1461,7 @@ metadata_probe:
     assert write.status_code == 201
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
+        headers=auth_headers(test_token),
         json={
             "ref": "main",
             "variables": [
