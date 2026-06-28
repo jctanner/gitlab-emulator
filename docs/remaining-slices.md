@@ -375,8 +375,9 @@ Done when:
 
 - Full GitLab GraphQL parity. The current compatibility surface includes
   GitLab-shaped `currentUser`, `project(fullPath:)`, and repository
-  `mergeRequests` aliases backed by the existing user/project/MR models, but
-  the broader schema remains an incremental parity area.
+  `mergeRequests` aliases backed by the existing user/project/MR models.
+  Repository `latestRelease` now resolves real release metadata. The broader
+  schema remains an incremental parity area.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,

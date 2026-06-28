@@ -60,6 +60,63 @@ async def test_graphql_repository(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_latest_release(client, test_user, test_token):
+    """Repository latestRelease resolves from real release data."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-latest-release", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    first = await client.post(
+        f"{API}/projects/{project['id']}/releases",
+        json={"tag_name": "v1.0.0", "name": "First Release", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert first.status_code == 201
+    latest = await client.post(
+        f"{API}/projects/{project['id']}/releases",
+        json={
+            "tag_name": "v2.0.0",
+            "name": "Latest Release",
+            "ref": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert latest.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                { repository(owner: "testuser", name: "gql-latest-release") {
+                    latestRelease {
+                        name
+                        tagName
+                        isDraft
+                        isPrerelease
+                        publishedAt
+                    }
+                }}
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    release = data["data"]["repository"]["latestRelease"]
+    assert release["name"] == "Latest Release"
+    assert release["tagName"] == "v2.0.0"
+    assert release["isDraft"] is False
+    assert release["isPrerelease"] is False
+    assert release["publishedAt"]
+
+
+@pytest.mark.asyncio
 async def test_graphql_user(client, test_user, test_token):
     """Query user returns user details."""
     resp = await client.post(

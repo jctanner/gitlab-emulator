@@ -304,8 +304,30 @@ class Repository:
         return []
 
     @strawberry.field
-    def latest_release(self) -> Optional[ReleaseStub]:
-        return None
+    async def latest_release(self, info: Info) -> Optional[ReleaseStub]:
+        from app.models.release import Release
+
+        db = info.context["db"]
+        result = await db.execute(
+            select(Release)
+            .where(Release.repo_id == self.database_id)
+            .order_by(
+                sa_func.coalesce(Release.published_at, Release.created_at).desc(),
+                Release.id.desc(),
+            )
+            .limit(1)
+        )
+        release = result.scalar_one_or_none()
+        if release is None:
+            return None
+        published_at = release.published_at or release.created_at
+        return ReleaseStub(
+            name=release.name,
+            tag_name=release.tag_name,
+            is_draft=release.draft,
+            is_prerelease=release.prerelease,
+            published_at=published_at.isoformat() if published_at else None,
+        )
 
     @strawberry.field
     def assignable_users(self) -> Connection[GitLabUser]:
