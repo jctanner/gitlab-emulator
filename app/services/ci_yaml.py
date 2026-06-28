@@ -38,7 +38,6 @@ MAX_EXTENDS_DEPTH = 11
 UNSUPPORTED_JOB_KEYS = {
     "parallel": "parallel job expansion is not supported",
     "services": "service containers are not supported",
-    "start_in": "delayed jobs are not supported",
     "trigger": "bridge/downstream pipeline trigger jobs are not supported",
 }
 SUPPORTED_CACHE_ENTRY_KEYS = {
@@ -51,7 +50,14 @@ SUPPORTED_CACHE_ENTRY_KEYS = {
 }
 SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
 SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
-SUPPORTED_JOB_WHEN = {"on_success", "on_failure", "always", "manual", "never"}
+SUPPORTED_JOB_WHEN = {
+    "on_success",
+    "on_failure",
+    "always",
+    "manual",
+    "never",
+    "delayed",
+}
 
 
 @dataclass
@@ -69,6 +75,7 @@ class ParsedCiJob:
     artifacts_paths: list[str] = field(default_factory=list)
     artifacts: dict = field(default_factory=dict)
     when: str = "on_success"
+    start_in_seconds: int | None = None
     allow_failure: bool = False
     environment: str | None = None
     secrets: dict[str, dict] = field(default_factory=dict)
@@ -385,6 +392,7 @@ def _ref_matches(pattern: str, ref: str, ref_kind: str, source: str) -> bool:
 class _RuleDecision:
     included: bool
     when: str = "on_success"
+    start_in: str | None = None
     allow_failure: bool | None = None
     variables: dict[str, dict] = field(default_factory=dict)
 
@@ -397,11 +405,58 @@ def _allow_failure_setting(value: Any) -> bool:
 
 def _when_setting(value: Any) -> str:
     when = str(value or "on_success")
-    if when == "delayed":
-        raise ValueError("when delayed is not supported")
     if when not in SUPPORTED_JOB_WHEN:
         raise ValueError(f"when value is not supported: {when}")
     return when
+
+
+def _start_in_seconds(value: Any) -> int:
+    if value is None:
+        raise ValueError("start_in is required when when delayed is used")
+    raw = str(value).strip().lower()
+    match = re.fullmatch(r"(\d+)\s*([a-z]+)", raw)
+    if not match:
+        raise ValueError(f"start_in value is not supported: {value}")
+    amount = int(match.group(1))
+    unit = match.group(2)
+    seconds_by_unit = {
+        "second": 1,
+        "seconds": 1,
+        "sec": 1,
+        "secs": 1,
+        "s": 1,
+        "minute": 60,
+        "minutes": 60,
+        "min": 60,
+        "mins": 60,
+        "m": 60,
+        "hour": 3600,
+        "hours": 3600,
+        "hr": 3600,
+        "hrs": 3600,
+        "h": 3600,
+        "day": 86400,
+        "days": 86400,
+        "d": 86400,
+        "week": 604800,
+        "weeks": 604800,
+        "w": 604800,
+    }
+    multiplier = seconds_by_unit.get(unit)
+    if multiplier is None:
+        raise ValueError(f"start_in unit is not supported: {unit}")
+    if amount <= 0:
+        raise ValueError("start_in must be greater than zero")
+    return amount * multiplier
+
+
+def _delayed_start_in_seconds(config: dict, decision: _RuleDecision) -> int | None:
+    start_in = decision.start_in if decision.start_in is not None else config.get("start_in")
+    if decision.when == "delayed":
+        return _start_in_seconds(start_in)
+    if start_in is not None:
+        raise ValueError("start_in is only supported with when delayed")
+    return None
 
 
 def _unquote(value: str) -> str:
@@ -644,6 +699,7 @@ def _job_rule_decision(
             return _RuleDecision(
                 included=when != "never",
                 when=when,
+                start_in=rule.get("start_in"),
                 allow_failure=_allow_failure_setting(allow_failure)
                 if allow_failure is not None
                 else None,
@@ -664,7 +720,11 @@ def _job_rule_decision(
         return _RuleDecision(included=False)
 
     when = _when_setting(config.get("when"))
-    return _RuleDecision(included=when != "never", when=when)
+    return _RuleDecision(
+        included=when != "never",
+        when=when,
+        start_in=config.get("start_in"),
+    )
 
 
 def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
@@ -960,6 +1020,7 @@ def parse_gitlab_ci(
                 artifacts_paths=artifact_paths,
                 artifacts=artifact_config,
                 when=decision.when,
+                start_in_seconds=_delayed_start_in_seconds(config, decision),
                 allow_failure=_allow_failure(config, decision),
                 environment=_environment_name(config.get("environment")),
                 secrets=_secret_entries(config.get("secrets")),

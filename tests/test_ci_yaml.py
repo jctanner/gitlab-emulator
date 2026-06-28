@@ -828,7 +828,29 @@ manual_job:
     assert jobs[0].allow_failure is True
 
 
-def test_parse_gitlab_ci_rejects_delayed_jobs():
+def test_parse_gitlab_ci_supports_delayed_jobs():
+    jobs = parse_gitlab_ci(
+        """
+delayed_job:
+  script: echo delayed
+  when: delayed
+  start_in: 10 minutes
+rule_delayed:
+  script: echo rule delayed
+  rules:
+    - when: delayed
+      start_in: 2 hours
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["delayed_job"].when == "delayed"
+    assert by_name["delayed_job"].start_in_seconds == 600
+    assert by_name["rule_delayed"].when == "delayed"
+    assert by_name["rule_delayed"].start_in_seconds == 7200
+
+
+def test_parse_gitlab_ci_rejects_invalid_delayed_jobs():
     for content in [
         """
 delayed_job:
@@ -845,6 +867,12 @@ delayed_job:
 delayed_job:
   script: echo delayed
   start_in: 10 minutes
+""",
+        """
+delayed_job:
+  script: echo delayed
+  when: delayed
+  start_in: soon
 """,
     ]:
         try:

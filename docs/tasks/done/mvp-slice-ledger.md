@@ -27,7 +27,8 @@ Pipeline schedule CRUD, manual Play, and automatic cron materialization of due
 schedules create `source=schedule` pipelines through the persisted job path.
 Runner-side job scheduling is implemented as persisted pending-job eligibility
 over stage order, `needs`, manual state, runner tags, runner pause/lock state,
-and `run_untagged`; delayed/timer jobs remain explicitly unsupported.
+`run_untagged`, and delayed jobs promoted from `scheduled` to `pending` when
+their `start_in` delay is due.
 GitLab-shaped global search now covers projects, issues, merge requests, and
 indexed code blobs. GitLab-shaped project labels and milestones now expose
 MVP list/create/get/update/delete surfaces with pagination, encoded project
@@ -447,9 +448,11 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
-- Delayed/timer job queues. Current support covers pipeline schedule CRUD,
-  manual Play, automatic cron materialization through the schedule worker, and
-  runner-side pending-job eligibility, but not delayed/timer jobs.
+- Full timer parity beyond delayed jobs. Current support covers pipeline
+  schedule CRUD, manual Play, automatic cron materialization through the
+  schedule worker, delayed jobs with `when: delayed`/`start_in`, and
+  runner-side pending-job eligibility. A standalone background timer service
+  that promotes due delayed jobs without runner polling remains deferred.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses, and admin bootstrap user/token
   helper endpoints require an authenticated site admin; broader hardening

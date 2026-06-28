@@ -927,7 +927,7 @@ async def ci_lab_cancel_pipeline(
         return _ci_lab_redirect(project_id=project_id, flash_message="Pipeline not found.", flash_type="error")
     now = datetime.now(timezone.utc)
     for job in pipeline.jobs:
-        if job.status in {"pending", "running", "manual"}:
+        if job.status in {"pending", "running", "manual", "scheduled"}:
             job.status = "canceled"
             job.finished_at = job.finished_at or now
     pipeline.status = "canceled"
@@ -988,7 +988,7 @@ async def ci_lab_job_action(
         job.exit_code = None
         message = "Job queued."
     elif action == "cancel":
-        if job.status in {"pending", "running", "manual"}:
+        if job.status in {"pending", "running", "manual", "scheduled"}:
             job.status = "canceled"
             job.finished_at = job.finished_at or now
         message = "Job canceled."
@@ -1005,7 +1005,7 @@ async def ci_lab_job_action(
                 flash_type="error",
             )
     elif action == "requeue":
-        if job.status in {"pending", "running"}:
+        if job.status in {"pending", "running", "scheduled"}:
             _requeue_stale_or_pending_job(job, now)
             message = "Job requeued."
         else:
@@ -1013,7 +1013,7 @@ async def ci_lab_job_action(
                 project_id=project_id,
                 pipeline_id=pipeline_id,
                 job_id=job_id,
-                flash_message="Only pending or running jobs can be requeued.",
+                flash_message="Only pending, running, or scheduled jobs can be requeued.",
                 flash_type="error",
             )
     else:

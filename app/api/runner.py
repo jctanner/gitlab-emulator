@@ -122,6 +122,13 @@ def _elapsed_seconds(since: datetime | None, now: datetime) -> int | None:
     return max(0, int((now - aware).total_seconds()))
 
 
+def _iso_utc(value: datetime | None) -> str | None:
+    aware = _aware_utc(value)
+    if aware is None:
+        return None
+    return aware.isoformat().replace("+00:00", "Z")
+
+
 def _runner_response(runner: CiRunner) -> dict:
     return {
         "id": runner.id,
@@ -314,7 +321,24 @@ def explain_job_scheduling(
         blocked = False
         eligible = job.status == "pending"
 
-        if job.status == "pending":
+        if job.status == "scheduled":
+            scheduled_at = _aware_utc(job.scheduled_at)
+            blocked = True
+            if scheduled_at is None:
+                reason = "delayed job is missing scheduled_at; runner poll will promote it"
+            elif scheduled_at <= now:
+                reason = "delayed job is due; runner poll will promote it"
+            else:
+                reason = f"delayed until {_iso_utc(scheduled_at)}"
+            reasons.append(reason)
+            blockers.append(
+                {
+                    "type": "delayed",
+                    "scheduled_at": _iso_utc(scheduled_at),
+                    "reason": reason,
+                }
+            )
+        elif job.status == "pending":
             job_runs_after_failure = _job_runs_after_failure(job)
             if _job_waits_for_failure(job) and not _job_has_required_failure_dependency(
                 job
@@ -456,7 +480,7 @@ def explain_job_scheduling(
             if job.status == "running"
             else None,
             "recovery": {
-                "operator_requeue": job.status in {"pending", "running"},
+                "operator_requeue": job.status in {"pending", "running", "scheduled"},
                 "gitlab_compatible_flow": "cancel_then_retry"
                 if job.status == "running"
                 else None,
@@ -723,7 +747,9 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
                 "name": "script",
                 "script": job.script or [],
                 "timeout": 3600,
-                "when": job.when or "on_success",
+                "when": "on_success"
+                if (job.when or "on_success") == "delayed"
+                else job.when or "on_success",
                 "allow_failure": bool(job.allow_failure),
             }
         ],
@@ -768,7 +794,8 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
     elif any(job_status == "canceled" for job_status in blocking_statuses) and not any(
-        job_status in {"pending", "running"} for job_status in blocking_statuses
+        job_status in {"pending", "running", "scheduled"}
+        for job_status in blocking_statuses
     ):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
@@ -776,7 +803,7 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.status = "running"
         pipeline.started_at = pipeline.started_at or now
         pipeline.finished_at = None
-    elif any(job_status == "pending" for job_status in blocking_statuses):
+    elif any(job_status in {"pending", "scheduled"} for job_status in blocking_statuses):
         pipeline.status = "pending"
         pipeline.finished_at = None
     elif any(job_status == "failed" for job_status in blocking_statuses):
@@ -888,6 +915,27 @@ def _runner_can_run_job(job: PipelineJob, body: JobRequest, runner: CiRunner) ->
     return job_tags.issubset(runner_tags)
 
 
+async def _promote_due_scheduled_jobs(db: DbSession) -> None:
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(PipelineJob)
+        .options(selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs))
+        .where(PipelineJob.status == "scheduled")
+        .order_by(PipelineJob.stage_index.asc(), PipelineJob.id.asc())
+    )
+    for job in result.scalars().all():
+        scheduled_at = _aware_utc(job.scheduled_at)
+        if scheduled_at is not None and scheduled_at > now:
+            continue
+        job.status = "pending"
+        job.queued_at = now
+        job.scheduled_at = None
+        if job.pipeline.status not in {"running", "pending"}:
+            job.pipeline.status = "pending"
+            job.pipeline.finished_at = None
+    await db.flush()
+
+
 def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     failed_stage_indexes = [
         job.stage_index
@@ -908,7 +956,7 @@ def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
         needs_failed_job = bool(needed_names & failed_job_names)
         job_runs_after_failure = _job_runs_after_failure(job)
         if (
-            job.status == "pending"
+            job.status in {"pending", "scheduled"}
             and (job.stage_index > first_failed_stage or needs_failed_job)
             and not job_runs_after_failure
         ):
@@ -920,7 +968,7 @@ def _skip_on_failure_jobs_without_failure(pipeline: Pipeline) -> None:
     now = datetime.now(timezone.utc)
     for job in pipeline.jobs:
         if (
-            job.status == "pending"
+            job.status in {"pending", "scheduled"}
             and _job_waits_for_failure(job)
             and _job_dependencies_are_terminal(job)
             and not _job_has_required_failure_dependency(job)
@@ -968,6 +1016,7 @@ async def list_runner_jobs(runner_id: int, db: DbSession):
             "name": job.name,
             "status": job.status,
             "stage": job.stage,
+            "scheduled_at": job.scheduled_at,
             "project_id": job.project_id,
             "pipeline_id": job.pipeline_id,
             "runner": {"id": runner.id, "description": runner.description},
@@ -1069,6 +1118,7 @@ async def request_job(
             headers=_last_update_headers(),
         )
 
+    await _promote_due_scheduled_jobs(db)
     result = await db.execute(
         select(PipelineJob)
         .options(

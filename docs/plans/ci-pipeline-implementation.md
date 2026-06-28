@@ -41,10 +41,11 @@ Already working:
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
   clear rejection of unsupported cross-ref `rules:changes:compare_to` and
   `rules:exists` project/ref options, `when: never`,
-  `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
-  Unsupported delayed jobs using `when: delayed` or `start_in` are rejected
-  clearly because delayed scheduling is not modeled, and other unsupported
-  `when` values are rejected before pipeline creation.
+  `when: always`, `when: on_failure`, persisted non-runnable `manual` jobs,
+  and `when: delayed` jobs with `start_in`. Delayed jobs persist as
+  `scheduled` with `scheduled_at`, stay out of runner assignment until due,
+  and are promoted to `pending` on runner polls. Other unsupported `when`
+  values are rejected before pipeline creation.
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
   variables. Boolean `allow_failure` is supported for jobs and rules, while

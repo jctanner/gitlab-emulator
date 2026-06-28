@@ -68,8 +68,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   variables, boolean `allow_failure` scheduling/status behavior with clear
   rejection of unsupported `allow_failure:exit_codes`,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
-  metadata with clear rejection of unsupported delayed jobs and unknown `when`
-  values, list and
+  metadata, delayed jobs with `when: delayed`/`start_in`, clear rejection of
+  unknown `when` values, list and
   file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, deeper `extends` semantics, nested local
   `include`, `include:project`, list-valued controlled `include:remote`, and
@@ -375,9 +375,11 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
-- Delayed/timer job queues. Current support covers pipeline schedule CRUD,
-  manual Play, automatic cron materialization through the schedule worker, and
-  runner-side pending-job eligibility, but not delayed/timer jobs.
+- Full timer parity beyond delayed jobs. Current support covers pipeline
+  schedule CRUD, manual Play, automatic cron materialization through the
+  schedule worker, delayed jobs with `when: delayed`/`start_in`, and
+  runner-side pending-job eligibility. A standalone background timer service
+  that promotes due delayed jobs without runner polling remains deferred.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses. Admin bootstrap user/token
   helper endpoints require an authenticated site admin. The emulator is still

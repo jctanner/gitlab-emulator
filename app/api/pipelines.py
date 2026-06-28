@@ -6,7 +6,7 @@ import asyncio
 import os
 import secrets
 import ssl
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import unquote, urlparse
 from urllib.request import urlopen
@@ -667,7 +667,7 @@ def _need_names(needs: list | None) -> list[str]:
 
 
 def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
-    job.status = "pending"
+    job.status = "scheduled" if (job.when or "on_success") == "delayed" else "pending"
     job.job_token = f"gljt-persisted-{secrets.token_urlsafe(24)}"
     job.runner_name = None
     job.failure_reason = None
@@ -675,6 +675,10 @@ def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
     job.trace_checksum = None
     job.trace_size = 0
     job.queued_at = now
+    if job.status == "scheduled":
+        job.scheduled_at = now.replace(tzinfo=None)
+    else:
+        job.scheduled_at = None
     job.started_at = None
     job.finished_at = None
     if job.trace:
@@ -683,7 +687,7 @@ def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
 
 
 def _requeue_stale_or_pending_job(job: PipelineJob, now: datetime) -> dict:
-    """Reset a pending/running job for another runner poll.
+    """Reset a pending/running/scheduled job for another runner poll.
 
     This is intentionally operator-only behavior for the emulator. GitLab-shaped
     clients should use cancel/retry; the CI Lab requeue path exists for
@@ -696,6 +700,9 @@ def _requeue_stale_or_pending_job(job: PipelineJob, now: datetime) -> dict:
         "started_at": job.started_at,
     }
     _reset_job_for_retry(job, now)
+    if job.status == "scheduled":
+        job.status = "pending"
+        job.scheduled_at = None
     return previous
 
 
@@ -772,6 +779,7 @@ def _job_json(job: PipelineJob) -> dict:
         "coverage": None,
         "allow_failure": bool(job.allow_failure),
         "created_at": _fmt_dt(job.created_at),
+        "scheduled_at": _fmt_dt(job.scheduled_at),
         "started_at": _fmt_dt(job.started_at),
         "finished_at": _fmt_dt(job.finished_at),
         "erased_at": None,
@@ -819,7 +827,7 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
     elif any(status == "canceled" for status in blocking_statuses) and not any(
-        status in {"pending", "running"} for status in blocking_statuses
+        status in {"pending", "running", "scheduled"} for status in blocking_statuses
     ):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
@@ -827,7 +835,7 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.status = "running"
         pipeline.started_at = pipeline.started_at or now
         pipeline.finished_at = None
-    elif any(status == "pending" for status in blocking_statuses):
+    elif any(status in {"pending", "scheduled"} for status in blocking_statuses):
         pipeline.status = "pending"
         pipeline.finished_at = None
     elif any(status == "failed" for status in blocking_statuses):
@@ -1010,6 +1018,19 @@ async def _create_pipeline(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         variables.update(secret_entries)
+        job_scheduled_at = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            + timedelta(seconds=parsed_job.start_in_seconds)
+            if parsed_job.when == "delayed" and parsed_job.start_in_seconds
+            else None
+        )
+        job_status = (
+            "manual"
+            if parsed_job.when == "manual"
+            else "scheduled"
+            if parsed_job.when == "delayed"
+            else "pending"
+        )
         job = PipelineJob(
             pipeline_id=pipeline.id,
             project_id=project.id,
@@ -1027,13 +1048,14 @@ async def _create_pipeline(
             artifacts_paths=parsed_job.artifacts_paths,
             artifacts_config=parsed_job.artifacts,
             when=parsed_job.when,
+            scheduled_at=job_scheduled_at,
             allow_failure=parsed_job.allow_failure,
             secret_metadata=[
                 ci_secret_metadata_entry(resolved_secret)
                 for resolved_secret in resolved_secrets
             ],
             job_token=f"gljt-persisted-{secrets.token_urlsafe(24)}",
-            status="manual" if parsed_job.when == "manual" else "pending",
+            status=job_status,
         )
         db.add(job)
         await db.flush()
@@ -1422,7 +1444,7 @@ async def cancel_pipeline(
     await require_project_access(pipeline.project, current_user, db, DEVELOPER)
     now = datetime.now(timezone.utc)
     for job in pipeline.jobs:
-        if job.status in {"pending", "running", "manual"}:
+        if job.status in {"pending", "running", "manual", "scheduled"}:
             job.status = "canceled"
             job.finished_at = job.finished_at or now
     pipeline.status = "canceled"
@@ -1644,7 +1666,7 @@ async def cancel_project_job(
     job = await _get_job_for_project_ref(project_ref, job_id, db)
     await require_project_access(job.project, current_user, db, DEVELOPER)
     now = datetime.now(timezone.utc)
-    if job.status in {"pending", "running", "manual"}:
+    if job.status in {"pending", "running", "manual", "scheduled"}:
         job.status = "canceled"
         job.finished_at = job.finished_at or now
     await _derive_pipeline_status(job.pipeline, db)

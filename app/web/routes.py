@@ -2785,7 +2785,7 @@ async def repo_cancel_pipeline(
         return HTMLResponse(content="<h1>404 - Pipeline Not Found</h1>", status_code=404)
     now = datetime.now(timezone.utc)
     for job in pipeline.jobs:
-        if job.status in {"pending", "running", "manual"}:
+        if job.status in {"pending", "running", "manual", "scheduled"}:
             job.status = "canceled"
             job.finished_at = job.finished_at or now
     await _derive_pipeline_status(pipeline, db)
@@ -2845,7 +2845,7 @@ async def repo_job_action(
         job.exit_code = None
         message = "Job queued."
     elif action == "cancel":
-        if job.status in {"pending", "running", "manual"}:
+        if job.status in {"pending", "running", "manual", "scheduled"}:
             job.status = "canceled"
             job.finished_at = job.finished_at or now
         message = "Job canceled."

@@ -1315,14 +1315,16 @@ cache_probe:
     assert "invalid" in resp.text
 
 
-async def test_create_pipeline_rejects_delayed_gitlab_ci_job(client, test_token):
+async def test_create_pipeline_schedules_delayed_gitlab_ci_job(
+    client, db_session, test_token
+):
     project = await _create_project(client, test_token)
     ci_yaml = """
 delayed_job:
   script:
     - echo delayed
-  rules:
-    - when: delayed
+  when: delayed
+  start_in: 10 minutes
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
@@ -1340,8 +1342,52 @@ delayed_job:
         json={"ref": "main"},
         headers=auth_headers(test_token),
     )
-    assert resp.status_code == 400
-    assert "when delayed is not supported" in resp.text
+    assert resp.status_code == 201
+    pipeline = resp.json()
+    assert pipeline["status"] == "pending"
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    job = jobs.json()[0]
+    assert job["name"] == "delayed_job"
+    assert job["status"] == "scheduled"
+    assert job["when"] == "delayed"
+    assert job["scheduled_at"] is not None
+
+    waiting = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert waiting.status_code == 204
+
+    diagnostics = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/diagnostics"
+    )
+    assert diagnostics.status_code == 200
+    job_diagnostic = diagnostics.json()["jobs"][0]
+    assert job_diagnostic["status"] == "scheduled"
+    assert job_diagnostic["blocked"] is True
+    assert job_diagnostic["blockers"][0]["type"] == "delayed"
+
+    result = await db_session.execute(
+        select(PipelineJob).where(PipelineJob.id == job["id"])
+    )
+    persisted_job = result.scalar_one()
+    persisted_job.scheduled_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    await db_session.commit()
+
+    ready = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert ready.status_code == 201
+    body = ready.json()
+    assert body["job_info"]["name"] == "delayed_job"
+    assert body["steps"][0]["when"] == "on_success"
 
 
 async def test_create_pipeline_rejects_unknown_gitlab_ci_when(client, test_token):
