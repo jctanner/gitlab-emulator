@@ -882,6 +882,123 @@ ui_job:
 
 
 @pytest.mark.asyncio
+async def test_ui_project_pipeline_schedules_management(client, test_user):
+    """The project UI can create, update, play, and delete pipeline schedules."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-schedules", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    ci_yaml = """
+scheduled_probe:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  script:
+    - echo schedule $SCHEDULE_VAR
+api_probe:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
+"""
+    save_yaml = await client.post(
+        "/ui/testuser/ui-schedules/new/main",
+        data={
+            "filename": ".gitlab-ci.yml",
+            "content": ci_yaml,
+            "commit_message": "Create scheduled CI config",
+        },
+        follow_redirects=False,
+    )
+    assert save_yaml.status_code in (302, 303)
+
+    schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
+    assert schedules_page.status_code == 200
+    assert "Pipeline schedules" in schedules_page.text
+    assert "Create schedule" in schedules_page.text
+    assert (
+        'href="/ui/testuser/ui-schedules/-/pipeline_schedules">Pipeline schedules</a>'
+        in schedules_page.text
+    )
+
+    create_schedule = await client.post(
+        "/ui/testuser/ui-schedules/-/pipeline_schedules",
+        data={
+            "description": "Nightly",
+            "ref": "main",
+            "cron": "0 3 * * *",
+            "cron_timezone": "UTC",
+            "active": "1",
+            "variables_text": "SCHEDULE_VAR=from-ui\n",
+        },
+        follow_redirects=False,
+    )
+    assert create_schedule.status_code in (302, 303)
+
+    schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
+    assert schedules_page.status_code == 200
+    assert "Nightly" in schedules_page.text
+    assert "0 3 * * *" in schedules_page.text
+    assert "SCHEDULE_VAR=from-ui" in schedules_page.text
+    assert "Active" in schedules_page.text
+    schedule_match = re.search(r"/pipeline_schedules/(\d+)/update", schedules_page.text)
+    assert schedule_match is not None
+    schedule_id = int(schedule_match.group(1))
+
+    update_schedule = await client.post(
+        f"/ui/testuser/ui-schedules/-/pipeline_schedules/{schedule_id}/update",
+        data={
+            "description": "Nightly updated",
+            "ref": "main",
+            "cron": "30 4 * * 1",
+            "cron_timezone": "America/New_York",
+            "variables_text": "SCHEDULE_VAR=rotated\n",
+        },
+        follow_redirects=False,
+    )
+    assert update_schedule.status_code in (302, 303)
+
+    schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
+    assert "Nightly updated" in schedules_page.text
+    assert "30 4 * * 1" in schedules_page.text
+    assert "America/New_York" in schedules_page.text
+    assert "Inactive" in schedules_page.text
+    assert "SCHEDULE_VAR=rotated" in schedules_page.text
+
+    play_schedule = await client.post(
+        f"/ui/testuser/ui-schedules/-/pipeline_schedules/{schedule_id}/play",
+        follow_redirects=False,
+    )
+    assert play_schedule.status_code in (302, 303)
+    play_path = urlsplit(play_schedule.headers["location"]).path
+    assert re.search(r"/ui/testuser/ui-schedules/-/pipelines/\d+$", play_path)
+    pipeline_id = int(play_path.rsplit("/", 1)[1])
+
+    pipeline_page = await client.get(play_path)
+    assert pipeline_page.status_code == 200
+    assert f"Pipeline #{pipeline_id}" in pipeline_page.text
+    assert "scheduled_probe" in pipeline_page.text
+    assert "api_probe" not in pipeline_page.text
+
+    schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
+    assert f"/ui/testuser/ui-schedules/-/pipelines/{pipeline_id}" in schedules_page.text
+    assert f"#{pipeline_id}" in schedules_page.text
+
+    delete_schedule = await client.post(
+        f"/ui/testuser/ui-schedules/-/pipeline_schedules/{schedule_id}/delete",
+        follow_redirects=False,
+    )
+    assert delete_schedule.status_code in (302, 303)
+    schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
+    assert "No pipeline schedules yet." in schedules_page.text
+    assert "Nightly updated" not in schedules_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_project_artifacts_page(client, db_session, test_user):
     """The project UI lists job artifacts and links to existing downloads."""
     from sqlalchemy import select

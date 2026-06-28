@@ -99,7 +99,12 @@
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Pipelines</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/jobs' in current_path %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs">Jobs</a>
+            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/pipeline_schedules' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">Pipeline schedules</a>
+            {% else %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Pipeline schedules</span>
+            {% endif %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Test cases</span>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/artifacts' in current_path %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/artifacts">Artifacts</a>

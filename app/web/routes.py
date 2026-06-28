@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.pipelines import (
     CreatePipelineRequest,
+    PipelineVariable,
     _create_pipeline,
     _derive_pipeline_status,
     _reset_job_for_retry,
@@ -38,7 +39,14 @@ from app.git.bare_repo import (
     write_file,
 )
 from app.models.comment import IssueComment
-from app.models.ci import CiSecret, CiVariable, JobArtifact, Pipeline, PipelineJob
+from app.models.ci import (
+    CiSecret,
+    CiVariable,
+    JobArtifact,
+    Pipeline,
+    PipelineJob,
+    PipelineSchedule,
+)
 from app.models.deploy_key import DeployKey
 from app.models.issue import Issue
 from app.models.label import Label
@@ -210,6 +218,32 @@ def _selected_webhook_events(events: list[str] | None) -> dict[str, bool]:
 def _webhook_events_from_form(events: list[str] | None) -> list[str]:
     selected = [event for event in (events or []) if event in _WEBHOOK_EVENTS]
     return selected or ["push_events"]
+
+
+def _parse_schedule_variables(value: str | None) -> list[dict[str, str]]:
+    variables: list[dict[str, str]] = []
+    for line in (value or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "=" not in stripped:
+            raise ValueError("Schedule variables must use KEY=VALUE lines.")
+        key, variable_value = stripped.split("=", 1)
+        variables.append(
+            {"key": _validate_ci_key(key.strip(), "Variable key"), "value": variable_value}
+        )
+    return variables
+
+
+def _schedule_variables_text(variables: list | None) -> str:
+    lines = []
+    for variable in variables or []:
+        if not isinstance(variable, dict):
+            continue
+        key = str(variable.get("key") or "").strip()
+        if key:
+            lines.append(f"{key}={variable.get('value') or ''}")
+    return "\n".join(lines)
 
 
 def _masked_token(value: str | None) -> str:
@@ -2149,6 +2183,229 @@ async def repo_webhook_delete(
 # ---------------------------------------------------------------------------
 # Repository CI pipelines and jobs
 # ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/pipeline_schedules", response_class=HTMLResponse)
+async def repo_pipeline_schedules_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project pipeline schedules."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    schedules = (
+        await db.execute(
+            select(PipelineSchedule)
+            .options(
+                selectinload(PipelineSchedule.owner),
+                selectinload(PipelineSchedule.last_pipeline),
+            )
+            .where(PipelineSchedule.project_id == repo.id)
+            .order_by(PipelineSchedule.id.asc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_pipeline_schedules.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            schedules=schedules,
+            variables_text=_schedule_variables_text,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/pipeline_schedules", response_class=HTMLResponse)
+async def repo_pipeline_schedule_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    description: str = Form(""),
+    ref: str = Form("main"),
+    cron: str = Form("0 0 * * *"),
+    cron_timezone: str = Form("UTC"),
+    active: str = Form(""),
+    variables_text: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project pipeline schedule."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/pipeline_schedules"
+    try:
+        schedule = PipelineSchedule(
+            project_id=repo.id,
+            description=description.strip(),
+            ref=ref.strip() or repo.default_branch or "main",
+            cron=cron.strip() or "0 0 * * *",
+            cron_timezone=cron_timezone.strip() or "UTC",
+            active=_bool_form(active),
+            variables=_parse_schedule_variables(variables_text),
+            owner_id=current_user.id if current_user else repo.owner_id,
+        )
+        db.add(schedule)
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Pipeline schedule created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/pipeline_schedules/{schedule_id}/update", response_class=HTMLResponse)
+async def repo_pipeline_schedule_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    schedule_id: int,
+    description: str = Form(""),
+    ref: str = Form("main"),
+    cron: str = Form("0 0 * * *"),
+    cron_timezone: str = Form("UTC"),
+    active: str = Form(""),
+    variables_text: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project pipeline schedule."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/pipeline_schedules"
+    schedule = (
+        await db.execute(
+            select(PipelineSchedule).where(
+                PipelineSchedule.project_id == repo.id,
+                PipelineSchedule.id == schedule_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if schedule is None:
+        return RedirectResponse(url=f"{redirect}?error=Schedule%20not%20found.", status_code=302)
+    try:
+        schedule.description = description.strip()
+        schedule.ref = ref.strip() or repo.default_branch or "main"
+        schedule.cron = cron.strip() or "0 0 * * *"
+        schedule.cron_timezone = cron_timezone.strip() or "UTC"
+        schedule.active = _bool_form(active)
+        schedule.variables = _parse_schedule_variables(variables_text)
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Pipeline schedule updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/pipeline_schedules/{schedule_id}/play", response_class=HTMLResponse)
+async def repo_pipeline_schedule_play(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    schedule_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run a project pipeline schedule immediately."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/pipeline_schedules"
+    schedule = (
+        await db.execute(
+            select(PipelineSchedule).where(
+                PipelineSchedule.project_id == repo.id,
+                PipelineSchedule.id == schedule_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if schedule is None:
+        return RedirectResponse(url=f"{redirect}?error=Schedule%20not%20found.", status_code=302)
+    try:
+        variables = [
+            PipelineVariable(**variable)
+            for variable in schedule.variables or []
+            if isinstance(variable, dict)
+        ]
+        pipeline = await _create_pipeline(
+            repo.id,
+            CreatePipelineRequest(ref=schedule.ref, variables=variables),
+            db,
+            source="schedule",
+            actor=current_user,
+        )
+        schedule.last_pipeline_id = pipeline.id
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        detail = exc.detail if hasattr(exc, "detail") else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': detail})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/pipelines/{pipeline.id}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/pipeline_schedules/{schedule_id}/delete", response_class=HTMLResponse)
+async def repo_pipeline_schedule_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    schedule_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project pipeline schedule."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    schedule = (
+        await db.execute(
+            select(PipelineSchedule).where(
+                PipelineSchedule.project_id == repo.id,
+                PipelineSchedule.id == schedule_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if schedule is not None:
+        await db.delete(schedule)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/pipeline_schedules?message={urlencode({'x': 'Pipeline schedule deleted.'})[2:]}",
+        status_code=302,
+    )
+
 
 async def _repo_ci_template(
     request: Request,

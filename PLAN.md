@@ -104,6 +104,12 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 - Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
   tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.
+  Pipeline schedule CRUD and manual Play are implemented; automatic cron
+  materialization of due schedules is not yet implemented.
+- Job scheduling is runner-poll based: persisted `pending` jobs become
+  eligible according to stage order, `needs`, manual state, runner tags,
+  runner pause/lock state, and `run_untagged`. Delayed/timer jobs are not
+  modeled yet and are rejected clearly instead of being queued silently.
 - GitLab-style pipeline/job cancel and retry REST endpoints exist. Retry
   requeues persisted jobs through the existing runner coordinator.
 - GitLab-style manual job play exists for persisted manual jobs. Play moves
@@ -217,6 +223,8 @@ Target areas:
 - persist runner registrations and diagnostics for admin/operator inspection
 - expose pipeline/job state through GitLab-shaped APIs
 - expose minimal runner and scheduler diagnostics for operator inspection
+- keep pipeline scheduling explicit: CRUD and manual Play are supported, while
+  automatic cron due-run execution needs a deliberate scheduler loop/worker
 - surface stale running jobs in diagnostics and keep recovery explicit through
   CI Lab requeue or GitLab-compatible cancel plus retry
 
@@ -228,6 +236,8 @@ Done when:
 - runner registrations, contact timestamps, tags, and last assigned job survive
   process restarts where persistence is expected
 - runner and pipeline diagnostics explain current scheduler state
+- pipeline schedule CRUD/manual Play and runner-side job eligibility are covered
+  by tests; automatic cron due-run behavior remains outside the current MVP
 - stale running jobs have a documented operator recovery path without automatic
   timeout side effects
 - debug-only runner paths have been removed
@@ -333,8 +343,8 @@ Done when:
 - Full GitLab UI parity. The current UI covers repository/source editing,
   issues/work items, merge requests, branches, commits, tags, project settings,
   project members, labels, milestones, releases, webhooks, CI/CD variables,
-  secrets, deploy keys, pipelines, jobs, artifacts, runners, and the admin CI
-  Lab, but it is not a complete GitLab clone.
+  secrets, deploy keys, pipelines, jobs, pipeline schedules, artifacts,
+  runners, and the admin CI Lab, but it is not a complete GitLab clone.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,
   GitLab repository file write gates, and protected-branch management gates now
@@ -364,6 +374,9 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
+- Automatic background execution for due pipeline schedules and delayed/timer
+  job queues. Current support covers pipeline schedule CRUD/manual Play and
+  runner-side pending-job eligibility, but not a cron scheduler service.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses. Admin bootstrap user/token
   helper endpoints require an authenticated site admin. The emulator is still

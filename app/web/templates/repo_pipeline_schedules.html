@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Pipeline schedules - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "pipeline_schedules" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Pipeline schedules</div>
+    <div class="Subhead-description">Run project pipelines from stored refs, cron metadata, and schedule variables.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">New schedule</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Description<br><input class="form-control" name="description" placeholder="Nightly build"></label>
+                <label>Ref<br><input class="form-control" name="ref" value="{{ repo.default_branch or 'main' }}"></label>
+                <label>Cron<br><input class="form-control" name="cron" value="0 0 * * *"></label>
+                <label>Timezone<br><input class="form-control" name="cron_timezone" value="UTC"></label>
+                <label><input type="checkbox" name="active" value="1" checked> Active</label>
+            </div>
+            <label class="d-block mt-3">Variables<br>
+                <textarea class="form-control input-block" name="variables_text" rows="3" placeholder="SCHEDULE_VAR=value"></textarea>
+            </label>
+            <button class="btn btn-primary mt-3" type="submit">Create schedule</button>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header d-flex flex-items-center flex-justify-between">
+        <h3 class="Box-title">Project schedules</h3>
+        <span class="color-fg-muted f6">{{ schedules|length }} schedule{{ 's' if schedules|length != 1 else '' }}</span>
+    </div>
+    {% if schedules %}
+    {% for schedule in schedules %}
+    <div class="Box-row">
+        <div class="d-flex flex-justify-between flex-wrap" style="gap:12px;">
+            <div>
+                <div class="text-bold">#{{ schedule.id }} {{ schedule.description or "Pipeline schedule" }}</div>
+                <div class="color-fg-muted f6">
+                    <span class="branch-name">{{ schedule.ref }}</span>
+                    <span class="ml-1">{{ schedule.cron }}</span>
+                    <span class="ml-1">{{ schedule.cron_timezone }}</span>
+                    <span class="Label Label--secondary ml-1">{{ "Active" if schedule.active else "Inactive" }}</span>
+                    {% if schedule.owner %}<span class="ml-1">Owner @{{ schedule.owner.login }}</span>{% endif %}
+                </div>
+                {% if schedule.last_pipeline %}
+                <div class="color-fg-muted f6 mt-1">
+                    Last pipeline
+                    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/{{ schedule.last_pipeline.id }}">#{{ schedule.last_pipeline.id }}</a>
+                    <span class="status-{{ schedule.last_pipeline.status }} ml-1">{{ schedule.last_pipeline.status }}</span>
+                </div>
+                {% endif %}
+            </div>
+            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules/{{ schedule.id }}/play">
+                <button class="btn btn-sm" type="submit">Play</button>
+            </form>
+        </div>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules/{{ schedule.id }}/update" class="mt-3">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Description<br><input class="form-control" name="description" value="{{ schedule.description }}"></label>
+                <label>Ref<br><input class="form-control" name="ref" value="{{ schedule.ref }}"></label>
+                <label>Cron<br><input class="form-control" name="cron" value="{{ schedule.cron }}"></label>
+                <label>Timezone<br><input class="form-control" name="cron_timezone" value="{{ schedule.cron_timezone }}"></label>
+                <label><input type="checkbox" name="active" value="1" {% if schedule.active %}checked{% endif %}> Active</label>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+            <label class="d-block mt-2">Variables<br>
+                <textarea class="form-control input-block" name="variables_text" rows="3">{{ variables_text(schedule.variables) }}</textarea>
+            </label>
+        </form>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules/{{ schedule.id }}/delete" class="mt-2"
+              onsubmit="return confirm('Delete pipeline schedule #{{ schedule.id }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No pipeline schedules yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -23,6 +23,11 @@ trigger tokens, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.
+Pipeline schedule CRUD and manual Play create `source=schedule` pipelines, but
+automatic cron materialization of due schedules is not implemented yet.
+Runner-side job scheduling is implemented as persisted pending-job eligibility
+over stage order, `needs`, manual state, runner tags, runner pause/lock state,
+and `run_untagged`; delayed/timer jobs remain explicitly unsupported.
 GitLab-shaped global search now covers projects, issues, merge requests, and
 indexed code blobs. GitLab-shaped project labels and milestones now expose
 MVP list/create/get/update/delete surfaces with pagination, encoded project
@@ -84,6 +89,10 @@ Status: implemented.
 - Pipeline diagnostics explain eligible pending jobs, stage blockers, `needs`
   blockers, runner tag blockers, `run_untagged` blockers, running jobs, manual
   jobs, and terminal jobs.
+- Pipeline scheduling is currently explicit/manual: schedule CRUD is persisted,
+  and Play creates a scheduled pipeline through the normal persisted job path.
+  A background cron scheduler loop for due schedules is deferred until a target
+  workflow requires unattended scheduled execution.
 - Admin CI Lab diagnostics now use the same `explain_job_scheduling` helper as
   the API endpoint, so UI and API scheduler explanations share one source.
 
@@ -408,8 +417,8 @@ Done when:
 - Full GitLab UI parity. The current UI covers repository/source editing,
   issues/work items, merge requests, branches, commits, tags, project settings,
   project members, labels, milestones, releases, webhooks, CI/CD variables,
-  secrets, deploy keys, pipelines, jobs, artifacts, runners, and the admin CI
-  Lab, but it is not a complete GitLab clone.
+  secrets, deploy keys, pipelines, jobs, pipeline schedules, artifacts,
+  runners, and the admin CI Lab, but it is not a complete GitLab clone.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,
   GitLab repository file write gates, and protected-branch management gates now
@@ -439,6 +448,9 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
+- Automatic background execution for due pipeline schedules and delayed/timer
+  job queues. Current support covers pipeline schedule CRUD/manual Play and
+  runner-side pending-job eligibility, but not a cron scheduler service.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses, and admin bootstrap user/token
   helper endpoints require an authenticated site admin; broader hardening
