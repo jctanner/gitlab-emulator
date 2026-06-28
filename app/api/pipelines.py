@@ -93,6 +93,7 @@ class PipelineJobDefinition(BaseModel):
     cache: list[dict] = Field(default_factory=list)
     artifacts_paths: list[str] = Field(default_factory=list)
     artifacts: dict = Field(default_factory=dict)
+    allow_failure: bool = False
 
 
 class CreatePipelineRequest(BaseModel):
@@ -726,7 +727,7 @@ def _job_json(job: PipelineJob) -> dict:
         "ref": job.pipeline.ref if job.pipeline else None,
         "tag": False,
         "coverage": None,
-        "allow_failure": False,
+        "allow_failure": bool(job.allow_failure),
         "created_at": _fmt_dt(job.created_at),
         "started_at": _fmt_dt(job.started_at),
         "finished_at": _fmt_dt(job.finished_at),
@@ -759,25 +760,36 @@ def _job_json(job: PipelineJob) -> dict:
 async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     await db.refresh(pipeline, attribute_names=["jobs"])
     statuses = [job.status for job in pipeline.jobs]
+    blocking_statuses = [
+        job.status
+        for job in pipeline.jobs
+        if not (job.status == "failed" and job.allow_failure)
+    ]
     now = datetime.now(timezone.utc)
 
     if not statuses:
         pipeline.status = "pending"
-    elif all(status == "canceled" for status in statuses):
+    elif not blocking_statuses:
+        pipeline.status = "success"
+        pipeline.finished_at = pipeline.finished_at or now
+    elif all(status == "canceled" for status in blocking_statuses):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(status == "canceled" for status in statuses) and not any(
-        status in {"pending", "running"} for status in statuses
+    elif any(status == "canceled" for status in blocking_statuses) and not any(
+        status in {"pending", "running"} for status in blocking_statuses
     ):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(status == "failed" for status in statuses):
+    elif any(status == "failed" for status in blocking_statuses):
         pipeline.status = "failed"
         pipeline.finished_at = pipeline.finished_at or now
-    elif all(status in {"success", "skipped", "manual"} for status in statuses):
+    elif all(
+        status in {"success", "skipped", "manual", "failed"}
+        for status in blocking_statuses
+    ):
         pipeline.status = "success"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(status == "running" for status in statuses):
+    elif any(status == "running" for status in blocking_statuses):
         pipeline.status = "running"
         pipeline.started_at = pipeline.started_at or now
     else:
@@ -843,6 +855,7 @@ async def _create_pipeline(
                     if body.job.artifacts_paths
                     else {}
                 ),
+                allow_failure=body.job.allow_failure,
             )
         ]
     else:
@@ -966,6 +979,7 @@ async def _create_pipeline(
             cache=parsed_job.cache,
             artifacts_paths=parsed_job.artifacts_paths,
             artifacts_config=parsed_job.artifacts,
+            allow_failure=parsed_job.allow_failure,
             secret_metadata=[
                 ci_secret_metadata_entry(resolved_secret)
                 for resolved_secret in resolved_secrets

@@ -57,6 +57,7 @@ class ParsedCiJob:
     artifacts_paths: list[str] = field(default_factory=list)
     artifacts: dict = field(default_factory=dict)
     when: str = "on_success"
+    allow_failure: bool = False
     environment: str | None = None
     secrets: dict[str, dict] = field(default_factory=dict)
 
@@ -72,10 +73,7 @@ def _string_list(value: Any) -> list[str]:
 
 
 def _variables(value: Any) -> dict[str, str]:
-    return {
-        key: str(entry["value"])
-        for key, entry in _variable_entries(value).items()
-    }
+    return {key: str(entry["value"]) for key, entry in _variable_entries(value).items()}
 
 
 def _variable_entries(value: Any) -> dict[str, dict]:
@@ -86,7 +84,9 @@ def _variable_entries(value: Any) -> dict[str, dict]:
         variable_key = str(key)
         if isinstance(raw_value, dict):
             variable_value = raw_value.get("value", "")
-            variable_type = str(raw_value.get("variable_type") or raw_value.get("type") or "env_var")
+            variable_type = str(
+                raw_value.get("variable_type") or raw_value.get("type") or "env_var"
+            )
             is_file = bool(raw_value.get("file", False)) or variable_type == "file"
             raw = bool(raw_value.get("raw", False)) or raw_value.get("expand") is False
             masked = bool(raw_value.get("masked", False))
@@ -299,6 +299,8 @@ def _ref_matches(pattern: str, ref: str) -> bool:
 class _RuleDecision:
     included: bool
     when: str = "on_success"
+    allow_failure: bool | None = None
+    variables: dict[str, dict] = field(default_factory=dict)
 
 
 def _unquote(value: str) -> str:
@@ -365,8 +367,7 @@ def _path_matches(pattern: str, paths: set[str]) -> bool:
     if not normalized:
         return False
     return any(
-        path == normalized or fnmatch.fnmatch(path, normalized)
-        for path in paths
+        path == normalized or fnmatch.fnmatch(path, normalized) for path in paths
     )
 
 
@@ -391,12 +392,25 @@ def _job_rule_decision(
                 continue
             if "if" in rule and not _if_matches(rule.get("if"), ref, variables):
                 continue
-            if "exists" in rule and not _rule_paths_match(rule.get("exists"), existing_paths):
+            if "exists" in rule and not _rule_paths_match(
+                rule.get("exists"), existing_paths
+            ):
                 continue
-            if "changes" in rule and not _rule_paths_match(rule.get("changes"), changed_paths):
+            if "changes" in rule and not _rule_paths_match(
+                rule.get("changes"), changed_paths
+            ):
                 continue
             when = str(rule.get("when") or "on_success")
-            return _RuleDecision(included=when != "never", when=when)
+            rule_variables = _variable_entries(rule.get("variables"))
+            allow_failure = rule.get("allow_failure")
+            return _RuleDecision(
+                included=when != "never",
+                when=when,
+                allow_failure=bool(allow_failure)
+                if allow_failure is not None
+                else None,
+                variables=rule_variables,
+            )
         return _RuleDecision(included=False)
 
     only = _ref_values(config.get("only"))
@@ -407,7 +421,16 @@ def _job_rule_decision(
     if except_refs and any(_ref_matches(pattern, ref) for pattern in except_refs):
         return _RuleDecision(included=False)
 
-    return _RuleDecision(included=True)
+    when = str(config.get("when") or "on_success")
+    return _RuleDecision(included=when != "never", when=when)
+
+
+def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
+    if decision.allow_failure is not None:
+        return decision.allow_failure
+    if "allow_failure" in config:
+        return bool(config["allow_failure"])
+    return "rules" not in config and decision.when == "manual"
 
 
 def _workflow_allows_pipeline(
@@ -475,7 +498,9 @@ def _default_key_allowed(config: dict, key: str) -> bool:
     return True
 
 
-def _global_variables_for_job(config: dict, global_variables: dict[str, dict]) -> dict[str, dict]:
+def _global_variables_for_job(
+    config: dict, global_variables: dict[str, dict]
+) -> dict[str, dict]:
     setting = _inherit_setting(config, "variables")
     if setting is False:
         return {}
@@ -629,6 +654,11 @@ def parse_gitlab_ci(
         )
         if not decision.included:
             continue
+        if decision.variables:
+            merged_variable_entries = {
+                **merged_variable_entries,
+                **decision.variables,
+            }
 
         stage = str(config.get("stage") or (stages[0] if stages else "test"))
         image = _image_name(config.get("image"), global_image)
@@ -639,9 +669,7 @@ def parse_gitlab_ci(
         artifact_config = _artifact_config(config.get("artifacts"))
         artifact_paths = artifact_config.get("paths", [])
         cache = (
-            _cache_entries(config.get("cache"))
-            if "cache" in config
-            else global_cache
+            _cache_entries(config.get("cache")) if "cache" in config else global_cache
         )
 
         jobs.append(
@@ -659,6 +687,7 @@ def parse_gitlab_ci(
                 artifacts_paths=artifact_paths,
                 artifacts=artifact_config,
                 when=decision.when,
+                allow_failure=_allow_failure(config, decision),
                 environment=_environment_name(config.get("environment")),
                 secrets=_secret_entries(config.get("secrets")),
             )

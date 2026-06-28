@@ -458,17 +458,18 @@ repository through Git Smart HTTP using their CI job token. YAML-defined jobs
 can upload artifact archives and project job APIs can download them. Persisted
 jobs are gated by stage order, with same-stage jobs remaining eligible for
 parallel runners. Minimal `needs`, optional missing needs, missing required
-needs validation, `needs:artifacts`, and common ref filters are covered by local
-API tests. Runner tag matching is also covered by local API tests. The smoke
-queue is intentionally temporary. Cache metadata and archive endpoints are
-covered by local API tests. VM runner cache adapter configuration points at
-MinIO/S3 by default, and the official runner has validated cache upload/restore
-plus dependency artifact download across two-stage pipelines.
+needs validation, `needs:artifacts`, common ref filters, rule-level variables,
+and `allow_failure` scheduling/status behavior are covered by local API tests.
+Runner tag matching is also covered by local API tests. The smoke queue is
+intentionally temporary. Cache metadata and archive endpoints are covered by
+local API tests. VM runner cache adapter configuration points at MinIO/S3 by
+default, and the official runner has validated cache upload/restore plus
+dependency artifact download across two-stage pipelines.
 
 Missing behavior for fuller GitLab CI execution:
 
-- broader `.gitlab-ci.yml` support such as richer `needs` edge cases, richer
-  `rules`, `extends`, and `include`
+- broader `.gitlab-ci.yml` support such as richer `needs` edge cases and
+  remaining long-tail `rules`, `extends`, and `include` semantics
 - richer cache options and edge cases beyond the current `pull-push` path
 - pipeline/job UI or richer API state transitions
 

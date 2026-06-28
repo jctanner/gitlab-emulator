@@ -448,6 +448,40 @@ manual_job:
 
     assert jobs[0].name == "manual_job"
     assert jobs[0].when == "manual"
+    assert jobs[0].allow_failure is False
+
+
+def test_parse_gitlab_ci_marks_job_level_manual_as_allowed_failure_by_default():
+    jobs = parse_gitlab_ci(
+        """
+manual_job:
+  script: echo manual
+  when: manual
+"""
+    )
+
+    assert jobs[0].name == "manual_job"
+    assert jobs[0].when == "manual"
+    assert jobs[0].allow_failure is True
+
+
+def test_parse_gitlab_ci_applies_rule_variables_and_allow_failure():
+    jobs = parse_gitlab_ci(
+        """
+optional_probe:
+  script: echo "$RULE_TARGET"
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      allow_failure: true
+      variables:
+        RULE_TARGET: from-rule
+"""
+    )
+
+    assert jobs[0].name == "optional_probe"
+    assert jobs[0].allow_failure is True
+    assert jobs[0].variables["RULE_TARGET"] == "from-rule"
+    assert jobs[0].variable_metadata["RULE_TARGET"]["value"] == "from-rule"
 
 
 def test_parse_gitlab_ci_allows_job_to_disable_global_cache():

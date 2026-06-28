@@ -71,7 +71,9 @@ class JobRequest(BaseModel):
 
 class JobUpdateRequest(BaseModel):
     token: str | None = None
-    state: Literal["pending", "running", "failed", "success", "skipped", "canceled"] | None = None
+    state: (
+        Literal["pending", "running", "failed", "success", "skipped", "canceled"] | None
+    ) = None
     failure_reason: str | None = None
     checksum: str | None = None
     output: dict | None = None
@@ -138,7 +140,9 @@ def _runner_json(runner: CiRunner, *, include_token: bool = False) -> dict:
         "runner_type": "instance_type",
         "name": runner.runner_name,
         "online": runner.last_contact_at is not None,
-        "status": "online" if runner.last_contact_at is not None and not runner.paused else "offline",
+        "status": "online"
+        if runner.last_contact_at is not None and not runner.paused
+        else "offline",
         "tag_list": list(runner.tags or []),
         "run_untagged": bool(runner.run_untagged),
         "locked": bool(runner.locked),
@@ -185,7 +189,9 @@ async def _create_registered_runner(db: DbSession) -> CiRunner:
     else:
         while True:
             token = f"glrt-{secrets.token_urlsafe(24)}"
-            result = await db.execute(select(CiRunner.id).where(CiRunner.token == token))
+            result = await db.execute(
+                select(CiRunner.id).where(CiRunner.token == token)
+            )
             if result.scalar_one_or_none() is None:
                 break
     runner = CiRunner(
@@ -242,7 +248,11 @@ def _record_runner_contact(
 
 async def registered_runner_diagnostics(db: DbSession) -> dict:
     """Return persisted runner state for admin diagnostics."""
-    result = await db.execute(select(CiRunner).order_by(CiRunner.last_contact_at.desc().nullslast(), CiRunner.id.asc()))
+    result = await db.execute(
+        select(CiRunner).order_by(
+            CiRunner.last_contact_at.desc().nullslast(), CiRunner.id.asc()
+        )
+    )
     runner = result.scalars().first()
     if runner is None:
         return {
@@ -277,7 +287,9 @@ async def registered_runner_diagnostics(db: DbSession) -> dict:
     }
 
 
-def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | None) -> dict[int, dict]:
+def explain_job_scheduling(
+    jobs: list[PipelineJob], runner: dict | CiRunner | None
+) -> dict[int, dict]:
     """Explain why jobs are eligible, blocked, or waiting.
 
     This mirrors the runner coordinator's stage/needs/tag checks so admin and
@@ -312,7 +324,15 @@ def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | No
                         blocked = True
                         reason = f"missing required need `{need['job']}`"
                         reasons.append(reason)
-                        blockers.append({"type": "missing_need", "job": need["job"], "reason": reason})
+                        blockers.append(
+                            {
+                                "type": "missing_need",
+                                "job": need["job"],
+                                "reason": reason,
+                            }
+                        )
+                    elif peer.status == "failed" and peer.allow_failure:
+                        continue
                     elif peer.status not in {"success", "skipped", "manual"}:
                         blocked = True
                         reason = f"waiting for need `{peer.name}` ({peer.status})"
@@ -328,6 +348,12 @@ def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | No
                         )
             else:
                 for peer in jobs:
+                    if (
+                        peer.status == "failed"
+                        and peer.allow_failure
+                        and peer.stage_index < job.stage_index
+                    ):
+                        continue
                     if peer.stage_index < job.stage_index and peer.status not in {
                         "success",
                         "skipped",
@@ -353,7 +379,13 @@ def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | No
                     blocked = True
                     reason = f"runner missing tag(s): {', '.join(missing)}"
                     reasons.append(reason)
-                    blockers.append({"type": "runner_tags", "missing_tags": missing, "reason": reason})
+                    blockers.append(
+                        {
+                            "type": "runner_tags",
+                            "missing_tags": missing,
+                            "reason": reason,
+                        }
+                    )
             elif not run_untagged:
                 blocked = True
                 reason = "runner is not configured to run untagged jobs"
@@ -364,9 +396,8 @@ def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | No
                 reasons.append("eligible for the next runner poll")
         elif job.status == "running":
             running_seconds = _elapsed_seconds(job.started_at or job.updated_at, now)
-            stale = (
-                running_seconds is not None
-                and running_seconds >= int(RUNNING_JOB_STALE_AFTER.total_seconds())
+            stale = running_seconds is not None and running_seconds >= int(
+                RUNNING_JOB_STALE_AFTER.total_seconds()
             )
             if stale:
                 blocked = True
@@ -380,7 +411,9 @@ def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | No
                         "type": "stale_running_job",
                         "reason": reason,
                         "running_seconds": running_seconds,
-                        "stale_after_seconds": int(RUNNING_JOB_STALE_AFTER.total_seconds()),
+                        "stale_after_seconds": int(
+                            RUNNING_JOB_STALE_AFTER.total_seconds()
+                        ),
                     }
                 )
             else:
@@ -412,7 +445,9 @@ def explain_job_scheduling(jobs: list[PipelineJob], runner: dict | CiRunner | No
             else None,
             "recovery": {
                 "operator_requeue": job.status in {"pending", "running"},
-                "gitlab_compatible_flow": "cancel_then_retry" if job.status == "running" else None,
+                "gitlab_compatible_flow": "cancel_then_retry"
+                if job.status == "running"
+                else None,
             },
         }
     return diagnostics
@@ -533,9 +568,7 @@ def _dependencies_payload(job: PipelineJob) -> list[dict]:
     if job.needs is None:
         return []
     needed_artifact_jobs = [
-        need["job"]
-        for need in _need_items(job.needs)
-        if need.get("artifacts", True)
+        need["job"] for need in _need_items(job.needs) if need.get("artifacts", True)
     ]
     if not needed_artifact_jobs:
         return []
@@ -664,7 +697,9 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
             "sha": pipeline.sha,
             "before_sha": "0000000000000000000000000000000000000000",
             "ref_type": "branch",
-            "refspecs": [f"+refs/heads/{pipeline.ref}:refs/remotes/origin/{pipeline.ref}"],
+            "refspecs": [
+                f"+refs/heads/{pipeline.ref}:refs/remotes/origin/{pipeline.ref}"
+            ],
             "depth": 0,
             "protected": protected,
         },
@@ -677,7 +712,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
                 "script": job.script or [],
                 "timeout": 3600,
                 "when": "on_success",
-                "allow_failure": False,
+                "allow_failure": bool(job.allow_failure),
             }
         ],
         "image": {"name": job.image},
@@ -706,24 +741,35 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
 async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     await db.refresh(pipeline, attribute_names=["jobs"])
     statuses = [job.status for job in pipeline.jobs]
+    blocking_statuses = [
+        job.status
+        for job in pipeline.jobs
+        if not (job.status == "failed" and job.allow_failure)
+    ]
     now = datetime.now(timezone.utc)
     if not statuses:
         pipeline.status = "pending"
-    elif all(job_status == "canceled" for job_status in statuses):
+    elif not blocking_statuses:
+        pipeline.status = "success"
+        pipeline.finished_at = pipeline.finished_at or now
+    elif all(job_status == "canceled" for job_status in blocking_statuses):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(job_status == "canceled" for job_status in statuses) and not any(
-        job_status in {"pending", "running"} for job_status in statuses
+    elif any(job_status == "canceled" for job_status in blocking_statuses) and not any(
+        job_status in {"pending", "running"} for job_status in blocking_statuses
     ):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(job_status == "failed" for job_status in statuses):
+    elif any(job_status == "failed" for job_status in blocking_statuses):
         pipeline.status = "failed"
         pipeline.finished_at = pipeline.finished_at or now
-    elif all(job_status in {"success", "skipped", "manual"} for job_status in statuses):
+    elif all(
+        job_status in {"success", "skipped", "manual", "failed"}
+        for job_status in blocking_statuses
+    ):
         pipeline.status = "success"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(job_status == "running" for job_status in statuses):
+    elif any(job_status == "running" for job_status in blocking_statuses):
         pipeline.status = "running"
         pipeline.started_at = pipeline.started_at or now
     else:
@@ -732,18 +778,22 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
 
 def _job_stage_is_unblocked(job: PipelineJob) -> bool:
     if job.needs is not None:
-        peers = {peer.name: peer.status for peer in job.pipeline.jobs}
+        peers = {peer.name: peer for peer in job.pipeline.jobs}
         for need in _need_items(job.needs):
-            status = peers.get(need["job"])
-            if status is None:
+            peer = peers.get(need["job"])
+            if peer is None:
                 if need["optional"]:
                     continue
                 return False
+            status = peer.status
+            if status == "failed" and peer.allow_failure:
+                continue
             if status not in {"success", "skipped", "manual"}:
                 return False
         return True
     return all(
         peer.status in {"success", "skipped", "manual"}
+        or (peer.status == "failed" and peer.allow_failure)
         for peer in job.pipeline.jobs
         if peer.stage_index < job.stage_index
     )
@@ -774,9 +824,15 @@ def _runner_can_run_job(job: PipelineJob, body: JobRequest, runner: CiRunner) ->
 
 def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     failed_stage_indexes = [
-        job.stage_index for job in pipeline.jobs if job.status == "failed"
+        job.stage_index
+        for job in pipeline.jobs
+        if job.status == "failed" and not job.allow_failure
     ]
-    failed_job_names = {job.name for job in pipeline.jobs if job.status == "failed"}
+    failed_job_names = {
+        job.name
+        for job in pipeline.jobs
+        if job.status == "failed" and not job.allow_failure
+    }
     if not failed_stage_indexes:
         return
     first_failed_stage = min(failed_stage_indexes)
@@ -784,7 +840,9 @@ def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     for job in pipeline.jobs:
         needed_names = {need["job"] for need in _need_items(job.needs)}
         needs_failed_job = bool(needed_names & failed_job_names)
-        if job.status == "pending" and (job.stage_index > first_failed_stage or needs_failed_job):
+        if job.status == "pending" and (
+            job.stage_index > first_failed_stage or needs_failed_job
+        ):
             job.status = "skipped"
             job.finished_at = job.finished_at or now
 
@@ -919,7 +977,9 @@ async def request_job(
         runner = await _ensure_runner(db, token)
     if runner is None:
         raise HTTPException(status_code=403, detail="Forbidden")
-    _record_runner_contact(runner, event="poll", info=body.info, system_id=body.system_id)
+    _record_runner_contact(
+        runner, event="poll", info=body.info, system_id=body.system_id
+    )
     if runner.paused:
         await db.commit()
         return Response(
@@ -941,7 +1001,9 @@ async def request_job(
     )
     persisted_job = None
     for candidate in result.scalars().all():
-        if _job_stage_is_unblocked(candidate) and _runner_can_run_job(candidate, body, runner):
+        if _job_stage_is_unblocked(candidate) and _runner_can_run_job(
+            candidate, body, runner
+        ):
             persisted_job = candidate
             break
     if persisted_job is not None:
@@ -951,7 +1013,9 @@ async def request_job(
         )
         persisted_job.started_at = datetime.now(timezone.utc)
         persisted_job.pipeline.status = "running"
-        persisted_job.pipeline.started_at = persisted_job.pipeline.started_at or persisted_job.started_at
+        persisted_job.pipeline.started_at = (
+            persisted_job.pipeline.started_at or persisted_job.started_at
+        )
         _record_runner_contact(
             runner,
             event="poll",
@@ -1005,7 +1069,9 @@ async def patch_job_trace(
             try:
                 range_start = int(content_range.split("-", 1)[0])
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail="Invalid Content-Range") from exc
+                raise HTTPException(
+                    status_code=400, detail="Invalid Content-Range"
+                ) from exc
             if range_start != start:
                 return Response(
                     status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
@@ -1054,7 +1120,9 @@ async def update_job(
         persisted_job.exit_code = body.exit_code
         if body.output:
             persisted_job.trace_checksum = body.output.get("checksum")
-            persisted_job.trace_size = body.output.get("bytesize") or persisted_job.trace_size
+            persisted_job.trace_size = (
+                body.output.get("bytesize") or persisted_job.trace_size
+            )
         if persisted_job.status in {"success", "failed"}:
             persisted_job.finished_at = datetime.now(timezone.utc)
         await _derive_pipeline_status(persisted_job.pipeline, db)
@@ -1084,7 +1152,9 @@ async def upload_job_artifacts(
         if not _is_persisted_job_token(persisted_job, job_token):
             raise HTTPException(status_code=403, detail="Forbidden")
         body = await request.body()
-        artifact_dir = os.path.join(settings.DATA_DIR, "artifacts", str(persisted_job.id))
+        artifact_dir = os.path.join(
+            settings.DATA_DIR, "artifacts", str(persisted_job.id)
+        )
         os.makedirs(artifact_dir, exist_ok=True)
         filename = f"job-{persisted_job.id}-artifacts.{artifact_format or 'zip'}"
         storage_path = os.path.join(artifact_dir, filename)
@@ -1128,7 +1198,11 @@ async def download_job_artifacts(
     if not _is_persisted_job_token(persisted_job, job_token):
         raise HTTPException(status_code=403, detail="Forbidden")
     artifact = persisted_job.artifacts[0] if persisted_job.artifacts else None
-    if artifact is None or not artifact.storage_path or not os.path.isfile(artifact.storage_path):
+    if (
+        artifact is None
+        or not artifact.storage_path
+        or not os.path.isfile(artifact.storage_path)
+    ):
         raise HTTPException(status_code=404, detail="Artifacts Not Found")
     if _artifact_is_expired(artifact):
         raise HTTPException(status_code=404, detail="Artifacts Expired")
@@ -1153,7 +1227,9 @@ def _cache_keys_with_fallbacks(cache_key: str, fallback_keys: str | None) -> lis
     return keys
 
 
-def _find_cache_archive(project_id: int, cache_key: str, fallback_keys: str | None) -> tuple[str, str] | None:
+def _find_cache_archive(
+    project_id: int, cache_key: str, fallback_keys: str | None
+) -> tuple[str, str] | None:
     for candidate_key in _cache_keys_with_fallbacks(cache_key, fallback_keys):
         storage_path = _cache_storage_path(project_id, candidate_key)
         if os.path.exists(storage_path):
