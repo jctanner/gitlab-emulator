@@ -268,6 +268,17 @@ async def test_api_v4_root(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_gitlab_version_endpoint(client, test_user, test_token):
+    """GET /version returns GitLab-shaped version metadata."""
+    resp = await client.get(f"{API}/version")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "version": "17.11.0",
+        "revision": "gitlab-emulator",
+    }
+
+
+@pytest.mark.asyncio
 async def test_rate_limit(client, test_user, test_token):
     """GET /rate_limit returns rate limit information."""
     resp = await client.get(f"{API}/rate_limit")

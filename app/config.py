@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Runner registration token for official gitlab-runner validation
     RUNNER_REGISTRATION_TOKEN: str = "runner-registration-token"
 
+    # GitLab-compatible server identity surfaced through /api/v4/version
+    GITLAB_VERSION: str = "17.11.0"
+    GITLAB_REVISION: str = "gitlab-emulator"
+
     # Automatic pipeline schedule materialization
     PIPELINE_SCHEDULE_WORKER_ENABLED: bool = True
     PIPELINE_SCHEDULE_WORKER_INTERVAL_SECONDS: float = 60.0

@@ -144,6 +144,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   and merge requests. The pass expands common GitLab-shaped fields, filters,
   encoded/nested path behavior, repository file metadata, tree pagination,
   commit stats/diff metadata, and merge request diffs/merge validation.
+- `/api/v4/version` exposes configurable GitLab-shaped server version metadata
+  for CLI compatibility probes.
 
 ## Near-Term Slices
 

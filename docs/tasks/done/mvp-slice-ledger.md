@@ -33,7 +33,8 @@ polling.
 GitLab-shaped global search now covers projects, issues, merge requests, and
 indexed code blobs. GitLab-shaped project labels and milestones now expose
 MVP list/create/get/update/delete surfaces with pagination, encoded project
-path lookup, and GitLab response fields.
+path lookup, and GitLab response fields. `/api/v4/version` exposes
+GitLab-shaped server version metadata for CLI compatibility probes.
 GitLab-shaped commit status create/list routes are backed by the existing
 commit status storage and covered by local tests plus client-VM `glab api`
 smoke checks.
