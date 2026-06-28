@@ -474,9 +474,11 @@ and `rules:exists` project/ref rejection are covered by local tests.
 Runner tag matching is also covered by local API tests. The smoke queue is
 intentionally temporary. Cache metadata, list-form cache keys,
 variable-expanded cache paths/keys/policies/when/fallback keys, and archive
-endpoints are covered by local API tests. VM runner cache adapter configuration
-points at MinIO/S3 by default, and the official runner has validated cache
-upload/restore plus dependency artifact download across two-stage pipelines.
+endpoints are covered by local API tests, and unsupported cache entry options or
+invalid cache policy/when values are rejected before runner assignment. VM
+runner cache adapter configuration points at MinIO/S3 by default, and the
+official runner has validated cache upload/restore plus dependency artifact
+download across two-stage pipelines.
 
 Missing behavior for fuller GitLab CI execution:
 

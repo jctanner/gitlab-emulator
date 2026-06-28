@@ -41,6 +41,16 @@ UNSUPPORTED_JOB_KEYS = {
     "start_in": "delayed jobs are not supported",
     "trigger": "bridge/downstream pipeline trigger jobs are not supported",
 }
+SUPPORTED_CACHE_ENTRY_KEYS = {
+    "key",
+    "paths",
+    "untracked",
+    "policy",
+    "when",
+    "fallback_keys",
+}
+SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
+SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
 
 
 @dataclass
@@ -271,22 +281,31 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
     for raw_entry in raw_entries:
         if not isinstance(raw_entry, dict):
             continue
+        unsupported = sorted(set(raw_entry) - SUPPORTED_CACHE_ENTRY_KEYS)
+        if unsupported:
+            raise ValueError(f"cache option(s) not supported: {', '.join(unsupported)}")
         paths = _expand_string_list(raw_entry.get("paths"), variables)
         if not paths and not raw_entry.get("untracked"):
             continue
+        policy = _expand_ci_variables(
+            str(raw_entry.get("policy") or "pull-push"),
+            variables,
+        )
+        if policy not in SUPPORTED_CACHE_POLICIES:
+            raise ValueError(f"cache policy is not supported: {policy}")
+        when = _expand_ci_variables(
+            str(raw_entry.get("when") or "on_success"),
+            variables,
+        )
+        if when not in SUPPORTED_CACHE_WHEN:
+            raise ValueError(f"cache when is not supported: {when}")
         entries.append(
             {
                 "key": _cache_key(raw_entry.get("key"), variables),
                 "untracked": bool(raw_entry.get("untracked", False)),
-                "policy": _expand_ci_variables(
-                    str(raw_entry.get("policy") or "pull-push"),
-                    variables,
-                ),
+                "policy": policy,
                 "paths": paths,
-                "when": _expand_ci_variables(
-                    str(raw_entry.get("when") or "on_success"),
-                    variables,
-                ),
+                "when": when,
                 "fallback_keys": _expand_string_list(
                     raw_entry.get("fallback_keys"),
                     variables,

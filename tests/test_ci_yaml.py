@@ -958,6 +958,60 @@ cache_probe:
     ]
 
 
+def test_parse_gitlab_ci_rejects_unsupported_cache_options():
+    cases = [
+        (
+            """
+cache_probe:
+  cache:
+    paths:
+      - .cache/
+    unprotect: true
+  script:
+    - echo cache
+""",
+            "cache option(s) not supported",
+            "unprotect",
+        ),
+        (
+            """
+cache_probe:
+  cache:
+    paths:
+      - .cache/
+    policy: invalid
+  script:
+    - echo cache
+""",
+            "cache policy is not supported",
+            "invalid",
+        ),
+        (
+            """
+cache_probe:
+  cache:
+    paths:
+      - .cache/
+    when: delayed
+  script:
+    - echo cache
+""",
+            "cache when is not supported",
+            "delayed",
+        ),
+    ]
+
+    for content, message, detail in cases:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            error = str(exc)
+            assert message in error
+            assert detail in error
+        else:
+            raise AssertionError(f"expected ValueError for {detail}")
+
+
 def test_parse_gitlab_ci_supports_extends_from_hidden_template():
     jobs = parse_gitlab_ci(
         """
