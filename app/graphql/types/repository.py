@@ -366,6 +366,25 @@ async def _contact_links(repo_path: str, ref: str) -> list[ContactLink]:
     return []
 
 
+async def _repository_users(info: Info, repo_id: int, owner_id: int) -> list:
+    from app.models.repository import Collaborator
+    from app.models.user import User
+
+    db = info.context["db"]
+    result = await db.execute(
+        select(User)
+        .outerjoin(
+            Collaborator,
+            (Collaborator.user_id == User.id) & (Collaborator.repo_id == repo_id),
+        )
+        .where(or_(User.id == owner_id, Collaborator.id.is_not(None)))
+        .order_by(User.id.asc())
+    )
+    users = result.scalars().all()
+    unique = {user.id: user for user in users}
+    return [unique[user_id] for user_id in sorted(unique)]
+
+
 @strawberry.type
 class Repository:
     """A GitLab repository."""
@@ -624,12 +643,14 @@ class Repository:
         )
 
     @strawberry.field
-    def assignable_users(self) -> Connection[GitLabUser]:
-        return empty_connection()
+    async def assignable_users(self, info: Info) -> Connection[GitLabUser]:
+        users = await _repository_users(info, self.database_id, self._owner_id)
+        return build_connection(users, user_from_model, len(users))
 
     @strawberry.field
-    def mentionable_users(self) -> Connection[GitLabUser]:
-        return empty_connection()
+    async def mentionable_users(self, info: Info) -> Connection[GitLabUser]:
+        users = await _repository_users(info, self.database_id, self._owner_id)
+        return build_connection(users, user_from_model, len(users))
 
     @strawberry.field
     def projects(self) -> Connection[ProjectCardStub]:

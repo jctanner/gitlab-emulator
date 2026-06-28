@@ -299,6 +299,60 @@ async def test_graphql_repository_watchers(client, db_session, test_user, test_t
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_user_connections(
+    client, db_session, test_user, test_token
+):
+    """Repository assignableUsers and mentionableUsers resolve project members."""
+    member, _ = await _create_user_and_token(db_session, "gql-repo-member")
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-user-connections", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    add_member = await client.post(
+        f"{API}/projects/{project['id']}/members",
+        json={"user_id": member.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert add_member.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-user-connections") {
+                    assignableUsers {
+                      totalCount
+                      nodes { login }
+                    }
+                    mentionableUsers {
+                      totalCount
+                      nodes { login }
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    expected = {
+        "totalCount": 2,
+        "nodes": [{"login": "testuser"}, {"login": "gql-repo-member"}],
+    }
+    assert repo["assignableUsers"] == expected
+    assert repo["mentionableUsers"] == expected
+
+
+@pytest.mark.asyncio
 async def test_graphql_repository_templates(client, test_user, test_token):
     """Repository issue and pull request templates resolve from committed files."""
     project_resp = await client.post(
