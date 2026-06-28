@@ -395,9 +395,10 @@ Done when:
   git diffs. Pull request commit and changed-file connections list the actual
   commits and files between base and head. Repository `refs(refPrefix:)`
   distinguishes branch and tag refs, and repository language/topic and watcher
-  connections resolve from stored project metadata and star data. GraphQL search
-  total counts report all matches independently of the returned node limit. The
-  broader schema remains an incremental parity area.
+  connections resolve from stored project metadata and star data. Repository
+  issue and pull request template fields resolve from committed template files.
+  GraphQL search total counts report all matches independently of the returned
+  node limit. The broader schema remains an incremental parity area.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,

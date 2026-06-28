@@ -127,6 +127,23 @@ async def _git_lines(repo_path: str, *args: str) -> list[str]:
     return [line for line in stdout.decode().splitlines() if line.strip()]
 
 
+async def _git_text(repo_path: str, *args: str) -> Optional[str]:
+    if not repo_path or not os.path.isdir(repo_path):
+        return None
+    env = {**os.environ, "GIT_DIR": repo_path}
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return None
+    return stdout.decode()
+
+
 async def _ref_names(repo_path: str, ref_prefix: str) -> list[str]:
     if not repo_path or not os.path.isdir(repo_path):
         return []
@@ -136,6 +153,94 @@ async def _ref_names(repo_path: str, ref_prefix: str) -> list[str]:
         "--format=%(refname:short)",
         ref_prefix,
     )
+
+
+async def _tree_paths(repo_path: str, ref: str, *prefixes: str) -> list[str]:
+    output = await _git_text(repo_path, "ls-tree", "-r", "--name-only", ref)
+    if not output:
+        return []
+    paths = [line.strip() for line in output.splitlines() if line.strip()]
+    return [
+        path
+        for path in paths
+        if any(path == prefix or path.startswith(f"{prefix}/") for prefix in prefixes)
+    ]
+
+
+def _template_name(path: str) -> str:
+    filename = path.rsplit("/", 1)[-1]
+    return filename.rsplit(".", 1)[0]
+
+
+def _parse_issue_template(path: str, body: str) -> IssueTemplate:
+    name = _template_name(path)
+    title = ""
+    about = ""
+    content = body
+    lines = body.splitlines()
+    if lines and lines[0].strip() == "---":
+        end = next(
+            (
+                index
+                for index, line in enumerate(lines[1:], start=1)
+                if line.strip() == "---"
+            ),
+            None,
+        )
+        if end is not None:
+            metadata = lines[1:end]
+            content = "\n".join(lines[end + 1:]).lstrip("\n")
+            for line in metadata:
+                key, separator, value = line.partition(":")
+                if not separator:
+                    continue
+                normalized = key.strip().lower()
+                cleaned = value.strip().strip("\"'")
+                if normalized == "name":
+                    name = cleaned
+                elif normalized == "title":
+                    title = cleaned
+                elif normalized == "about":
+                    about = cleaned
+    return IssueTemplate(name=name, title=title, about=about, body=content)
+
+
+async def _issue_templates(repo_path: str, ref: str) -> list[IssueTemplate]:
+    paths = await _tree_paths(
+        repo_path,
+        ref,
+        ".gitlab/issue_templates",
+        ".github/ISSUE_TEMPLATE",
+        "ISSUE_TEMPLATE.md",
+    )
+    templates: list[IssueTemplate] = []
+    for path in paths:
+        if path.endswith("/"):
+            continue
+        body = await _git_text(repo_path, "show", f"{ref}:{path}")
+        if body is None:
+            continue
+        templates.append(_parse_issue_template(path, body))
+    return templates
+
+
+async def _pull_request_templates(repo_path: str, ref: str) -> list[PullRequestTemplate]:
+    paths = await _tree_paths(
+        repo_path,
+        ref,
+        ".gitlab/merge_request_templates",
+        ".github/PULL_REQUEST_TEMPLATE",
+        "PULL_REQUEST_TEMPLATE.md",
+    )
+    templates: list[PullRequestTemplate] = []
+    for path in paths:
+        if path.endswith("/"):
+            continue
+        body = await _git_text(repo_path, "show", f"{ref}:{path}")
+        if body is None:
+            continue
+        templates.append(PullRequestTemplate(filename=path, body=body))
+    return templates
 
 
 @strawberry.type
@@ -356,12 +461,14 @@ class Repository:
         return None
 
     @strawberry.field
-    def issue_templates(self) -> list[IssueTemplate]:
-        return []
+    async def issue_templates(self) -> list[IssueTemplate]:
+        return await _issue_templates(self._disk_path or "", self._default_branch)
 
     @strawberry.field
-    def pull_request_templates(self) -> list[PullRequestTemplate]:
-        return []
+    async def pull_request_templates(self) -> list[PullRequestTemplate]:
+        return await _pull_request_templates(
+            self._disk_path or "", self._default_branch
+        )
 
     @strawberry.field
     async def latest_release(self, info: Info) -> Optional[ReleaseStub]:

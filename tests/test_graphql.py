@@ -299,6 +299,89 @@ async def test_graphql_repository_watchers(client, db_session, test_user, test_t
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_templates(client, test_user, test_token):
+    """Repository issue and pull request templates resolve from committed files."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-repo-templates", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    issue_template = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/.gitlab%2Fissue_templates%2Fbug.md",
+        json={
+            "branch": "main",
+            "commit_message": "add issue template",
+            "content": (
+                "---\n"
+                "name: Bug report\n"
+                "title: '[Bug] '\n"
+                "about: Report a bug\n"
+                "---\n"
+                "## Steps\n"
+            ),
+        },
+        headers=auth_headers(test_token),
+    )
+    assert issue_template.status_code == 201
+
+    mr_template = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/.gitlab%2Fmerge_request_templates%2Fdefault.md",
+        json={
+            "branch": "main",
+            "commit_message": "add merge request template",
+            "content": "## Summary\n\n## Testing\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert mr_template.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-repo-templates") {
+                    issueTemplates {
+                      name
+                      title
+                      about
+                      body
+                    }
+                    pullRequestTemplates {
+                      filename
+                      body
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["issueTemplates"] == [
+        {
+            "name": "Bug report",
+            "title": "[Bug] ",
+            "about": "Report a bug",
+            "body": "## Steps",
+        }
+    ]
+    assert repo["pullRequestTemplates"] == [
+        {
+            "filename": ".gitlab/merge_request_templates/default.md",
+            "body": "## Summary\n\n## Testing\n",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_graphql_user(client, test_user, test_token):
     """Query user returns user details."""
     resp = await client.post(
