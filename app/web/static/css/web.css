@@ -654,8 +654,54 @@ td.blob-code {
     color: #333238 !important;
     background: #ececef;
 }
+.gl-topbar .Header-item {
+    margin-right: 6px;
+}
+.gl-topbar .Header-item:last-child {
+    margin-right: 0;
+}
+.gl-topbar .Header-item:nth-last-child(2) {
+    margin-left: 8px;
+}
+.gl-topbar .Header-item:nth-last-child(2)::before {
+    display: inline-block;
+    width: 1px;
+    height: 18px;
+    margin-right: 10px;
+    vertical-align: middle;
+    background: #dcdcde;
+    content: "";
+}
 .gl-topbar .Header-link svg {
     color: var(--gl-orange-600);
+}
+.gl-topbar .gl-topbar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 4px;
+}
+.gl-topbar .gl-topbar-icon svg {
+    color: #535158;
+}
+.gl-topbar .Header-item:first-child .Header-link svg {
+    color: var(--gl-orange-600);
+}
+.gl-topbar .gl-topbar-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 50%;
+    color: #24663b !important;
+    background: #d6f5d6;
+    font-size: 12px;
+    font-weight: 600;
 }
 .gl-topbar .Header-item--full {
     position: absolute;
@@ -852,6 +898,12 @@ td.blob-code {
 }
 .gl-sidebar-group-title.selected {
     background: #d5e2f7;
+}
+.gl-sidebar-note {
+    padding: 2px 8px 8px 29px;
+    color: #737278;
+    font-size: 12px;
+    line-height: 16px;
 }
 .gl-sidebar-subitem {
     min-height: 26px;

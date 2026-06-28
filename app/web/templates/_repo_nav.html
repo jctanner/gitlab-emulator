@@ -26,6 +26,14 @@
     <nav class="gl-sidebar-nav">
         <div class="gl-sidebar-group">
             <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ git_pull_request(16) }}</span>
+                <span>Pinned</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            <div class="gl-sidebar-note">Your pinned items appear here.</div>
+        </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
                 <span class="gl-sidebar-icon">{{ repo_icon(16) }}</span>
                 <span>Manage</span>
                 <span class="gl-sidebar-caret">⌄</span>
@@ -62,6 +70,13 @@
             {% endif %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Wiki</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Requirements</span>
+        </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ history(16) }}</span>
+                <span>AI</span>
+                <span class="gl-sidebar-caret">›</span>
+            </div>
         </div>
         <div class="gl-sidebar-group">
             <div class="gl-sidebar-group-title">
@@ -109,6 +124,26 @@
         </div>
         <div class="gl-sidebar-group">
             <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ history(16) }}</span>
+                <span>Secure</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_variables' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables">CI/CD variables</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_secrets' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/secrets">Secrets</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'deploy_keys' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/deploy_keys">Deploy keys</a>
+            {% else %}
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">CI/CD variables</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Secrets</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Deploy keys</span>
+            {% endif %}
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Security policies</span>
+        </div>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
                 <span class="gl-sidebar-icon">{{ tag(16) }}</span>
                 <span>Deploy</span>
                 <span class="gl-sidebar-caret">⌄</span>
@@ -127,26 +162,6 @@
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Package registry</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Container registry</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Model registry</span>
-        </div>
-        <div class="gl-sidebar-group">
-            <div class="gl-sidebar-group-title">
-                <span class="gl-sidebar-icon">{{ history(16) }}</span>
-                <span>Secure</span>
-                <span class="gl-sidebar-caret">⌄</span>
-            </div>
-            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
-            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_variables' %} selected{% endif %}"
-               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables">CI/CD variables</a>
-            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_secrets' %} selected{% endif %}"
-               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/secrets">Secrets</a>
-            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'deploy_keys' %} selected{% endif %}"
-               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/deploy_keys">Deploy keys</a>
-            {% else %}
-            <span class="gl-sidebar-link gl-sidebar-subitem disabled">CI/CD variables</span>
-            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Secrets</span>
-            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Deploy keys</span>
-            {% endif %}
-            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Security policies</span>
         </div>
         <span class="gl-sidebar-link disabled">Operate <span class="gl-sidebar-caret">›</span></span>
         <span class="gl-sidebar-link disabled">Monitor <span class="gl-sidebar-caret">›</span></span>
