@@ -148,6 +148,17 @@ def _pipeline_variable_entries(variables: list[PipelineVariable]) -> dict[str, d
     return entries
 
 
+def _pipeline_context_variable_entries(
+    variables: list[PipelineVariable],
+    *,
+    source: str,
+) -> dict[str, dict]:
+    return {
+        **_pipeline_variable_entries(variables),
+        "CI_PIPELINE_SOURCE": _variable_entry(source),
+    }
+
+
 def _simple_variable_values(entries: dict[str, dict]) -> dict[str, str]:
     return {key: str(entry.get("value", "")) for key, entry in entries.items()}
 
@@ -808,7 +819,10 @@ async def _create_pipeline(
                 db,
                 ref=body.ref,
             )
-            pipeline_variable_entries = _pipeline_variable_entries(body.variables)
+            pipeline_variable_entries = _pipeline_context_variable_entries(
+                body.variables,
+                source=source,
+            )
             ci_content = await _read_repo_file(
                 project,
                 body.ref,
@@ -823,7 +837,6 @@ async def _create_pipeline(
                     {
                         **rule_project_variable_entries,
                         **pipeline_variable_entries,
-                        "CI_PIPELINE_SOURCE": {"value": source},
                     }
                 ),
                 existing_paths=await _repo_paths_at_ref(project, body.ref),
@@ -868,7 +881,10 @@ async def _create_pipeline(
     db.add(pipeline)
     await db.flush()
 
-    pipeline_variable_entries = _pipeline_variable_entries(body.variables)
+    pipeline_variable_entries = _pipeline_context_variable_entries(
+        body.variables,
+        source=source,
+    )
     for parsed_job in parsed_jobs:
         project_variable_metadata = await project_variable_entries(
             project,

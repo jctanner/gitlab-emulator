@@ -270,6 +270,66 @@ async def test_merge_request_commits_and_changes(client, test_token):
 
 
 @pytest.mark.asyncio
+async def test_create_merge_request_pipeline_uses_mr_event_rules(client, test_token):
+    project = await _project_with_source_branch(client, test_token, "mr-pipeline-project")
+    ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - when: never
+
+mr_job:
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+  script:
+    - echo mr $CI_MERGE_REQUEST_IID
+
+api_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
+"""
+    write = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/.gitlab-ci.yml",
+        json={
+            "branch": "feature",
+            "commit_message": "add mr ci",
+            "content": ci_yaml,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert write.status_code == 201
+    create = await _create_mr(client, test_token, project["id"], "MR pipeline")
+    assert create.status_code == 201
+    iid = create.json()["iid"]
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/merge_requests/{iid}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+    assert pipeline["source"] == "merge_request_event"
+    assert pipeline["ref"] == "feature"
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": "glrt-emulator-runner-token"},
+        json={"token": "glrt-emulator-runner-token"},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["pipeline_id"] == pipeline["id"]
+    assert payload["job_info"]["name"] == "mr_job"
+    variables = {item["key"]: item["value"] for item in payload["variables"]}
+    assert variables["CI_PIPELINE_SOURCE"] == "merge_request_event"
+    assert variables["CI_MERGE_REQUEST_IID"] == str(iid)
+    assert variables["CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"] == "feature"
+    assert variables["CI_MERGE_REQUEST_TARGET_BRANCH_NAME"] == "main"
+
+
+@pytest.mark.asyncio
 async def test_merge_merge_request(client, test_token):
     project = await _project_with_source_branch(client, test_token, "mr-merge-project")
     create = await _create_mr(client, test_token, project["id"])

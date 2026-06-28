@@ -19,6 +19,12 @@ from app.api.deps import AuthUser, CurrentUser, DbSession
 from app.api.gitlab_commits import _commit_json as _gitlab_commit_json
 from app.api.gitlab_commits import _COMMIT_FORMAT
 from app.api.pagination import paginated_json
+from app.api.pipelines import (
+    CreatePipelineRequest,
+    PipelineVariable,
+    _create_pipeline,
+    _pipeline_json,
+)
 from app.api.projects import _get_project_or_404
 from app.api.pulls import _perform_git_merge
 from app.config import settings
@@ -196,6 +202,25 @@ def _mr_json(
         "url": api_url,
         "user": {"can_merge": True},
     }
+
+
+def _merge_request_pipeline_variables(
+    project: Project,
+    merge_request: MergeRequest,
+) -> list[PipelineVariable]:
+    issue = merge_request.issue
+    iid = str(issue.number)
+    return [
+        PipelineVariable(key="CI_MERGE_REQUEST_ID", value=str(merge_request.id)),
+        PipelineVariable(key="CI_MERGE_REQUEST_IID", value=iid),
+        PipelineVariable(key="CI_MERGE_REQUEST_PROJECT_ID", value=str(project.id)),
+        PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", value=merge_request.head_ref),
+        PipelineVariable(key="CI_MERGE_REQUEST_TARGET_BRANCH_NAME", value=merge_request.base_ref),
+        PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_BRANCH_SHA", value=merge_request.head_sha),
+        PipelineVariable(key="CI_MERGE_REQUEST_TARGET_BRANCH_SHA", value=merge_request.base_sha),
+        PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_PROJECT_PATH", value=project.full_name),
+        PipelineVariable(key="CI_MERGE_REQUEST_TARGET_PROJECT_PATH", value=project.full_name),
+    ]
 
 
 async def _validate_source_target(
@@ -482,6 +507,32 @@ async def get_merge_request_commits(
         except ValueError:
             continue
     return paginated_json(commits, request, page, per_page, total)
+
+
+@router.post("/projects/{project_ref:path}/merge_requests/{iid}/pipelines", status_code=201)
+async def create_merge_request_pipeline(
+    project_ref: str,
+    iid: int,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Create a GitLab-shaped merge request event pipeline."""
+    project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
+    merge_request = await _get_mr_or_404(project, iid, db)
+    await _refresh_branch_shas(project, merge_request)
+    pipeline = await _create_pipeline(
+        project.id,
+        CreatePipelineRequest(
+            ref=merge_request.head_ref,
+            sha=merge_request.head_sha,
+            variables=_merge_request_pipeline_variables(project, merge_request),
+        ),
+        db,
+        source="merge_request_event",
+        actor=user,
+    )
+    return _pipeline_json(pipeline)
 
 
 @router.get("/projects/{project_ref:path}/merge_requests/{iid}/changes")
