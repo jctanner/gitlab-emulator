@@ -308,8 +308,9 @@ Done when:
 - Full GitLab GraphQL parity. The current compatibility surface includes
   GitLab-shaped `currentUser`, `project(fullPath:)`, and repository
   `mergeRequests` aliases backed by the existing user/project/MR models.
-  Repository `latestRelease` resolves real release metadata, but the broader
-  schema remains an incremental parity area.
+  Repository `latestRelease` resolves real release metadata, and repository
+  issue connections support `filterBy.mentioned` for issue bodies and comments,
+  but the broader schema remains an incremental parity area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI

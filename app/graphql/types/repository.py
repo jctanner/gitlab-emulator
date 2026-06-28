@@ -5,7 +5,7 @@ from typing import Annotated, Optional, Union
 
 import strawberry
 from strawberry.types import Info
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import exists, or_, select, func as sa_func
 
 from app.graphql.connections import Connection, build_connection
 from app.graphql.types.user import GitLabUser, user_from_model, _node_id
@@ -498,7 +498,18 @@ class Repository:
                 )
                 query = query.where(Issue.id.in_(assignee_subq))
             if filter_by.mentioned is not None:
-                pass  # stub
+                from app.models.comment import IssueComment
+
+                mention = f"@{filter_by.mentioned.lstrip('@')}"
+                query = query.where(
+                    or_(
+                        Issue.body.ilike(f"%{mention}%"),
+                        exists().where(
+                            IssueComment.issue_id == Issue.id,
+                            IssueComment.body.ilike(f"%{mention}%"),
+                        ),
+                    )
+                )
             if filter_by.created_by is not None:
                 from app.models.user import User
                 creator_subq = select(User.id).where(User.login == filter_by.created_by)
@@ -536,17 +547,8 @@ class Repository:
         result = await db.execute(query)
         all_issues = result.scalars().all()
 
-        count_query = select(sa_func.count()).select_from(Issue).where(
-            Issue.repo_id == self.database_id
-        )
-        if states:
-            lower_states = [s.value.lower() if hasattr(s, 'value') else s.lower() for s in states]
-            count_query = count_query.where(Issue.state.in_(lower_states))
-        count_result = await db.execute(count_query)
-        total = count_result.scalar() or 0
-
         return build_connection(
-            all_issues, issue_from_model, total,
+            all_issues, issue_from_model, len(all_issues),
             first=first, after=after, last=last, before=before,
         )
 

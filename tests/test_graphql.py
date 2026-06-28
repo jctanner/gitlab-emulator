@@ -318,6 +318,70 @@ async def test_graphql_repository_with_issues(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_issues_filter_by_mentioned(
+    client, test_user, test_token
+):
+    """Repository issues filterBy mentioned searches issue bodies and comments."""
+    await client.post(
+        f"{API}/user/repos",
+        json={"name": "gql-mentioned-issues"},
+        headers=auth_headers(test_token),
+    )
+    body_mention = await client.post(
+        f"{API}/repos/testuser/gql-mentioned-issues/issues",
+        json={"title": "Body mention", "body": "Please check this @reviewer"},
+        headers=auth_headers(test_token),
+    )
+    assert body_mention.status_code == 201
+    comment_mention = await client.post(
+        f"{API}/repos/testuser/gql-mentioned-issues/issues",
+        json={"title": "Comment mention", "body": "No mention here"},
+        headers=auth_headers(test_token),
+    )
+    assert comment_mention.status_code == 201
+    unrelated = await client.post(
+        f"{API}/repos/testuser/gql-mentioned-issues/issues",
+        json={"title": "Unrelated", "body": "No match"},
+        headers=auth_headers(test_token),
+    )
+    assert unrelated.status_code == 201
+
+    comment = await client.post(
+        f"{API}/repos/testuser/gql-mentioned-issues/issues/{comment_mention.json()['number']}/comments",
+        json={"body": "Looping in @reviewer from a comment"},
+        headers=auth_headers(test_token),
+    )
+    assert comment.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                { repository(owner: "testuser", name: "gql-mentioned-issues") {
+                    issues(first: 10, filterBy: { mentioned: "reviewer" }) {
+                        totalCount
+                        nodes {
+                            title
+                        }
+                    }
+                }}
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    issues = data["data"]["repository"]["issues"]
+    assert issues["totalCount"] == 2
+    assert [issue["title"] for issue in issues["nodes"]] == [
+        "Body mention",
+        "Comment mention",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_graphql_project_merge_requests_alias(client, test_user, test_token):
     """GitLab-shaped project(fullPath:) exposes mergeRequests."""
     project_resp = await client.post(
