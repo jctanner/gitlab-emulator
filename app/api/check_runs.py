@@ -9,6 +9,7 @@ from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.models.check import CheckRun, CheckSuite
 from app.schemas.user import _fmt_dt, _make_node_id
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["checks"])
 
@@ -64,6 +65,7 @@ async def create_check_run(
 ):
     """Create a check run."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
 
     head_sha = body.get("head_sha", "")
     name = body.get("name", "")
@@ -136,6 +138,7 @@ async def update_check_run(
 ):
     """Update a check run."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(CheckRun).where(
             CheckRun.id == check_run_id, CheckRun.repo_id == repository.id
@@ -214,6 +217,7 @@ async def create_check_suite(
 ):
     """Create a check suite."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
 
     head_sha = body.get("head_sha", "")
     if not head_sha:
