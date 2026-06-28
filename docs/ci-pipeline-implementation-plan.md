@@ -52,10 +52,10 @@ Already working:
   metadata, runner payloads include `cache` entries, and cache archives can be
   uploaded, inspected, and downloaded through project cache endpoints
 - cache key list, prefix/files parsing, and emulator cache fallback-key lookup
-  are implemented for API-level cache coverage; cache keys, cache policies, and
-  fallback keys expand merged CI variables before reaching the runner payload;
-  official runner validation remains on GitLab Runner's S3 cache adapter backed
-  by MinIO
+  are implemented for API-level cache coverage; cache paths, keys, cache
+  policies, and fallback keys expand merged CI variables before reaching the
+  runner payload; official runner validation remains on GitLab Runner's S3
+  cache adapter backed by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve
   artifact name, exclude, untracked, when, and expire_in values; uploaded
   artifacts store type/format/expiry metadata and expired artifacts return 404
@@ -407,10 +407,10 @@ Implemented:
 
 Still needed:
 
-- support remaining richer cache options and edge cases beyond current list,
-  prefix/files, fallback-key, policy, and MinIO/S3 validation coverage; GitLab
-  Runner supports S3/GCS/Azure distributed cache adapters, not an arbitrary HTTP
-  cache endpoint
+- support remaining richer cache options and edge cases beyond current
+  variable-expanded paths, list, prefix/files, fallback-key, policy, and
+  MinIO/S3 validation coverage; GitLab Runner supports S3/GCS/Azure distributed
+  cache adapters, not an arbitrary HTTP cache endpoint
 
 ## Done Criteria
 

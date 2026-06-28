@@ -747,13 +747,14 @@ cache:
     files:
       - "$LOCKFILE"
   paths:
-    - .cache/
+    - "$CACHE_DIR/"
   policy: "$CACHE_POLICY"
   fallback_keys:
     - "$CI_COMMIT_REF_NAME-fallback"
 
 cache_probe:
   variables:
+    CACHE_DIR: .cache
     LOCKFILE: uv.lock
   rules:
     - variables:

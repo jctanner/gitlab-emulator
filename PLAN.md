@@ -64,10 +64,10 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   variable-expanded rule path patterns, mapping-form `only`/`except` filters,
   workflow/rule-level variables, `allow_failure` scheduling/status behavior,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
-  metadata with list and file-derived keys,
-  variable-expanded keys/policies/fallback keys, deeper `extends` semantics,
-  nested local `include`, `include:project`, controlled `include:remote`, and a
-  small set of built-in template includes.
+  metadata with list and file-derived keys, variable-expanded paths, keys,
+  policies, and fallback keys, deeper `extends` semantics, nested local
+  `include`, `include:project`, controlled `include:remote`, and a small set of
+  built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in
@@ -186,7 +186,7 @@ Target areas:
   mapping-form `only`/`except`, never, manual, rule-variable, and
   `allow_failure` support
 - remaining richer cache policy/options beyond list and file-derived keys,
-  variable-expanded keys, policies, and fallback keys
+  variable-expanded paths, keys, policies, and fallback keys
 
 Done when:
 

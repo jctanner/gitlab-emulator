@@ -266,7 +266,7 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
     for raw_entry in raw_entries:
         if not isinstance(raw_entry, dict):
             continue
-        paths = _string_list(raw_entry.get("paths"))
+        paths = _expand_string_list(raw_entry.get("paths"), variables)
         if not paths and not raw_entry.get("untracked"):
             continue
         entries.append(
