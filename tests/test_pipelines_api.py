@@ -4393,12 +4393,19 @@ async def test_pipeline_rules_if_exists_changes_and_manual_from_gitlab_ci_yaml(
     ci_yaml = """
 variables:
   DEPLOY_TARGET: prod
+  MAIN_PATTERN: /^main$/
 
 rules_if:
   script:
     - echo if
   rules:
     - if: '$DEPLOY_TARGET == "prod" && $CI_COMMIT_REF_NAME =~ /^main$/'
+
+rules_regex_variable:
+  script:
+    - echo regex variable
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ $MAIN_PATTERN'
 
 rules_not:
   script:
@@ -4483,6 +4490,7 @@ never_job:
         "rules_exists",
         "rules_if",
         "rules_not",
+        "rules_regex_variable",
     ]
     assert by_name["manual_review"]["status"] == "manual"
     assert by_name["rules_if"]["status"] == "pending"

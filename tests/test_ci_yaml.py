@@ -495,10 +495,20 @@ regex:
   rules:
     - if: '$CI_COMMIT_REF_NAME =~ /^release-/'
 
+regex_from_variable:
+  script: echo regex from variable
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ $RELEASE_PATTERN'
+
 regex_not_match:
   script: echo regex not match
   rules:
     - if: '$CI_COMMIT_REF_NAME !~ /^main$/'
+
+regex_variable_not_match:
+  script: echo regex variable not match
+  rules:
+    - if: '$CI_COMMIT_REF_NAME !~ $MAIN_PATTERN'
 
 regex_not_match_skip:
   script: echo regex not match skip
@@ -547,7 +557,13 @@ skipped:
       when: never
 """,
         ref="release-1.0",
-        variables={"RUN_TRUTHY": "1", "TARGET": "prod", "EMPTY_VALUE": ""},
+        variables={
+            "EMPTY_VALUE": "",
+            "MAIN_PATTERN": "/^main$/",
+            "RELEASE_PATTERN": "/^release-/",
+            "RUN_TRUTHY": "1",
+            "TARGET": "prod",
+        },
     )
 
     assert [job.name for job in jobs] == [
@@ -562,7 +578,9 @@ skipped:
         "null_match",
         "null_not_match",
         "regex",
+        "regex_from_variable",
         "regex_not_match",
+        "regex_variable_not_match",
         "truthy",
     ]
 

@@ -413,6 +413,15 @@ def _expression_value(value: str, variables: dict[str, str]) -> str:
     return _unquote(value)
 
 
+def _regex_pattern_value(value: str, variables: dict[str, str]) -> str:
+    value = value.strip()
+    if re.fullmatch(r"\$[A-Za-z_][A-Za-z0-9_]*", value):
+        value = variables.get(value[1:], "")
+    if value.startswith("/") and value.endswith("/") and len(value) > 1:
+        return value[1:-1]
+    return _unquote(value)
+
+
 def _is_null_literal(value: str) -> bool:
     return value.strip() == "null"
 
@@ -436,12 +445,8 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
         left_key = left[1:]
         left_value = _expression_value(left, variables)
         if operator in {"=~", "!~"}:
-            pattern = right.strip()
-            if pattern.startswith("/") and pattern.endswith("/") and len(pattern) > 1:
-                pattern = pattern[1:-1]
-            else:
-                pattern = _unquote(pattern)
-            matches = re.search(pattern, left_value) is not None
+            pattern = _regex_pattern_value(right, variables)
+            matches = bool(pattern) and re.search(pattern, left_value) is not None
             return matches if operator == "=~" else not matches
         if _is_null_literal(right):
             matches = left_key not in variables

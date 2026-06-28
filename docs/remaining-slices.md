@@ -8,7 +8,7 @@ workflow variables, boolean `allow_failure` plus clear unsupported
 `allow_failure:exit_codes` rejection, `when: always` and `when: on_failure`
 cleanup scheduling, clear unsupported delayed-job rejection, grouped boolean
 `rules:if` expressions, regex non-match operators, unary negation,
-null/empty variable comparisons,
+null/empty variable comparisons, variable-backed regex patterns in `rules:if`,
 `exists`/`changes` path-object rules, variable-expanded rule path patterns,
 mapping-form `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters, cache
