@@ -150,6 +150,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   for CLI compatibility probes.
 - `/api/v4/metadata` exposes matching GitLab-shaped server metadata, including
   version, revision, KAS disabled state, and enterprise flag.
+- `/api/v4/application/settings` exposes a read-only admin-gated MVP
+  application settings payload for instance compatibility checks.
 
 ## Near-Term Slices
 

@@ -165,6 +165,7 @@ def create_app() -> FastAPI:
     from app.api.reviews import router as reviews_router
     from app.api.oauth import router as oauth_router
     from app.api.actions import router as actions_router
+    from app.api.application import router as application_router
     from app.api.markdown import router as markdown_router
     from app.api.emojis import router as emojis_router
     from app.api.gitignore import router as gitignore_router
@@ -193,7 +194,8 @@ def create_app() -> FastAPI:
         search_router, orgs_router, groups_router, namespaces_router,
         teams_router, notifications_router,
         gists_router, starring_router, reviews_router,
-        actions_router, markdown_router, emojis_router, gitignore_router,
+        actions_router, application_router, markdown_router, emojis_router,
+        gitignore_router,
         licenses_router, user_keys_router, deploy_keys_router,
         review_comments_router, runner_router, pipelines_router,
         admin_ci_variables_router,

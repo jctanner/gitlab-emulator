@@ -268,6 +268,34 @@ async def test_api_v4_root(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_application_settings_require_admin(client, test_token):
+    unauthenticated = await client.get(f"{API}/application/settings")
+    assert unauthenticated.status_code == 401
+
+    forbidden = await client.get(
+        f"{API}/application/settings",
+        headers=auth_headers(test_token),
+    )
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_application_settings_admin_shape(client, admin_token):
+    resp = await client.get(
+        f"{API}/application/settings",
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["default_branch_name"] == "main"
+    assert data["signup_enabled"] is False
+    assert data["shared_runners_enabled"] is True
+    assert data["home_page_url"] == "http://testserver"
+    assert data["import_sources"] == ["git", "gitlab_project"]
+    assert "ci_max_includes" in data
+
+
+@pytest.mark.asyncio
 async def test_gitlab_version_endpoint(client, test_user, test_token):
     """GET /version returns GitLab-shaped version metadata."""
     resp = await client.get(f"{API}/version")
