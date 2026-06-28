@@ -199,6 +199,23 @@ class Query:
         return None
 
     @strawberry.field
+    async def project(
+        self,
+        info: Info,
+        full_path: str,
+    ) -> Optional[Repository]:
+        """Look up a GitLab-shaped project by full path."""
+        from app.models.repository import Repository as RepoModel
+        db = info.context["db"]
+        result = await db.execute(
+            select(RepoModel).where(RepoModel.full_name == full_path.strip("/"))
+        )
+        repo = result.scalar_one_or_none()
+        if repo:
+            return repository_from_model(repo)
+        return None
+
+    @strawberry.field
     async def user(self, info: Info, login: str) -> Optional[GitLabUser]:
         """Look up a user by login."""
         from app.models.user import User

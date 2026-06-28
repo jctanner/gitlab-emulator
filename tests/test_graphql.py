@@ -195,6 +195,79 @@ async def test_graphql_repository_with_issues(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_project_merge_requests_alias(client, test_user, test_token):
+    """GitLab-shaped project(fullPath:) exposes mergeRequests."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-merge-requests", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    file_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/feature.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "add feature",
+            "content": "feature\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert file_resp.status_code == 201
+
+    mr_resp = await client.post(
+        f"{API}/projects/{project['id']}/merge_requests",
+        json={
+            "title": "GraphQL MR",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert mr_resp.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  project(fullPath: "testuser/gql-merge-requests") {
+                    name
+                    mergeRequests(first: 10) {
+                      totalCount
+                      nodes {
+                        title
+                        headRefName
+                        baseRefName
+                      }
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    project_data = data["data"]["project"]
+    assert project_data["name"] == "gql-merge-requests"
+    merge_requests = project_data["mergeRequests"]
+    assert merge_requests["totalCount"] == 1
+    assert merge_requests["nodes"][0]["title"] == "GraphQL MR"
+    assert merge_requests["nodes"][0]["headRefName"] == "feature"
+    assert merge_requests["nodes"][0]["baseRefName"] == "main"
+
+
+@pytest.mark.asyncio
 async def test_graphql_variables(client, test_user, test_token):
     """GraphQL queries support variables."""
     resp = await client.post(

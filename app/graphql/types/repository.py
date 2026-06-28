@@ -589,6 +589,28 @@ class Repository:
         )
 
     @strawberry.field
+    async def merge_requests(
+        self,
+        info: Info,
+        first: Optional[int] = 10,
+        after: Optional[str] = None,
+        last: Optional[int] = None,
+        before: Optional[str] = None,
+        states: Optional[list[str]] = None,
+        head_ref_name: Optional[str] = None,
+    ) -> Connection[Annotated["PullRequest", strawberry.lazy("app.graphql.types.pull_request")]]:
+        """GitLab-shaped alias for merge request connections."""
+        return await self.pull_requests(
+            info,
+            first=first,
+            after=after,
+            last=last,
+            before=before,
+            states=states,
+            head_ref_name=head_ref_name,
+        )
+
+    @strawberry.field
     async def labels(
         self,
         info: Info,

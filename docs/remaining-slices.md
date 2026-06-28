@@ -328,7 +328,10 @@ Done when:
 
 ## Deferred Work
 
-- Full GitLab GraphQL parity.
+- Full GitLab GraphQL parity. The current compatibility surface includes
+  GitLab-shaped `project(fullPath:)` and repository `mergeRequests` aliases
+  backed by the existing project/MR models, but the broader schema remains an
+  incremental parity area.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, git ref write, and
