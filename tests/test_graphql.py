@@ -353,6 +353,54 @@ async def test_graphql_repository_user_connections(
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_parent(
+    client, test_user, test_token, admin_user, admin_token
+):
+    """Forked repository parent resolves from persisted fork metadata."""
+    source = await client.post(
+        f"{API}/user/repos",
+        json={"name": "gql-parent-source", "auto_init": True},
+        headers=auth_headers(test_token),
+    )
+    assert source.status_code == 201
+
+    fork = await client.post(
+        f"{API}/repos/testuser/gql-parent-source/forks",
+        json={},
+        headers=auth_headers(admin_token),
+    )
+    assert fork.status_code == 202
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "admin", name: "gql-parent-source") {
+                    nameWithOwner
+                    parent {
+                      name
+                      nameWithOwner
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(admin_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["nameWithOwner"] == "admin/gql-parent-source"
+    assert repo["parent"] == {
+        "name": "gql-parent-source",
+        "nameWithOwner": "testuser/gql-parent-source",
+    }
+
+
+@pytest.mark.asyncio
 async def test_graphql_repository_templates(client, test_user, test_token):
     """Repository issue and pull request templates resolve from committed files."""
     project_resp = await client.post(

@@ -418,6 +418,7 @@ class Repository:
     _is_in_organization: strawberry.Private[bool] = False
     _disk_path: strawberry.Private[Optional[str]] = None
     _topics: strawberry.Private[Optional[list[str]]] = None
+    _parent_id: strawberry.Private[Optional[int]] = None
 
     @strawberry.field
     def id(self) -> strawberry.ID:
@@ -543,8 +544,17 @@ class Repository:
     # --- Resolver fields returning None/empty (stubs) ---
 
     @strawberry.field
-    def parent(self) -> Optional["Repository"]:
-        return None
+    async def parent(self, info: Info) -> Optional["Repository"]:
+        from app.models.repository import Repository as RepoModel
+
+        if self._parent_id is None:
+            return None
+        db = info.context["db"]
+        result = await db.execute(
+            select(RepoModel).where(RepoModel.id == self._parent_id)
+        )
+        parent = result.scalar_one_or_none()
+        return repository_from_model(parent) if parent else None
 
     @strawberry.field
     def template_repository(self) -> Optional["Repository"]:
@@ -1093,4 +1103,5 @@ def repository_from_model(repo) -> Repository:
         _is_in_organization=getattr(repo, 'owner_type', 'User') == 'Organization',
         _disk_path=repo.disk_path,
         _topics=list(repo.topics or []),
+        _parent_id=repo.parent_id,
     )

@@ -399,8 +399,9 @@ Done when:
   issue and pull request template fields, repository code of conduct metadata,
   and repository funding/contact links resolve from committed files. Repository
   assignable and mentionable user connections resolve from project owner/member
-  data. GraphQL search total counts report all matches independently of the
-  returned node limit. The broader schema remains an incremental parity area.
+  data, and forked repository `parent` resolves from persisted fork metadata.
+  GraphQL search total counts report all matches independently of the returned
+  node limit. The broader schema remains an incremental parity area.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,
