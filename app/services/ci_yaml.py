@@ -278,7 +278,10 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
                     variables,
                 ),
                 "paths": paths,
-                "when": str(raw_entry.get("when") or "on_success"),
+                "when": _expand_ci_variables(
+                    str(raw_entry.get("when") or "on_success"),
+                    variables,
+                ),
                 "fallback_keys": _expand_string_list(
                     raw_entry.get("fallback_keys"),
                     variables,

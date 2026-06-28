@@ -115,7 +115,7 @@ harness architecture.
   file format, size, creation time, and expiration time, and expired artifacts
   are no longer downloadable.
 - Cache key parsing supports list-form keys, common `key: { prefix, files }`,
-  and `files_commits` forms, cache paths/keys/policies/fallback keys expand
+  and `files_commits` forms, cache paths/keys/policies/when/fallback keys expand
   variables before reaching runner payloads, and the emulator cache endpoints
   support fallback-key lookup for API-level cache coverage. Official runner
   cache validation still uses GitLab Runner's S3 adapter backed by MinIO.

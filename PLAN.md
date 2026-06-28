@@ -65,7 +65,7 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   workflow/rule-level variables, `allow_failure` scheduling/status behavior,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
   metadata with list and file-derived keys, variable-expanded paths, keys,
-  policies, and fallback keys, deeper `extends` semantics, nested local
+  policies, `when`, and fallback keys, deeper `extends` semantics, nested local
   `include`, `include:project`, controlled `include:remote`, and a small set of
   built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
@@ -186,7 +186,7 @@ Target areas:
   mapping-form `only`/`except`, never, manual, rule-variable, and
   `allow_failure` support
 - remaining richer cache policy/options beyond list and file-derived keys,
-  variable-expanded paths, keys, policies, and fallback keys
+  variable-expanded paths, keys, policies, `when`, and fallback keys
 
 Done when:
 

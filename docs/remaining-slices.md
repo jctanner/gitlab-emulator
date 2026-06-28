@@ -8,7 +8,7 @@ workflow variables, `allow_failure`, `when: always` and `when: on_failure`
 cleanup scheduling, grouped boolean `rules:if` expressions, regex non-match
 operators, null/empty variable comparisons, `exists`/`changes` path-object
 rules, variable-expanded rule path patterns, mapping-form `only`/`except`,
-cache list/file-derived keys, cache path/key variable expansion, richer
+cache list/file-derived keys, cache path/key/when variable expansion, richer
 `needs`, deeper `extends`, local/project/remote/template includes, trigger
 tokens, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped

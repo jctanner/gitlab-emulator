@@ -932,6 +932,7 @@ variables:
 cache_probe:
   variables:
     CACHE_DIR: .cache
+    CACHE_WHEN: always
     LOCKFILE: uv.lock
   rules:
     - variables:
@@ -944,6 +945,7 @@ cache_probe:
     paths:
       - "$CACHE_DIR/"
     policy: "$CACHE_POLICY"
+    when: "$CACHE_WHEN"
     fallback_keys:
       - "$CI_COMMIT_REF_NAME-fallback"
   script:
@@ -979,7 +981,7 @@ cache_probe:
             "untracked": False,
             "policy": "push",
             "paths": [".cache/"],
-            "when": "on_success",
+            "when": "always",
             "fallback_keys": ["main-fallback"],
         }
     ]
