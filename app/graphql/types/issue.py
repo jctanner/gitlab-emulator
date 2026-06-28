@@ -10,6 +10,7 @@ from sqlalchemy import select, func as sa_func
 from app.graphql.connections import Connection, build_connection
 from app.graphql.types.user import GitLabUser, user_from_model, _node_id
 from app.graphql.types.enums import IssueState
+from app.graphql.types.closing import closing_issue_numbers
 from app.graphql.types.repository import (
     Label,
     MilestoneType,
@@ -234,14 +235,34 @@ class Issue:
         )
 
     @strawberry.field
-    def closed_by_pull_requests_references(
+    async def closed_by_pull_requests_references(
         self,
+        info: Info,
         first: Optional[int] = 10,
         after: Optional[str] = None,
         last: Optional[int] = None,
         before: Optional[str] = None,
     ) -> Connection[Annotated["PullRequest", strawberry.lazy("app.graphql.types.pull_request")]]:
-        return empty_connection()
+        from app.graphql.types.pull_request import pull_request_from_model
+        from app.models.issue import Issue as IssueModel
+        from app.models.pull_request import PullRequest as PullRequestModel
+
+        db = info.context["db"]
+        result = await db.execute(
+            select(PullRequestModel)
+            .join(IssueModel, PullRequestModel.issue_id == IssueModel.id)
+            .where(PullRequestModel.repo_id == self._repo_id)
+            .order_by(IssueModel.number.asc())
+        )
+        pull_requests = [
+            pull_request
+            for pull_request in result.scalars().all()
+            if self.number in closing_issue_numbers(pull_request.issue.body)
+        ]
+        return build_connection(
+            pull_requests, pull_request_from_model, len(pull_requests),
+            first=first, after=after, last=last, before=before,
+        )
 
     @strawberry.field
     def project_cards(self) -> Connection[ProjectCardStub]:

@@ -13,6 +13,7 @@ from sqlalchemy import select, func as sa_func
 from app.graphql.connections import Connection, build_connection
 from app.graphql.types.user import GitLabUser, user_from_model, _node_id
 from app.graphql.types.enums import IssueState
+from app.graphql.types.closing import closing_issue_numbers
 from app.graphql.types.repository import Label, MilestoneType, label_from_model, milestone_from_model
 from app.graphql.types.issue import IssueComment, comment_from_model
 from app.graphql.types.stubs import (
@@ -556,14 +557,37 @@ class PullRequest:
         )
 
     @strawberry.field
-    def closing_issues_references(
+    async def closing_issues_references(
         self,
+        info: Info,
         first: Optional[int] = 10,
         after: Optional[str] = None,
         last: Optional[int] = None,
         before: Optional[str] = None,
     ) -> Connection[Annotated["Issue", strawberry.lazy("app.graphql.types.issue")]]:
-        return empty_connection()
+        from app.graphql.types.issue import issue_from_model
+        from app.models.issue import Issue
+
+        numbers = closing_issue_numbers(self.body)
+        if not numbers:
+            return build_connection(
+                [], issue_from_model, 0, first=first, after=after,
+                last=last, before=before,
+            )
+        db = info.context["db"]
+        result = await db.execute(
+            select(Issue).where(
+                Issue.repo_id == self._repo_id,
+                Issue.number.in_(numbers),
+                Issue.id != self._issue_id,
+            )
+        )
+        issue_by_number = {issue.number: issue for issue in result.scalars().all()}
+        issues = [issue_by_number[number] for number in numbers if number in issue_by_number]
+        return build_connection(
+            issues, issue_from_model, len(issues),
+            first=first, after=after, last=last, before=before,
+        )
 
     @strawberry.field
     def review_requests(self) -> Connection[ReviewRequestStub]:

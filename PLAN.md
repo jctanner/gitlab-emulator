@@ -326,9 +326,10 @@ Done when:
   funding/contact links, and repository license metadata resolve from committed
   files. Repository assignable and mentionable user connections resolve from
   project owner/member data, and forked repository `parent` resolves from
-  persisted fork metadata. GraphQL search total counts report all matches
-  independently of the returned node limit. The broader schema remains an
-  incremental parity area.
+  persisted fork metadata. Issue and pull request closing-reference connections
+  resolve common same-repository closing keywords from merge request bodies.
+  GraphQL search total counts report all matches independently of the returned
+  node limit. The broader schema remains an incremental parity area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI

@@ -1307,6 +1307,97 @@ async def test_graphql_pull_request_files(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_pull_request_closing_issue_references(
+    client, test_user, test_token
+):
+    """Issue and pull request closing-reference connections resolve from MR body."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-closing-refs", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    issue_resp = await client.post(
+        f"{API}/repos/testuser/gql-closing-refs/issues",
+        json={"title": "Tracked issue", "body": "Needs a fix"},
+        headers=auth_headers(test_token),
+    )
+    assert issue_resp.status_code == 201
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    file_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/fix.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "add fix",
+            "content": "fixed\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert file_resp.status_code == 201
+
+    mr_resp = await client.post(
+        f"{API}/projects/{project['id']}/merge_requests",
+        json={
+            "title": "Fix tracked issue",
+            "description": "Closes #1",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert mr_resp.status_code == 201
+    iid = mr_resp.json()["iid"]
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                query($pr: Int!) {
+                  repository(owner: "testuser", name: "gql-closing-refs") {
+                    issue(number: 1) {
+                      closedByPullRequestsReferences(first: 10) {
+                        totalCount
+                        nodes { number title }
+                      }
+                    }
+                    pullRequest(number: $pr) {
+                      closingIssuesReferences(first: 10) {
+                        totalCount
+                        nodes { number title }
+                      }
+                    }
+                  }
+                }
+            """,
+            "variables": {"pr": iid},
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["issue"]["closedByPullRequestsReferences"] == {
+        "totalCount": 1,
+        "nodes": [{"number": iid, "title": "Fix tracked issue"}],
+    }
+    assert repo["pullRequest"]["closingIssuesReferences"] == {
+        "totalCount": 1,
+        "nodes": [{"number": 1, "title": "Tracked issue"}],
+    }
+
+
+@pytest.mark.asyncio
 async def test_graphql_pull_request_review_decision(client, test_user, test_token):
     """Pull request reviewDecision is derived from active submitted reviews."""
     project_resp = await client.post(
