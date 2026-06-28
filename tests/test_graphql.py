@@ -382,6 +382,62 @@ async def test_graphql_repository_templates(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_code_of_conduct(client, test_user, test_token):
+    """Repository codeOfConduct resolves from committed files."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-code-of-conduct", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    code_of_conduct = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/.gitlab%2FCODE_OF_CONDUCT.md",
+        json={
+            "branch": "main",
+            "commit_message": "add code of conduct",
+            "content": "# Code of Conduct\n\nBe respectful.\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert code_of_conduct.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-code-of-conduct") {
+                    codeOfConduct {
+                      key
+                      name
+                      url
+                      body
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    code = data["data"]["repository"]["codeOfConduct"]
+    assert code == {
+        "key": "code-of-conduct",
+        "name": "Code of Conduct",
+        "url": (
+            "http://testserver/testuser/gql-code-of-conduct"
+            "/-/blob/main/.gitlab/CODE_OF_CONDUCT.md"
+        ),
+        "body": "# Code of Conduct\n\nBe respectful.\n",
+    }
+
+
+@pytest.mark.asyncio
 async def test_graphql_user(client, test_user, test_token):
     """Query user returns user details."""
     resp = await client.post(

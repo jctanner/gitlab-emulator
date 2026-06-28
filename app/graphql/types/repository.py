@@ -243,6 +243,34 @@ async def _pull_request_templates(repo_path: str, ref: str) -> list[PullRequestT
     return templates
 
 
+def _code_of_conduct_key(path: str) -> str:
+    filename = path.rsplit("/", 1)[-1]
+    name = filename.rsplit(".", 1)[0]
+    return name.lower().replace("_", "-")
+
+
+async def _code_of_conduct(
+    repo_path: str,
+    ref: str,
+    repo_url: str,
+) -> Optional[CodeOfConduct]:
+    for path in (
+        "CODE_OF_CONDUCT.md",
+        ".gitlab/CODE_OF_CONDUCT.md",
+        ".github/CODE_OF_CONDUCT.md",
+    ):
+        body = await _git_text(repo_path, "show", f"{ref}:{path}")
+        if body is None:
+            continue
+        return CodeOfConduct(
+            key=_code_of_conduct_key(path),
+            name="Code of Conduct",
+            url=f"{repo_url}/-/blob/{ref}/{path}",
+            body=body,
+        )
+    return None
+
+
 @strawberry.type
 class Repository:
     """A GitLab repository."""
@@ -457,8 +485,12 @@ class Repository:
         return []
 
     @strawberry.field
-    def code_of_conduct(self) -> Optional[CodeOfConduct]:
-        return None
+    async def code_of_conduct(self) -> Optional[CodeOfConduct]:
+        return await _code_of_conduct(
+            self._disk_path or "",
+            self._default_branch,
+            self.url,
+        )
 
     @strawberry.field
     async def issue_templates(self) -> list[IssueTemplate]:
