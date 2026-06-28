@@ -99,6 +99,8 @@
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Pipelines</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/jobs' in current_path %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs">Jobs</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/edit/' in current_path and current_path.endswith('/.gitlab-ci.yml') %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/edit/{{ repo.default_branch or 'main' }}/.gitlab-ci.yml">Pipeline editor</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/pipeline_schedules' in current_path %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">Pipeline schedules</a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Test cases</span>

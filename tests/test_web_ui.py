@@ -939,6 +939,10 @@ api_probe:
     )
     assert new_schedule_page.status_code == 200
     assert 'href="/ui/testuser/ui-schedules/-/pipelines">Pipelines</a>' in new_schedule_page.text
+    assert (
+        'href="/ui/testuser/ui-schedules/edit/main/.gitlab-ci.yml">Pipeline editor</a>'
+        in new_schedule_page.text
+    )
     assert ">Schedules</a>" in new_schedule_page.text
     assert "Schedule a new pipeline" in new_schedule_page.text
     assert "Cron timezone" in new_schedule_page.text

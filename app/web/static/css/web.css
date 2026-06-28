@@ -887,8 +887,25 @@ td.blob-code {
 .pipeline-schedule-form label {
     line-height: 20px;
 }
+.pipeline-schedule-form fieldset label {
+    font-weight: 400;
+}
+.pipeline-schedule-form fieldset input[type="radio"] {
+    margin-right: 6px;
+}
 .pipeline-schedule-form .mb-3 {
     margin-bottom: 14px !important;
+}
+.pipeline-schedule-form .btn-primary {
+    background: #2b2830;
+    border-color: #2b2830;
+    color: #ffffff;
+}
+.pipeline-schedule-form .btn-primary:hover,
+.pipeline-schedule-form .btn-primary:focus {
+    background: #3d3942;
+    border-color: #3d3942;
+    color: #ffffff;
 }
 .schedule-inputs-placeholder {
     max-width: 1020px;
