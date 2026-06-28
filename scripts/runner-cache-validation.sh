@@ -65,7 +65,8 @@ wait_for_job() {
 section "Setup"
 
 TOKEN=$(curl -sk "$API/admin/tokens" \
-    -X POST -H "Content-Type: application/json" \
+    -X POST -u "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" \
+    -H "Content-Type: application/json" \
     -d '{"login":"admin","name":"runner-cache-validation","scopes":["repo","user","admin:org"]}' \
     | json_get .token)
 

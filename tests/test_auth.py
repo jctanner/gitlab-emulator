@@ -65,6 +65,30 @@ async def test_basic_auth_with_token(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_basic_auth_with_password(client, db_session):
+    """Authorization: Basic <base64(username:password)> works."""
+    from app.models.user import User
+    from app.services.auth_service import hash_password
+
+    user = User(
+        login="basic-user",
+        hashed_password=hash_password("secret-password"),
+        name="Basic User",
+        email="basic-user@test.com",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    creds = base64.b64encode(b"basic-user:secret-password").decode()
+    resp = await client.get(
+        f"{API}/user",
+        headers={"Authorization": f"Basic {creds}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["login"] == "basic-user"
+
+
+@pytest.mark.asyncio
 async def test_invalid_token(client):
     """Invalid token returns 401."""
     resp = await client.get(
@@ -111,6 +135,32 @@ async def test_admin_token_helper_creates_gitlab_pat(client, test_user, admin_to
     user_resp = await client.get(f"{API}/user", headers={"PRIVATE-TOKEN": token})
     assert user_resp.status_code == 200
     assert user_resp.json()["username"] == "testuser"
+
+
+@pytest.mark.asyncio
+async def test_admin_token_helper_accepts_basic_admin_password(client, db_session):
+    """Admin bootstrap helpers can be driven by Basic site-admin credentials."""
+    from app.models.user import User
+    from app.services.auth_service import hash_password
+
+    admin = User(
+        login="basic-admin",
+        hashed_password=hash_password("admin-password"),
+        name="Basic Admin",
+        email="basic-admin@test.com",
+        site_admin=True,
+    )
+    db_session.add(admin)
+    await db_session.commit()
+
+    creds = base64.b64encode(b"basic-admin:admin-password").decode()
+    token_resp = await client.post(
+        f"{API}/admin/tokens",
+        json={"login": "basic-admin", "name": "basic-admin-token", "scopes": ["api"]},
+        headers={"Authorization": f"Basic {creds}"},
+    )
+    assert token_resp.status_code == 201
+    assert token_resp.json()["token"].startswith("glpat-")
 
 
 @pytest.mark.asyncio

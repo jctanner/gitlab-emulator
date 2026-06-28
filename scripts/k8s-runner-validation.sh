@@ -68,6 +68,7 @@ require_cmd jq
 
 TOKEN=$(curl -sk "$API/admin/tokens" \
     -X POST \
+    -u "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" \
     -H "Content-Type: application/json" \
     -d '{"login":"admin","name":"k8s-runner-validation","scopes":["repo","user","admin:org"]}' \
     | json_get .token)

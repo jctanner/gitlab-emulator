@@ -110,6 +110,7 @@ echo "Using API: $API"
 
 TOKEN=$(curl -sk "$API/admin/tokens" \
     -X POST \
+    -u "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" \
     -H "Content-Type: application/json" \
     -d "{\"login\":\"admin\",\"name\":\"glab-smoke-${RUN_ID}\",\"scopes\":[\"repo\",\"user\",\"admin:org\"]}" \
     | jq -r .token)
@@ -406,6 +407,88 @@ if [ -n "$ISSUE_IID" ] && [ "$ISSUE_IID" != "null" ]; then
     assert_json_field "glab issue reopen visible" "$issue_reopened" '.state == "opened"'
 else
     fail "glab issue list did not return the created issue: $issue_list"
+fi
+
+section "Labels and Milestones API via glab"
+
+label_create=$(curl -sk -X POST \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"glab-label","color":"#0052cc","description":"glab label smoke"}' \
+    "$API/projects/$PROJECT_ID/labels")
+assert_json_field \
+    "project label created" \
+    "$label_create" \
+    '.name == "glab-label" and .color == "#0052cc"'
+
+labels_json=$(glab_api "projects/$PROJECT_ID/labels?search=glab&with_counts=true")
+assert_json_field "glab api project labels list" "$labels_json" 'map(.name) | index("glab-label")'
+
+label_json=$(glab_api "projects/$PROJECT_REF/labels/glab-label?with_counts=true")
+assert_json_field \
+    "glab api project label get by path" \
+    "$label_json" \
+    '.name == "glab-label" and .is_project_label == true and .open_issues_count >= 0'
+
+label_update=$(curl -sk -X PUT \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"new_name":"glab-label-updated","color":"#ff0000","description":"updated glab label smoke"}' \
+    "$API/projects/$PROJECT_ID/labels/glab-label")
+assert_json_field \
+    "project label updated" \
+    "$label_update" \
+    '.name == "glab-label-updated" and .color == "#ff0000"'
+
+label_delete=$(curl -sk -X DELETE \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    "$API/projects/$PROJECT_ID/labels/glab-label-updated")
+if [ -z "$label_delete" ]; then
+    pass "project label deleted"
+else
+    fail "project label delete: $label_delete"
+fi
+
+milestone_create=$(curl -sk -X POST \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"title":"glab milestone","description":"glab milestone smoke","due_on":"2026-07-01"}' \
+    "$API/projects/$PROJECT_ID/milestones")
+assert_json_field \
+    "project milestone created" \
+    "$milestone_create" \
+    '.title == "glab milestone" and .project_id != null and .iid == 1'
+MILESTONE_ID=$(echo "$milestone_create" | jq -r '.id // empty' 2>/dev/null)
+
+milestones_json=$(glab_api "projects/$PROJECT_ID/milestones?state=active&search=glab")
+assert_json_field \
+    "glab api project milestones list" \
+    "$milestones_json" \
+    'map(.title) | index("glab milestone")'
+
+milestone_json=$(glab_api "projects/$PROJECT_REF/milestones/$MILESTONE_ID")
+assert_json_field \
+    "glab api project milestone get by path" \
+    "$milestone_json" \
+    '.title == "glab milestone" and .due_date == "2026-07-01"'
+
+milestone_update=$(curl -sk -X PUT \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"title":"glab milestone closed","state":"closed","due_on":"2026-07-15"}' \
+    "$API/projects/$PROJECT_ID/milestones/$MILESTONE_ID")
+assert_json_field \
+    "project milestone updated" \
+    "$milestone_update" \
+    '.title == "glab milestone closed" and .state == "closed" and .due_date == "2026-07-15"'
+
+milestone_delete=$(curl -sk -X DELETE \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    "$API/projects/$PROJECT_ID/milestones/$MILESTONE_ID")
+if [ -z "$milestone_delete" ]; then
+    pass "project milestone deleted"
+else
+    fail "project milestone delete: $milestone_delete"
 fi
 
 section "Branches API via glab"

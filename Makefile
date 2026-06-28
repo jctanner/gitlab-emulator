@@ -91,6 +91,7 @@ test-focused:
 smoke:
 	@echo "=== Creating token ==="
 	$(eval TOKEN := $(shell curl -sf -X POST 'http://localhost:8000/admin/tokens' \
+		-u "$${ADMIN_USERNAME:-admin}:$${ADMIN_PASSWORD:-admin}" \
 		-H 'Content-Type: application/json' \
 		-d '{"login":"admin","name":"smoke-token","scopes":["repo","user"]}' \
 		| python3 -c "import sys,json; print(json.load(sys.stdin)['token'])"))
@@ -233,7 +234,8 @@ vm-glab: vm-client-sync vm-client-install-ca
 	@echo "Creating token and running glab API user check ..."
 	@vagrant ssh client -c '\
 		TOKEN=$$(curl -sk https://glemu.local/api/v4/admin/tokens \
-			-X POST -H "Content-Type: application/json" \
+			-X POST -u "$${ADMIN_USERNAME:-admin}:$${ADMIN_PASSWORD:-admin}" \
+			-H "Content-Type: application/json" \
 			-d "{\"login\":\"admin\",\"name\":\"glab-test-$$$$\",\"scopes\":[\"repo\",\"user\"]}" \
 			| jq -r .token) && \
 		echo "Token: $$TOKEN" && \

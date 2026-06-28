@@ -54,9 +54,12 @@ async def get_current_user(
         elif scheme == "basic":
             try:
                 decoded = base64.b64decode(credentials).decode("utf-8")
-                _login, _, token_value = decoded.partition(":")
+                login, _, password = decoded.partition(":")
             except Exception:
                 return None
+            from app.services.auth_service import validate_basic_auth
+
+            return await validate_basic_auth(db, login, password)
         else:
             return None
 

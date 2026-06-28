@@ -1,0 +1,25 @@
+"""Database compatibility migration tests."""
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.database import _ensure_sqlite_compat_columns
+
+
+async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
+    """Older SQLite DBs can add the pipeline_jobs.when compatibility column."""
+    db_path = tmp_path / "compat.db"
+    test_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    async with test_engine.begin() as conn:
+        await conn.execute(text("CREATE TABLE repositories (id INTEGER PRIMARY KEY)"))
+        await conn.execute(text("CREATE TABLE pipelines (id INTEGER PRIMARY KEY)"))
+        await conn.execute(text("CREATE TABLE collaborators (id INTEGER PRIMARY KEY)"))
+        await conn.execute(text("CREATE TABLE pipeline_jobs (id INTEGER PRIMARY KEY)"))
+
+        await _ensure_sqlite_compat_columns(conn)
+
+        result = await conn.execute(text("PRAGMA table_info(pipeline_jobs)"))
+        columns = {row[1] for row in result.fetchall()}
+        assert "when" in columns
+
+    await test_engine.dispose()

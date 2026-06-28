@@ -68,7 +68,7 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     await ensure_column(
         "pipeline_jobs",
         "when",
-        "when VARCHAR DEFAULT 'on_success'",
+        '"when" VARCHAR DEFAULT \'on_success\'',
     )
     await ensure_column(
         "collaborators",

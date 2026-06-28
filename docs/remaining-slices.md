@@ -314,6 +314,8 @@ Done when:
   add more release asset/package edge cases only if target workflows need them.
 - REST support and high-level client-VM `glab` validation now exist for
   manual job trigger/play, pipeline/job cancel, and job retry.
+- Client-VM `glab api` validation now includes project labels and milestones:
+  create/list/get/update/delete coverage for the GitLab-shaped project routes.
 - Keep each workflow tied to implemented REST surfaces.
 
 ## 4. Data Model Cleanup
@@ -343,9 +345,11 @@ Done when:
   `make test-focused`, `make test-affected`, and `make test-full`.
 - `make vm-validate` remains the single command for full deploy-plus-validation.
   Current run passed after redeploying the server VM, refreshing client/runner
-  CA trust, running 90 client `glab` checks, and running official runner
+  CA trust, running client `glab` checks, and running official runner
   variables, rules, extends, includes, cache, and `needs:artifacts`
   validations.
+- The latest focused client-VM `make vm-test` run passed 100 `glab` checks,
+  including project label and milestone API coverage.
 - `make vm-validate-current` remains the command for validating an already
   deployed server.
 - `make vm-runner-validate` remains aligned with runner capabilities; current
