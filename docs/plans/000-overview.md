@@ -131,6 +131,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   `namespace_id` or `namespace_path`.
 - Minimal GitLab-shaped group APIs exist for creating groups, getting groups by
   numeric ID or path, and listing group projects.
+- Minimal GitLab-shaped namespace APIs exist for listing/searching user and
+  group namespaces and getting namespaces by numeric ID or full path.
 - Minimal GitLab repository files APIs exist for reading, creating, updating,
   and deleting files by numeric project ID or URL-encoded project path.
 - Minimal GitLab repository commits APIs exist for listing commits, getting a

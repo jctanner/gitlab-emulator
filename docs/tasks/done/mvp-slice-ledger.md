@@ -43,7 +43,8 @@ same-ref fields for project IDs and encoded project paths.
 Pipeline and job API/UI surfaces now expose non-sensitive CI secret metadata
 for requested secrets without exposing secret values.
 Nested group namespaces are represented as organization-backed full paths and
-projects can be created under those nested namespaces.
+projects can be created under those nested namespaces. GitLab-shaped namespace
+list/get APIs expose user and group namespaces with search and pagination.
 Validation currently passes locally and in the VM stack. The latest validation
 run passed `make test-affected` with 190 tests and `make vm-validate`, including
 client `glab` smoke with high-level release workflow and official runner

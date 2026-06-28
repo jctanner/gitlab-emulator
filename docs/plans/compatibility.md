@@ -46,8 +46,8 @@ Vagrant architecture.
 Replace or add GitLab-shaped resources for:
 
 - users
-- groups: MVP create/list/get/list-projects and nested namespace paths
-  implemented
+- groups/namespaces: MVP group create/list/get/list-projects, namespace
+  list/get, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/
   list-user-projects implemented
 - issues

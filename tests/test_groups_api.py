@@ -99,6 +99,60 @@ async def test_list_groups_supports_search(client, test_token):
 
 
 @pytest.mark.asyncio
+async def test_namespaces_list_search_and_get(client, test_user, test_token):
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "namespace-group", "name": "Namespace Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+
+    listed = await client.get(
+        f"{API}/namespaces",
+        params={"search": "namespace", "page": 1, "per_page": 10},
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert listed.headers["X-Total"] == "1"
+    namespaces = listed.json()
+    assert namespaces[0]["kind"] == "group"
+    assert namespaces[0]["path"] == "namespace-group"
+    assert namespaces[0]["full_path"] == "namespace-group"
+    assert namespaces[0]["web_url"] == "http://testserver/groups/namespace-group"
+
+    by_id = await client.get(
+        f"{API}/namespaces/{group.json()['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert by_id.status_code == 200
+    assert by_id.json()["full_path"] == "namespace-group"
+
+    by_path = await client.get(
+        f"{API}/namespaces/namespace-group",
+        headers=auth_headers(test_token),
+    )
+    assert by_path.status_code == 200
+    assert by_path.json()["id"] == group.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_namespaces_include_current_user_and_owned_filter(
+    client, test_user, test_token
+):
+    listed = await client.get(
+        f"{API}/namespaces",
+        params={"owned_only": True},
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    namespaces = listed.json()
+    assert any(
+        item["kind"] == "user" and item["full_path"] == test_user.login
+        for item in namespaces
+    )
+
+
+@pytest.mark.asyncio
 async def test_list_groups_filters_shape_and_pagination_headers(client, test_token):
     parent = await client.post(
         f"{API}/groups",
