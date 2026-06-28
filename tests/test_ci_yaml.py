@@ -340,6 +340,49 @@ fallback_rule:
     assert [job.name for job in jobs] == ["fallback_rule", "main_only"]
 
 
+def test_parse_gitlab_ci_applies_mapping_only_except_filters():
+    jobs = parse_gitlab_ci(
+        """
+only_mapping:
+  script: echo only mapping
+  only:
+    refs:
+      - main
+    variables:
+      - '$RUN_DEPLOY'
+    changes:
+      - src/**
+
+except_mapping:
+  script: echo except mapping
+  except:
+    refs:
+      - main
+    variables:
+      - '$SKIP_DEPLOY'
+
+only_miss:
+  script: echo only miss
+  only:
+    refs:
+      - release
+
+except_miss:
+  script: echo except miss
+  except:
+    refs:
+      - release
+    variables:
+      - '$SKIP_DEPLOY'
+""",
+        ref="main",
+        variables={"RUN_DEPLOY": "1", "SKIP_DEPLOY": "1"},
+        changed_paths={"src/app.py"},
+    )
+
+    assert [job.name for job in jobs] == ["except_miss", "only_mapping"]
+
+
 def test_parse_gitlab_ci_applies_richer_rules_if_expressions():
     jobs = parse_gitlab_ci(
         """

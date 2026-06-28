@@ -4,9 +4,9 @@ This is the working backlog after the current MVP support for GitLab-shaped
 projects, Git Smart HTTP, persisted pipelines/jobs, official GitLab Runner
 execution, artifact metadata and expiry, cache fallback behavior, variable
 precedence and metadata, richer `rules` with rule variables and
-`allow_failure`, `exists`/`changes` path-object rules, cache variable expansion,
-richer `needs`, deeper `extends`, local/project/remote/template includes,
-trigger tokens, pipeline schedules,
+`allow_failure`, `exists`/`changes` path-object rules, mapping-form
+`only`/`except`, cache variable expansion, richer `needs`, deeper `extends`,
+local/project/remote/template includes, trigger tokens, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.

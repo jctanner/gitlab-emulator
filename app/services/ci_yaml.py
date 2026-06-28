@@ -414,6 +414,43 @@ def _rule_paths_match(value: Any, paths: set[str]) -> bool:
     return any(_path_matches(pattern, paths) for pattern in patterns)
 
 
+def _variable_filters_match(value: Any, ref: str, variables: dict[str, str]) -> bool:
+    expressions = _string_list(value)
+    if not expressions:
+        return True
+    return any(_if_matches(expression, ref, variables) for expression in expressions)
+
+
+def _legacy_filter_matches(
+    value: Any,
+    ref: str,
+    variables: dict[str, str],
+    changed_paths: set[str],
+) -> bool:
+    if not isinstance(value, dict):
+        refs = _ref_values(value)
+        return bool(refs) and any(_ref_matches(pattern, ref) for pattern in refs)
+
+    has_condition = False
+    refs = _ref_values(value.get("refs"))
+    if refs:
+        has_condition = True
+        if not any(_ref_matches(pattern, ref) for pattern in refs):
+            return False
+
+    if "variables" in value:
+        has_condition = True
+        if not _variable_filters_match(value.get("variables"), ref, variables):
+            return False
+
+    if "changes" in value:
+        has_condition = True
+        if not _rule_paths_match(value.get("changes"), changed_paths):
+            return False
+
+    return has_condition
+
+
 def _job_rule_decision(
     config: dict,
     ref: str,
@@ -449,12 +486,16 @@ def _job_rule_decision(
             )
         return _RuleDecision(included=False)
 
-    only = _ref_values(config.get("only"))
-    if only and not any(_ref_matches(pattern, ref) for pattern in only):
+    only = config.get("only")
+    if only is not None and not _legacy_filter_matches(
+        only, ref, variables, changed_paths
+    ):
         return _RuleDecision(included=False)
 
-    except_refs = _ref_values(config.get("except"))
-    if except_refs and any(_ref_matches(pattern, ref) for pattern in except_refs):
+    except_filter = config.get("except")
+    if except_filter is not None and _legacy_filter_matches(
+        except_filter, ref, variables, changed_paths
+    ):
         return _RuleDecision(included=False)
 
     when = str(config.get("when") or "on_success")
