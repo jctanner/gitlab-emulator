@@ -9,6 +9,7 @@ from app.config import settings
 from app.models.label import Label
 from app.models.issue import Issue, IssueLabel
 from app.schemas.label import LabelCreate, LabelResponse, LabelUpdate
+from app.services.permissions import DEVELOPER, MAINTAINER, require_project_access
 
 router = APIRouter(tags=["labels"])
 
@@ -47,6 +48,7 @@ async def create_label(
 ):
     """Create a label."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     existing = await db.execute(
         select(Label).where(
@@ -92,6 +94,7 @@ async def update_label(
 ):
     """Update a label."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     result = await db.execute(
         select(Label).where(
@@ -120,6 +123,7 @@ async def delete_label(
 ):
     """Delete a label."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     result = await db.execute(
         select(Label).where(
@@ -167,6 +171,7 @@ async def add_issue_labels(
 ):
     """Add labels to an issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(Issue).where(
             Issue.repo_id == repository.id, Issue.number == issue_number
@@ -211,6 +216,7 @@ async def set_issue_labels(
 ):
     """Replace all labels on an issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(Issue).where(
             Issue.repo_id == repository.id, Issue.number == issue_number
@@ -252,6 +258,7 @@ async def remove_issue_label(
 ):
     """Remove a label from an issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(Issue).where(
             Issue.repo_id == repository.id, Issue.number == issue_number

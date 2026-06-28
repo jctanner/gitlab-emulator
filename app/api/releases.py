@@ -15,6 +15,7 @@ from app.config import settings
 from app.models.release import Release, ReleaseAsset
 from app.models.project import Project
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["releases"])
 
@@ -199,6 +200,7 @@ async def create_project_release(
 ):
     """Create a GitLab-shaped project release."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     tag_name = str(body.get("tag_name") or "").strip()
     if not tag_name:
         raise HTTPException(status_code=400, detail="tag_name is required")
@@ -251,6 +253,7 @@ async def update_project_release(
 ):
     """Update a GitLab-shaped project release."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     release = await _get_project_release_or_404(project, tag_name, db)
     if "name" in body:
         release.name = body["name"]
@@ -276,6 +279,7 @@ async def delete_project_release(
 ):
     """Delete a GitLab-shaped project release without deleting its git tag."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     release = await _get_project_release_or_404(project, tag_name, db)
     data = _gitlab_release_json(release, project, BASE)
     await db.delete(release)
@@ -313,6 +317,7 @@ async def create_release(
 ):
     """Create a release."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
 
     tag_name = body.get("tag_name")
     if not tag_name:
@@ -394,6 +399,7 @@ async def update_release(
 ):
     """Update a release."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(Release).where(
             Release.id == release_id, Release.repo_id == repository.id
@@ -418,6 +424,7 @@ async def delete_release(
 ):
     """Delete a release."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(Release).where(
             Release.id == release_id, Release.repo_id == repository.id

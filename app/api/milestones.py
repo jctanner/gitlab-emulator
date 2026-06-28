@@ -10,6 +10,7 @@ from app.config import settings
 from app.models.milestone import Milestone
 from app.models.issue import Issue
 from app.schemas.milestone import MilestoneCreate, MilestoneResponse, MilestoneUpdate
+from app.services.permissions import MAINTAINER, require_project_access
 
 router = APIRouter(tags=["milestones"])
 
@@ -73,6 +74,7 @@ async def create_milestone(
 ):
     """Create a milestone."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     # Get next milestone number
     result = await db.execute(
@@ -138,6 +140,7 @@ async def update_milestone(
 ):
     """Update a milestone."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Milestone).where(
             Milestone.repo_id == repository.id,
@@ -182,6 +185,7 @@ async def delete_milestone(
 ):
     """Delete a milestone."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Milestone).where(
             Milestone.repo_id == repository.id,

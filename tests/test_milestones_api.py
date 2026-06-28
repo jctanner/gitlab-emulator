@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -24,6 +25,45 @@ async def test_create_milestone(client, test_user, test_token):
     assert data["number"] == 1
     assert data["state"] == "open"
     assert data["description"] == "First release"
+
+
+@pytest.mark.asyncio
+async def test_milestone_writes_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "milestone-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "milestone-developer"
+    )
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "milestone-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    for user, level in ((maintainer, 40), (developer, 30)):
+        member = await client.post(
+            f"{API}/projects/{project.json()['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/repos/testuser/milestone-role-gate/milestones",
+        json={"title": "developer"},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/repos/testuser/milestone-role-gate/milestones",
+        json={"title": "maintainer"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
 
 
 @pytest.mark.asyncio

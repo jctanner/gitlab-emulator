@@ -293,12 +293,12 @@ Done when:
   Project member/collaborator writes require Maintainer or higher, and group
   member writes require Owner. Project/repository destructive settings and org
   settings require Owner. Project/repository webhook and deploy-key writes
-  require Maintainer or higher, and group webhook writes require Owner.
-  Remaining lower-risk collaboration and metadata endpoints still need broader
+  require Maintainer or higher, and group webhook writes require Owner. Label
+  and milestone definition writes require Maintainer or higher; issue label
+  assignment, release writes, and commit status writes require Developer or
+  higher. Remaining lower-risk collaboration endpoints still need broader
   permission hardening.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
-- Kubernetes runner/executor support. The current validation path is a true
-  runner VM with the official runner and Docker executor.
 - Production security hardening. This emulator is for controlled integration
   testing environments.
 

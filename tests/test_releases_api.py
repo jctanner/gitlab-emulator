@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import API, auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 
 @pytest.mark.asyncio
@@ -73,6 +74,46 @@ async def test_gitlab_project_release_crud(client, test_user, test_token):
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_gitlab_project_release_writes_require_developer(
+    client, db_session, test_user, test_token
+):
+    developer, developer_token = await _create_user_and_token(
+        db_session, "release-developer"
+    )
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "release-reporter"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "release-role-gate", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    for user, level in ((developer, 30), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/projects/{project_id}/releases",
+        json={"tag_name": "v-denied", "ref": "main"},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/projects/{project_id}/releases",
+        json={"tag_name": "v-allowed", "ref": "main"},
+        headers=auth_headers(developer_token),
+    )
+    assert allowed.status_code == 201
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -80,6 +81,45 @@ async def test_create_duplicate_label(client, test_user, test_token, label_repo)
         headers=auth_headers(test_token),
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_label_definition_writes_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "label-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "label-developer"
+    )
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "label-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    for user, level in ((maintainer, 40), (developer, 30)):
+        member = await client.post(
+            f"{API}/projects/{project.json()['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/repos/testuser/label-role-gate/labels",
+        json={"name": "developer", "color": "000000"},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/repos/testuser/label-role-gate/labels",
+        json={"name": "maintainer", "color": "111111"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
 
 
 @pytest.mark.asyncio
@@ -223,6 +263,57 @@ async def test_add_labels_to_issue(client, test_user, test_token, label_repo_wit
     names = [l["name"] for l in data]
     assert "bug" in names
     assert "urgent" in names
+
+
+@pytest.mark.asyncio
+async def test_issue_label_assignment_requires_developer(
+    client, db_session, test_user, test_token
+):
+    developer, developer_token = await _create_user_and_token(
+        db_session, "issue-label-developer"
+    )
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "issue-label-reporter"
+    )
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "issue-label-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    for user, level in ((developer, 30), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{project.json()['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+    issue = await client.post(
+        f"{API}/repos/testuser/issue-label-role-gate/issues",
+        json={"title": "issue label gate"},
+        headers=auth_headers(test_token),
+    )
+    assert issue.status_code == 201
+    label = await client.post(
+        f"{API}/repos/testuser/issue-label-role-gate/labels",
+        json={"name": "triaged", "color": "0e8a16"},
+        headers=auth_headers(test_token),
+    )
+    assert label.status_code == 201
+
+    denied = await client.post(
+        f"{API}/repos/testuser/issue-label-role-gate/issues/1/labels",
+        json={"labels": ["triaged"]},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/repos/testuser/issue-label-role-gate/issues/1/labels",
+        json={"labels": ["triaged"]},
+        headers=auth_headers(developer_token),
+    )
+    assert allowed.status_code == 200
 
 
 @pytest.mark.asyncio

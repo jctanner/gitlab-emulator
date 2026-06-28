@@ -7,6 +7,7 @@ from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.models.commit_status import CommitStatus
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["statuses"])
 
@@ -37,6 +38,7 @@ async def create_status(
 ):
     """Create a commit status."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
 
     state = body.get("state")
     if state not in ("error", "failure", "pending", "success"):
