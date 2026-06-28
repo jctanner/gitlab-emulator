@@ -23,6 +23,7 @@ from app.api.deps import DbSession
 from app.config import settings
 from app.models.ci import CiRunner, JobArtifact, JobTrace, Pipeline, PipelineJob
 from app.services.ci_redaction import redact_trace_text
+from app.services.delayed_jobs import promote_due_delayed_jobs
 
 router = APIRouter(tags=["runner"])
 
@@ -915,27 +916,6 @@ def _runner_can_run_job(job: PipelineJob, body: JobRequest, runner: CiRunner) ->
     return job_tags.issubset(runner_tags)
 
 
-async def _promote_due_scheduled_jobs(db: DbSession) -> None:
-    now = datetime.now(timezone.utc)
-    result = await db.execute(
-        select(PipelineJob)
-        .options(selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs))
-        .where(PipelineJob.status == "scheduled")
-        .order_by(PipelineJob.stage_index.asc(), PipelineJob.id.asc())
-    )
-    for job in result.scalars().all():
-        scheduled_at = _aware_utc(job.scheduled_at)
-        if scheduled_at is not None and scheduled_at > now:
-            continue
-        job.status = "pending"
-        job.queued_at = now
-        job.scheduled_at = None
-        if job.pipeline.status not in {"running", "pending"}:
-            job.pipeline.status = "pending"
-            job.pipeline.finished_at = None
-    await db.flush()
-
-
 def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     failed_stage_indexes = [
         job.stage_index
@@ -1118,7 +1098,7 @@ async def request_job(
             headers=_last_update_headers(),
         )
 
-    await _promote_due_scheduled_jobs(db)
+    await promote_due_delayed_jobs(db)
     result = await db.execute(
         select(PipelineJob)
         .options(

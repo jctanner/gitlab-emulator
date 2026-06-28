@@ -21,6 +21,7 @@ from app.services.pipeline_schedules import (
     compute_next_run_at,
     run_due_pipeline_schedules,
 )
+from app.services.delayed_jobs import promote_due_delayed_jobs
 from tests.conftest import API, auth_headers
 
 
@@ -1388,6 +1389,56 @@ delayed_job:
     body = ready.json()
     assert body["job_info"]["name"] == "delayed_job"
     assert body["steps"][0]["when"] == "on_success"
+
+
+async def test_due_delayed_jobs_are_promoted_without_runner_poll(
+    client, db_session, test_token
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+delayed_job:
+  script:
+    - echo delayed
+  when: delayed
+  start_in: 10 minutes
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add delayed ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+    pipeline = resp.json()
+    job = (
+        await db_session.execute(
+            select(PipelineJob).where(PipelineJob.pipeline_id == pipeline["id"])
+        )
+    ).scalar_one()
+    job.scheduled_at = datetime(2026, 6, 28, 8, 0)
+    await db_session.commit()
+
+    stats = await promote_due_delayed_jobs(
+        db_session,
+        now=datetime(2026, 6, 28, 8, 1, tzinfo=timezone.utc),
+    )
+    assert stats.checked == 1
+    assert stats.promoted == 1
+
+    await db_session.refresh(job)
+    assert job.status == "pending"
+    assert job.scheduled_at is None
+    assert job.queued_at == datetime(2026, 6, 28, 8, 1)
 
 
 async def test_create_pipeline_rejects_unknown_gitlab_ci_when(client, test_token):

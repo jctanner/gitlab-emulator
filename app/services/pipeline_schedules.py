@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import async_session
 from app.models.ci import Pipeline, PipelineSchedule
+from app.services.delayed_jobs import promote_due_delayed_jobs
 
 logger = logging.getLogger("gitlab_emulator.pipeline_schedules")
 
@@ -183,10 +184,13 @@ async def pipeline_schedule_worker(
     while not stop_event.is_set():
         try:
             async with async_session() as db:
+                delayed_stats = await promote_due_delayed_jobs(db, commit=True)
                 stats = await run_due_pipeline_schedules(db)
-                if stats.created or stats.failed:
+                if delayed_stats.promoted or stats.created or stats.failed:
                     logger.info(
-                        "Pipeline schedule worker checked=%s created=%s failed=%s",
+                        "Pipeline schedule worker delayed_promoted=%s "
+                        "checked=%s created=%s failed=%s",
+                        delayed_stats.promoted,
                         stats.checked,
                         stats.created,
                         stats.failed,

@@ -375,11 +375,12 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
-- Full timer parity beyond delayed jobs. Current support covers pipeline
-  schedule CRUD, manual Play, automatic cron materialization through the
-  schedule worker, delayed jobs with `when: delayed`/`start_in`, and
-  runner-side pending-job eligibility. A standalone background timer service
-  that promotes due delayed jobs without runner polling remains deferred.
+- Full timer parity beyond the current worker model. Current support covers
+  pipeline schedule CRUD, manual Play, automatic cron materialization through
+  the schedule worker, delayed jobs with `when: delayed`/`start_in`, background
+  promotion of due delayed jobs, and runner-side pending-job eligibility.
+  Broader production scheduling concerns such as distributed leader election
+  remain deferred.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses. Admin bootstrap user/token
   helper endpoints require an authenticated site admin. The emulator is still
