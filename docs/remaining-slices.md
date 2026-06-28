@@ -20,7 +20,9 @@ persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.
 GitLab-shaped global search now covers projects, issues, merge requests, and
-indexed code blobs.
+indexed code blobs. GitLab-shaped project labels and milestones now expose
+MVP list/create/get/update/delete surfaces with pagination, encoded project
+path lookup, and GitLab response fields.
 Pipeline and job API/UI surfaces now expose non-sensitive CI secret metadata
 for requested secrets without exposing secret values.
 Nested group namespaces are represented as organization-backed full paths and
@@ -232,13 +234,30 @@ Status: implemented.
 - Focused tests cover create/list/get/update/merge, commits, changes, diffs,
   pagination, encoded project paths, and common `glab api` expectations.
 
-### 2.7 Cross-Resource Validation
+### 2.7 Labels and Milestones Compatibility
+
+Status: implemented.
+
+- Project labels support GitLab-shaped list/create/get/update/delete under
+  `/projects/:id/labels` and encoded project full paths.
+- Label list supports search, exact pagination headers, query-preserving
+  `Link` headers, and optional open/closed issue counts.
+- Project milestones support GitLab-shaped list/create/get/update/delete under
+  `/projects/:id/milestones` and encoded project full paths.
+- Milestone list supports active/closed/all state filters, title/search
+  filters, exact pagination headers, and query-preserving `Link` headers.
+- Existing GitHub-shaped `/repos/:owner/:repo/labels` and
+  `/repos/:owner/:repo/milestones` compatibility remains intact.
+- Focused tests cover CRUD, duplicate labels, encoded project paths,
+  pagination headers, issue counts, filters, and response shape.
+
+### 2.8 Cross-Resource Validation
 
 Status: implemented.
 
 - Focused local compatibility tests pass together for groups, projects,
-  branches/tags/protected branches, repository files/tree, commits, and merge
-  requests.
+  branches/tags/protected branches, repository files/tree, commits, merge
+  requests, labels, milestones, issues, and search.
 - `make test-affected` passes after the full resource pass.
 - Targeted client-VM `glab api` checks pass for the expanded resource
   surfaces.

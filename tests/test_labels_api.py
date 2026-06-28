@@ -1,5 +1,7 @@
 """Tests for the Labels REST API endpoints."""
 
+from urllib.parse import quote
+
 import pytest
 
 from tests.conftest import auth_headers
@@ -35,6 +37,95 @@ async def label_repo_with_issue(client, test_user, test_token, label_repo):
 # ---------------------------------------------------------------------------
 # Repo-level label CRUD
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_gitlab_project_labels_crud_and_pagination(client, test_user, test_token):
+    """GitLab-shaped project labels support CRUD, search, counts, and pagination."""
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "gitlab-labels"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    first = await client.post(
+        f"{API}/projects/{project_id}/labels",
+        json={
+            "name": "bug",
+            "color": "#d73a4a",
+            "description": "Something is not working",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert first.status_code == 201
+    assert first.json()["name"] == "bug"
+    assert first.json()["color"] == "#d73a4a"
+    assert first.json()["is_project_label"] is True
+
+    duplicate = await client.post(
+        f"{API}/projects/{project_id}/labels",
+        json={"name": "bug", "color": "#000000"},
+        headers=auth_headers(test_token),
+    )
+    assert duplicate.status_code == 409
+
+    second = await client.post(
+        f"{API}/projects/{project_id}/labels",
+        json={"name": "backend", "color": "0052cc"},
+        headers=auth_headers(test_token),
+    )
+    assert second.status_code == 201
+
+    await client.post(
+        f"{API}/projects/{project_id}/issues",
+        json={"title": "uses bug", "labels": "bug"},
+        headers=auth_headers(test_token),
+    )
+
+    listed = await client.get(
+        f"{API}/projects/{project_id}/labels",
+        params={"search": "b", "with_counts": "true", "page": 1, "per_page": 1},
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert listed.headers["x-total"] == "2"
+    assert listed.headers["x-next-page"] == "2"
+    assert 'rel="next"' in listed.headers["link"]
+    assert len(listed.json()) == 1
+    assert {"open_issues_count", "closed_issues_count"} <= set(listed.json()[0])
+
+    encoded = quote("testuser/gitlab-labels", safe="")
+    fetched = await client.get(
+        f"{API}/projects/{encoded}/labels/bug",
+        params={"with_counts": "true"},
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["open_issues_count"] == 1
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}/labels/bug",
+        json={"new_name": "defect", "color": "#ff0000", "description": "Defect"},
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "defect"
+    assert updated.json()["color"] == "#ff0000"
+    assert updated.json()["description"] == "Defect"
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/labels/defect",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.get(
+        f"{API}/projects/{project_id}/labels/defect",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
 
 
 @pytest.mark.asyncio

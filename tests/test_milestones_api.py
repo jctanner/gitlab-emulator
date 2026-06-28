@@ -1,11 +1,151 @@
 """Tests for the Milestone REST API endpoints."""
 
+from urllib.parse import quote
+
 import pytest
 
 from tests.conftest import auth_headers
 from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
+
+
+@pytest.mark.asyncio
+async def test_gitlab_project_milestones_crud_and_pagination(
+    client, test_user, test_token
+):
+    """GitLab-shaped project milestones support CRUD, filters, and pagination."""
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "gitlab-milestones"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    first = await client.post(
+        f"{API}/projects/{project_id}/milestones",
+        json={
+            "title": "v1.0",
+            "description": "First GitLab milestone",
+            "due_on": "2026-07-01",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert first.status_code == 201
+    first_data = first.json()
+    assert first_data["iid"] == 1
+    assert first_data["project_id"] == project_id
+    assert first_data["due_date"] == "2026-07-01"
+    assert first_data["web_url"].endswith("/testuser/gitlab-milestones/-/milestones/1")
+
+    second = await client.post(
+        f"{API}/projects/{project_id}/milestones",
+        json={"title": "v2.0"},
+        headers=auth_headers(test_token),
+    )
+    assert second.status_code == 201
+
+    listed = await client.get(
+        f"{API}/projects/{project_id}/milestones",
+        params={"state": "active", "search": "v", "page": 1, "per_page": 1},
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert listed.headers["x-total"] == "2"
+    assert listed.headers["x-next-page"] == "2"
+    assert 'rel="next"' in listed.headers["link"]
+    assert len(listed.json()) == 1
+
+    encoded = quote("testuser/gitlab-milestones", safe="")
+    fetched = await client.get(
+        f"{API}/projects/{encoded}/milestones/{first_data['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["title"] == "v1.0"
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}/milestones/{first_data['id']}",
+        json={
+            "title": "v1.0 closed",
+            "state": "closed",
+            "due_on": "2026-07-15",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "v1.0 closed"
+    assert updated.json()["state"] == "closed"
+    assert updated.json()["due_date"] == "2026-07-15"
+
+    closed = await client.get(
+        f"{API}/projects/{project_id}/milestones",
+        params={"state": "closed"},
+        headers=auth_headers(test_token),
+    )
+    assert closed.status_code == 200
+    assert [item["title"] for item in closed.json()] == ["v1.0 closed"]
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/milestones/{first_data['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.get(
+        f"{API}/projects/{project_id}/milestones/{first_data['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_gitlab_project_milestone_lookup_prefers_global_id(
+    client, test_user, test_token
+):
+    """Milestone lookup prefers GitLab's global milestone ID over project IID."""
+    warmup = await client.post(
+        f"{API}/user/repos",
+        json={"name": "milestone-warmup"},
+        headers=auth_headers(test_token),
+    )
+    assert warmup.status_code == 201
+    warmup_ms = await client.post(
+        f"{API}/projects/{warmup.json()['id']}/milestones",
+        json={"title": "warmup"},
+        headers=auth_headers(test_token),
+    )
+    assert warmup_ms.status_code == 201
+
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "milestone-id-precedence"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    first = await client.post(
+        f"{API}/projects/{project_id}/milestones",
+        json={"title": "global-id-target"},
+        headers=auth_headers(test_token),
+    )
+    assert first.status_code == 201
+    second = await client.post(
+        f"{API}/projects/{project_id}/milestones",
+        json={"title": "iid-collision"},
+        headers=auth_headers(test_token),
+    )
+    assert second.status_code == 201
+    assert first.json()["id"] == second.json()["iid"]
+
+    fetched = await client.get(
+        f"{API}/projects/{project_id}/milestones/{first.json()['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["title"] == "global-id-target"
 
 
 @pytest.mark.asyncio

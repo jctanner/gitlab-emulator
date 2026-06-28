@@ -250,6 +250,10 @@ Target resource areas:
 - protected branches: MVP list/get/protect/unprotect implemented
 - releases: MVP list/create/get/update/delete implemented
 - webhooks: MVP project/group list/create/get/update/delete implemented
+- labels: MVP project list/create/get/update/delete implemented with
+  GitLab-shaped response fields, search, pagination, and issue counts
+- milestones: MVP project list/create/get/update/delete implemented with
+  GitLab-shaped response fields, filters, pagination, and encoded path lookup
 - search: MVP global projects/issues/merge_requests/blobs implemented
 
 Target behavior areas:
