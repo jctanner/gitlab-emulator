@@ -295,7 +295,7 @@ Done when:
   GitLab repository file write gates, and protected-branch management gates now
   use GitLab-shaped access levels.
   Project member/collaborator writes require Maintainer or higher, while group
-  member, org repository, and team management writes require Owner. Project/repository
+  member, org repository, organization-targeted fork, and team management writes require Owner. Project/repository
   destructive settings and org settings require Owner. Project/repository webhook and deploy-key writes
   require Maintainer or higher, repository Actions secret/variable management
   requires Maintainer or higher, and group webhook writes require Owner. Label

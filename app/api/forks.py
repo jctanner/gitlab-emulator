@@ -9,8 +9,10 @@ from sqlalchemy import select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
+from app.models.organization import Organization
 from app.models.repository import Repository
 from app.api.repos import _repo_json
+from app.services.permissions import OWNER, require_group_access
 
 router = APIRouter(tags=["forks"])
 
@@ -26,6 +28,14 @@ async def create_fork(
 
     target_org = body.get("organization")
     fork_owner_login = target_org or user.login
+    if target_org:
+        org_result = await db.execute(
+            select(Organization).where(Organization.login == target_org)
+        )
+        organisation = org_result.scalar_one_or_none()
+        if organisation is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        await require_group_access(organisation, user, db, OWNER)
     fork_name = body.get("name", parent.name)
     full_name = f"{fork_owner_login}/{fork_name}"
 

@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -100,6 +101,48 @@ async def test_fork_with_custom_name(client, test_user, test_token, admin_user, 
     )
     assert resp.status_code == 202
     assert resp.json()["name"] == "my-custom-fork"
+
+
+@pytest.mark.asyncio
+async def test_fork_into_organization_requires_owner(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "fork-org-maintainer"
+    )
+    source = await client.post(
+        f"{API}/user/repos",
+        json={"name": "fork-org-source", "auto_init": True},
+        headers=auth_headers(test_token),
+    )
+    assert source.status_code == 201
+    org = await client.post(
+        f"{API}/orgs",
+        json={"login": "fork-target-org"},
+        headers=auth_headers(test_token),
+    )
+    assert org.status_code == 201
+    member = await client.post(
+        f"{API}/groups/{org.json()['id']}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/repos/testuser/fork-org-source/forks",
+        json={"organization": "fork-target-org", "name": "denied-fork"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/repos/testuser/fork-org-source/forks",
+        json={"organization": "fork-target-org", "name": "allowed-fork"},
+        headers=auth_headers(test_token),
+    )
+    assert allowed.status_code == 202
+    assert allowed.json()["full_name"] == "fork-target-org/allowed-fork"
 
 
 @pytest.mark.asyncio
