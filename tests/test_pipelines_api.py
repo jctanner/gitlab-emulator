@@ -3659,6 +3659,36 @@ unit:
     assert by_name["unit"]["status"] == "success"
 
 
+async def test_allow_failure_exit_codes_rejects_pipeline(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+optional_compile:
+  allow_failure:
+    exit_codes:
+      - 137
+  script:
+    - exit 137
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add unsupported allow failure ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 400
+    assert "allow_failure exit_codes is not supported" in pipeline_resp.text
+
+
 async def test_runner_allows_needs_to_bypass_incomplete_same_stage_peer(
     client, test_token
 ):

@@ -43,7 +43,8 @@ Already working:
   `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
-  variables. Current
+  variables. Boolean `allow_failure` is supported for jobs and rules, while
+  unsupported `allow_failure:exit_codes` is rejected clearly. Current
   `only`/`except` support covers scalar/list branch, tag, and pipeline-source
   refs plus mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
@@ -385,7 +386,8 @@ Implemented:
 - preserve declared needs order in official runner dependency payloads
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
   including MVP `if` with unary negation, `exists`, `changes`, `never`,
-  `manual`, branch/tag, and pipeline-source legacy filter behavior
+  `manual`, boolean `allow_failure`, branch/tag, and pipeline-source legacy
+  filter behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in

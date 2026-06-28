@@ -64,7 +64,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   match/non-match operators, `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, branch/tag/source-aware
   `only`/`except` filters including mapping forms, workflow/rule-level
-  variables, `allow_failure` scheduling/status behavior,
+  variables, boolean `allow_failure` scheduling/status behavior with clear
+  rejection of unsupported `allow_failure:exit_codes`,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
   metadata with list and file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, deeper `extends` semantics, nested local
@@ -184,7 +185,7 @@ Target areas:
 - deeper `rules` behavior beyond the current MVP expression grouping, exists,
   changes, exists/changes path-object, variable-expanded rule paths,
   mapping-form `only`/`except`, never, manual, rule-variable, and
-  `allow_failure` support
+  remaining `allow_failure` edge cases
 - remaining richer cache policy/options beyond list and file-derived keys,
   variable-expanded paths, keys, policies, `when`, and fallback keys
 

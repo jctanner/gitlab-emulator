@@ -766,6 +766,33 @@ optional_probe:
     assert jobs[0].variable_metadata["RULE_TARGET"]["value"] == "from-rule"
 
 
+def test_parse_gitlab_ci_rejects_allow_failure_exit_codes():
+    for content in [
+        """
+optional_probe:
+  script: echo optional
+  allow_failure:
+    exit_codes:
+      - 137
+""",
+        """
+optional_probe:
+  script: echo optional
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      allow_failure:
+        exit_codes:
+          - 137
+""",
+    ]:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            assert "allow_failure exit_codes is not supported" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_allows_job_to_disable_global_cache():
     jobs = parse_gitlab_ci(
         """

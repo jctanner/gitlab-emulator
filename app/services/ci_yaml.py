@@ -366,6 +366,12 @@ class _RuleDecision:
     variables: dict[str, dict] = field(default_factory=dict)
 
 
+def _allow_failure_setting(value: Any) -> bool:
+    if isinstance(value, dict):
+        raise ValueError("allow_failure exit_codes is not supported")
+    return bool(value)
+
+
 def _unquote(value: str) -> str:
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
@@ -586,7 +592,7 @@ def _job_rule_decision(
             return _RuleDecision(
                 included=when != "never",
                 when=when,
-                allow_failure=bool(allow_failure)
+                allow_failure=_allow_failure_setting(allow_failure)
                 if allow_failure is not None
                 else None,
                 variables=rule_variables,
@@ -613,7 +619,7 @@ def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
     if decision.allow_failure is not None:
         return decision.allow_failure
     if "allow_failure" in config:
-        return bool(config["allow_failure"])
+        return _allow_failure_setting(config["allow_failure"])
     return "rules" not in config and decision.when == "manual"
 
 
