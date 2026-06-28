@@ -350,6 +350,7 @@ async def create_group(body: dict, user: AuthUser, db: DbSession):
     full_path = path
     if parent_id is not None:
         parent = await _get_group_or_404(str(parent_id), db)
+        await _require_group_maintainer(parent, user, db)
         resolved_parent_id = parent.id
         full_path = f"{parent.login}/{path}"
 

@@ -298,6 +298,59 @@ async def test_nested_group_namespace_project_creation(client, test_token):
 
 
 @pytest.mark.asyncio
+async def test_subgroup_creation_requires_parent_maintainer_access(
+    client, db_session, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "subgroup-reporter"
+    )
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "subgroup-maintainer"
+    )
+    parent = await client.post(
+        f"{API}/groups",
+        json={"path": "subgroup-gate", "name": "Subgroup Gate"},
+        headers=auth_headers(test_token),
+    )
+    assert parent.status_code == 201
+    parent_id = parent.json()["id"]
+
+    for user, level in ((reporter, 20), (maintainer, 40)):
+        member = await client.post(
+            f"{API}/groups/{parent_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "reporter-child",
+            "name": "Reporter Child",
+            "parent_id": parent_id,
+        },
+        headers=auth_headers(reporter_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "maintainer-child",
+            "name": "Maintainer Child",
+            "parent_id": parent_id,
+        },
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
+    data = allowed.json()
+    assert data["path"] == "maintainer-child"
+    assert data["full_path"] == "subgroup-gate/maintainer-child"
+    assert data["parent_id"] == parent_id
+
+
+@pytest.mark.asyncio
 async def test_create_duplicate_group_fails(client, test_token):
     first = await client.post(
         f"{API}/groups",
