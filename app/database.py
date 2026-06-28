@@ -62,3 +62,8 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         "secret_metadata",
         "secret_metadata JSON DEFAULT '[]'",
     )
+    await ensure_column(
+        "collaborators",
+        "access_level",
+        "access_level INTEGER",
+    )

@@ -96,6 +96,7 @@ class Collaborator(Base):
     permission: Mapped[str] = mapped_column(
         String, default="push"
     )  # "pull", "triage", "push", "maintain", "admin"
+    access_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
     repository = relationship("Repository", back_populates="collaborators", lazy="selectin")

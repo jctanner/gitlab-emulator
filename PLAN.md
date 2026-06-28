@@ -297,10 +297,9 @@ Done when:
   and milestone definition writes require Maintainer or higher; issue label
   assignment, release writes, and commit status writes require Developer or
   higher. Issue, issue-comment, and reaction writes require Reporter or higher;
-  merge request create/update/merge requires Developer or higher. Remaining
-  long-tail parity includes exact Guest-vs-Reporter project access semantics
-  where the inherited collaborator permission model cannot yet distinguish
-  GitLab Guest from Reporter.
+  merge request create/update/merge requires Developer or higher. Project
+  member access levels now preserve GitLab Guest separately from Reporter while
+  keeping GitHub-compatible collaborator permissions for inherited routes.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Production security hardening. This emulator is for controlled integration
   testing environments.

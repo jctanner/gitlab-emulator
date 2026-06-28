@@ -83,6 +83,13 @@ def permission_for_access_level(access_level: int) -> str:
     return ACCESS_LEVEL_TO_PERMISSION[REPORTER]
 
 
+def collaborator_access_level(collaborator: Any) -> int:
+    explicit = getattr(collaborator, "access_level", None)
+    if explicit is not None:
+        return int(explicit)
+    return access_level_for_permission(getattr(collaborator, "permission", None))
+
+
 def access_level_for_permission(permission: str | None) -> int:
     return PERMISSION_TO_ACCESS_LEVEL.get(str(permission or "").lower(), REPORTER)
 
@@ -155,7 +162,7 @@ async def project_access_level(project: Any, user: Any | None, db: Any) -> int:
     )
     collaborator = result.scalar_one_or_none()
     levels = [
-        access_level_for_permission(collaborator.permission)
+        collaborator_access_level(collaborator)
         if collaborator is not None
         else GUEST
     ]

@@ -208,9 +208,7 @@ async def test_issue_writes_require_reporter(
     reporter, reporter_token = await _create_user_and_token(
         db_session, "issue-role-reporter"
     )
-    outsider, outsider_token = await _create_user_and_token(
-        db_session, "issue-role-outsider"
-    )
+    guest, guest_token = await _create_user_and_token(db_session, "issue-role-guest")
     project = await client.post(
         f"{API}/projects",
         json={"name": "issue-role-project"},
@@ -219,17 +217,18 @@ async def test_issue_writes_require_reporter(
     assert project.status_code == 201
     project_id = project.json()["id"]
 
-    member = await client.post(
-        f"{API}/projects/{project_id}/members",
-        json={"user_id": reporter.id, "access_level": 20},
-        headers=auth_headers(test_token),
-    )
-    assert member.status_code == 201
+    for user, level in ((reporter, 20), (guest, 10)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
 
     denied_create = await client.post(
         f"{API}/projects/{project_id}/issues",
-        json={"title": "outsider denied"},
-        headers=auth_headers(outsider_token),
+        json={"title": "guest denied"},
+        headers=auth_headers(guest_token),
     )
     assert denied_create.status_code == 403
 
@@ -242,8 +241,8 @@ async def test_issue_writes_require_reporter(
 
     denied_update = await client.put(
         f"{API}/projects/{project_id}/issues/1",
-        json={"title": "outsider denied update"},
-        headers=auth_headers(outsider_token),
+        json={"title": "guest denied update"},
+        headers=auth_headers(guest_token),
     )
     assert denied_update.status_code == 403
 

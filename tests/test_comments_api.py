@@ -243,9 +243,7 @@ async def test_comment_writes_require_reporter(
     reporter, reporter_token = await _create_user_and_token(
         db_session, "comment-role-reporter"
     )
-    outsider, outsider_token = await _create_user_and_token(
-        db_session, "comment-role-outsider"
-    )
+    guest, guest_token = await _create_user_and_token(db_session, "comment-role-guest")
     project = await client.post(
         f"{API}/projects",
         json={"name": "comment-role-project"},
@@ -254,12 +252,13 @@ async def test_comment_writes_require_reporter(
     assert project.status_code == 201
     project_id = project.json()["id"]
 
-    member = await client.post(
-        f"{API}/projects/{project_id}/members",
-        json={"user_id": reporter.id, "access_level": 20},
-        headers=auth_headers(test_token),
-    )
-    assert member.status_code == 201
+    for user, level in ((reporter, 20), (guest, 10)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
 
     issue = await client.post(
         f"{API}/projects/{project_id}/issues",
@@ -270,8 +269,8 @@ async def test_comment_writes_require_reporter(
 
     denied_create = await client.post(
         f"{API}/repos/testuser/comment-role-project/issues/1/comments",
-        json={"body": "outsider denied"},
-        headers=auth_headers(outsider_token),
+        json={"body": "guest denied"},
+        headers=auth_headers(guest_token),
     )
     assert denied_create.status_code == 403
 
@@ -285,8 +284,8 @@ async def test_comment_writes_require_reporter(
 
     denied_update = await client.patch(
         f"{API}/repos/testuser/comment-role-project/issues/comments/{comment_id}",
-        json={"body": "outsider denied update"},
-        headers=auth_headers(outsider_token),
+        json={"body": "guest denied update"},
+        headers=auth_headers(guest_token),
     )
     assert denied_update.status_code == 403
 

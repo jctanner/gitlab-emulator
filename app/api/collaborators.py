@@ -11,7 +11,12 @@ from app.models.project import Project
 from app.models.repository import Collaborator
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
-from app.services.permissions import MAINTAINER, require_project_access
+from app.services.permissions import (
+    MAINTAINER,
+    access_level_for_permission,
+    collaborator_access_level,
+    require_project_access,
+)
 
 router = APIRouter(tags=["collaborators"])
 
@@ -99,7 +104,7 @@ async def _project_member(project: Project, user_id: int, db: DbSession) -> tupl
     collaborator = result.scalar_one_or_none()
     if collaborator is None or collaborator.user is None:
         return None
-    return collaborator.user, PERMISSION_TO_ACCESS.get(collaborator.permission, 20)
+    return collaborator.user, collaborator_access_level(collaborator)
 
 
 @router.get("/projects/{project_ref:path}/members")
@@ -124,7 +129,7 @@ async def list_project_members(
     )
     for collaborator in result.scalars().all():
         if collaborator.user and collaborator.user.id not in seen_user_ids:
-            access = PERMISSION_TO_ACCESS.get(collaborator.permission, 20)
+            access = collaborator_access_level(collaborator)
             members.append(_member_json(collaborator.user, access, BASE))
             seen_user_ids.add(collaborator.user.id)
     if query:
@@ -192,16 +197,18 @@ async def add_project_member(
     collaborator = existing.scalar_one_or_none()
     if collaborator:
         collaborator.permission = permission
+        collaborator.access_level = access_level
     else:
         db.add(
             Collaborator(
                 repo_id=project.id,
                 user_id=target_user.id,
                 permission=permission,
+                access_level=access_level,
             )
         )
     await db.commit()
-    return _member_json(target_user, PERMISSION_TO_ACCESS.get(permission, access_level), BASE)
+    return _member_json(target_user, access_level, BASE)
 
 
 @router.delete("/projects/{project_ref:path}/members/{user_id}", status_code=204)
@@ -295,11 +302,13 @@ async def add_collaborator(
     collab = existing.scalar_one_or_none()
     if collab:
         collab.permission = permission
+        collab.access_level = access_level_for_permission(permission)
     else:
         collab = Collaborator(
             repo_id=repository.id,
             user_id=target_user.id,
             permission=permission,
+            access_level=access_level_for_permission(permission),
         )
         db.add(collab)
 

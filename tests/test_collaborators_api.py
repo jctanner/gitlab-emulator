@@ -182,6 +182,45 @@ async def test_gitlab_project_members_crud(client, test_user, test_token, admin_
 
 
 @pytest.mark.asyncio
+async def test_gitlab_project_member_preserves_guest_access_level(
+    client, db_session, test_user, test_token
+):
+    guest, _ = await _create_user_and_token(db_session, "member-guest-access")
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "members-guest-access"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    created = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": guest.id, "access_level": 10},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json()["access_level"] == 10
+
+    fetched = await client.get(
+        f"{API}/projects/{project_id}/members/{guest.id}",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["access_level"] == 10
+
+    listed = await client.get(
+        f"{API}/projects/{project_id}/members",
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    assert any(
+        member["username"] == guest.login and member["access_level"] == 10
+        for member in listed.json()
+    )
+
+
+@pytest.mark.asyncio
 async def test_gitlab_project_member_writes_require_maintainer(
     client, db_session, test_user, test_token
 ):
