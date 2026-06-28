@@ -310,7 +310,8 @@ Done when:
   `mergeRequests` aliases backed by the existing user/project/MR models.
   Repository `latestRelease` resolves real release metadata, and repository
   issue connections support `filterBy.mentioned` for issue bodies and comments,
-  but the broader schema remains an incremental parity area.
+  and pull request `reviewDecision` reflects active approvals and change
+  requests, but the broader schema remains an incremental parity area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI

@@ -455,6 +455,108 @@ async def test_graphql_project_merge_requests_alias(client, test_user, test_toke
 
 
 @pytest.mark.asyncio
+async def test_graphql_pull_request_review_decision(client, test_user, test_token):
+    """Pull request reviewDecision is derived from active submitted reviews."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-pr-review-decision", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    mr_resp = await client.post(
+        f"{API}/projects/{project['id']}/merge_requests",
+        json={
+            "title": "Review decision MR",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert mr_resp.status_code == 201
+    iid = mr_resp.json()["iid"]
+
+    query = """
+        query($number: Int!) {
+          repository(owner: "testuser", name: "gql-pr-review-decision") {
+            pullRequest(number: $number) {
+              reviewDecision
+            }
+          }
+        }
+    """
+    initial = await client.post(
+        "/graphql",
+        json={"query": query, "variables": {"number": iid}},
+        headers=auth_headers(test_token),
+    )
+    assert initial.status_code == 200
+    initial_data = initial.json()
+    assert "errors" not in initial_data
+    assert initial_data["data"]["repository"]["pullRequest"]["reviewDecision"] is None
+
+    approved_review = await client.post(
+        f"{API}/repos/testuser/gql-pr-review-decision/pulls/{iid}/reviews",
+        json={"body": "looks good"},
+        headers=auth_headers(test_token),
+    )
+    assert approved_review.status_code == 201
+    approved_submit = await client.put(
+        f"{API}/repos/testuser/gql-pr-review-decision/pulls/{iid}/reviews/{approved_review.json()['id']}/events",
+        json={"event": "APPROVE"},
+        headers=auth_headers(test_token),
+    )
+    assert approved_submit.status_code == 200
+
+    approved = await client.post(
+        "/graphql",
+        json={"query": query, "variables": {"number": iid}},
+        headers=auth_headers(test_token),
+    )
+    assert approved.status_code == 200
+    approved_data = approved.json()
+    assert "errors" not in approved_data
+    assert (
+        approved_data["data"]["repository"]["pullRequest"]["reviewDecision"]
+        == "APPROVED"
+    )
+
+    changes_review = await client.post(
+        f"{API}/repos/testuser/gql-pr-review-decision/pulls/{iid}/reviews",
+        json={"body": "needs work"},
+        headers=auth_headers(test_token),
+    )
+    assert changes_review.status_code == 201
+    changes_submit = await client.put(
+        f"{API}/repos/testuser/gql-pr-review-decision/pulls/{iid}/reviews/{changes_review.json()['id']}/events",
+        json={"event": "REQUEST_CHANGES"},
+        headers=auth_headers(test_token),
+    )
+    assert changes_submit.status_code == 200
+
+    changed = await client.post(
+        "/graphql",
+        json={"query": query, "variables": {"number": iid}},
+        headers=auth_headers(test_token),
+    )
+    assert changed.status_code == 200
+    changed_data = changed.json()
+    assert "errors" not in changed_data
+    assert (
+        changed_data["data"]["repository"]["pullRequest"]["reviewDecision"]
+        == "CHANGES_REQUESTED"
+    )
+
+
+@pytest.mark.asyncio
 async def test_graphql_pull_request_mutation_requires_developer(
     client, db_session, test_user, test_token
 ):

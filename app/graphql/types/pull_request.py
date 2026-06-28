@@ -152,7 +152,24 @@ class PullRequest:
         return False
 
     @strawberry.field
-    def review_decision(self) -> Optional[str]:
+    async def review_decision(self, info: Info) -> Optional[str]:
+        from app.models.review import Review
+
+        db = info.context["db"]
+        result = await db.execute(
+            select(Review.state)
+            .where(
+                Review.pull_request_id == self._pr_id,
+                Review.submitted_at.is_not(None),
+                Review.state != "DISMISSED",
+            )
+            .order_by(Review.created_at.asc())
+        )
+        states = [state for state in result.scalars().all()]
+        if "CHANGES_REQUESTED" in states:
+            return "CHANGES_REQUESTED"
+        if "APPROVED" in states:
+            return "APPROVED"
         return None
 
     @strawberry.field
