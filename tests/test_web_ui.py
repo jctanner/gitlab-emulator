@@ -564,6 +564,70 @@ async def test_ui_project_labels_and_milestones_management(client, test_user):
 
 
 @pytest.mark.asyncio
+async def test_ui_project_releases_management(client, test_user):
+    """The project UI can create, update, and delete releases."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-releases", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    releases_page = await client.get("/ui/testuser/ui-releases/-/releases")
+    assert releases_page.status_code == 200
+    assert "Releases" in releases_page.text
+    assert "Create release" in releases_page.text
+    assert 'href="/ui/testuser/ui-releases/-/releases">Releases</a>' in releases_page.text
+
+    create_release = await client.post(
+        "/ui/testuser/ui-releases/-/releases",
+        data={
+            "tag_name": "v1.0.0",
+            "name": "Version 1.0.0",
+            "ref": "main",
+            "description": "Initial release",
+            "prerelease": "1",
+        },
+        follow_redirects=False,
+    )
+    assert create_release.status_code in (302, 303)
+
+    releases_page = await client.get("/ui/testuser/ui-releases/-/releases")
+    assert releases_page.status_code == 200
+    assert "Version 1.0.0" in releases_page.text
+    assert "v1.0.0" in releases_page.text
+    assert "Initial release" in releases_page.text
+    assert "Prerelease" in releases_page.text
+
+    update_release = await client.post(
+        "/ui/testuser/ui-releases/-/releases/1/update",
+        data={
+            "name": "Version 1.0.1",
+            "description": "Updated release notes",
+            "draft": "1",
+        },
+        follow_redirects=False,
+    )
+    assert update_release.status_code in (302, 303)
+
+    releases_page = await client.get("/ui/testuser/ui-releases/-/releases")
+    assert releases_page.status_code == 200
+    assert "Version 1.0.1" in releases_page.text
+    assert "Updated release notes" in releases_page.text
+    assert "Draft" in releases_page.text
+
+    delete_release = await client.post(
+        "/ui/testuser/ui-releases/-/releases/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_release.status_code in (302, 303)
+    releases_page = await client.get("/ui/testuser/ui-releases/-/releases")
+    assert "No releases yet." in releases_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_repo_pipeline_and_job_interface(client, test_user):
     """The web UI can create repository pipelines and inspect job runs."""
     _ui_session(client, test_user.login)

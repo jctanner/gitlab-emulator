@@ -22,6 +22,7 @@ from app.api.pipelines import (
     _derive_pipeline_status,
     _reset_job_for_retry,
 )
+from app.api.releases import _ensure_release_tag
 from app.config import settings
 from app.database import get_db
 from app.git.bare_repo import (
@@ -43,6 +44,7 @@ from app.models.label import Label
 from app.models.milestone import Milestone
 from app.models.organization import Organization
 from app.models.pull_request import PullRequest
+from app.models.release import Release
 from app.models.repository import Collaborator, Repository
 from app.models.user import User
 from app.services.auth_service import verify_password
@@ -1678,6 +1680,175 @@ async def repo_milestone_delete(
         await db.commit()
     return RedirectResponse(
         url=f"/ui/{owner}/{repo.name}/-/milestones?message={urlencode({'x': 'Milestone deleted.'})[2:]}",
+        status_code=302,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repository releases
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/releases", response_class=HTMLResponse)
+async def repo_releases_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project releases."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    releases = (
+        await db.execute(
+            select(Release)
+            .where(Release.repo_id == repo.id)
+            .order_by(Release.created_at.desc(), Release.id.desc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_releases.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            releases=releases,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/releases", response_class=HTMLResponse)
+async def repo_release_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    tag_name: str = Form(...),
+    name: str = Form(""),
+    ref: str = Form(""),
+    description: str = Form(""),
+    draft: str = Form(""),
+    prerelease: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project release from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/releases"
+    tag = tag_name.strip()
+    if not tag:
+        return RedirectResponse(url=f"{redirect}?error=Tag%20name%20is%20required.", status_code=302)
+    existing = (
+        await db.execute(
+            select(Release).where(Release.repo_id == repo.id, Release.tag_name == tag)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return RedirectResponse(url=f"{redirect}?error=Release%20already%20exists.", status_code=302)
+    try:
+        target = ref.strip() or repo.default_branch or "main"
+        await _ensure_release_tag(repo, tag, target)
+        now = datetime.now(timezone.utc)
+        release = Release(
+            repo_id=repo.id,
+            tag_name=tag,
+            target_commitish=target,
+            name=name.strip() or tag,
+            body=description,
+            draft=_bool_form(draft),
+            prerelease=_bool_form(prerelease),
+            author_id=current_user.id,
+            published_at=None if _bool_form(draft) else now,
+        )
+        db.add(release)
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Release created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/releases/{release_id}/update", response_class=HTMLResponse)
+async def repo_release_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    release_id: int,
+    name: str = Form(""),
+    description: str = Form(""),
+    draft: str = Form(""),
+    prerelease: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project release from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/releases"
+    release = (
+        await db.execute(
+            select(Release).where(Release.id == release_id, Release.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if release is None:
+        return RedirectResponse(url=f"{redirect}?error=Release%20not%20found.", status_code=302)
+    was_draft = release.draft
+    release.name = name.strip() or release.tag_name
+    release.body = description
+    release.draft = _bool_form(draft)
+    release.prerelease = _bool_form(prerelease)
+    if was_draft and not release.draft and release.published_at is None:
+        release.published_at = datetime.now(timezone.utc)
+    await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Release updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/releases/{release_id}/delete", response_class=HTMLResponse)
+async def repo_release_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    release_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project release from the web UI without deleting its git tag."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    release = (
+        await db.execute(
+            select(Release).where(Release.id == release_id, Release.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if release is not None:
+        await db.delete(release)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/releases?message={urlencode({'x': 'Release deleted.'})[2:]}",
         status_code=302,
     )
 

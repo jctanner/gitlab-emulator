@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Releases - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "releases" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Releases</div>
+    <div class="Subhead-description">Publish versioned release metadata for repository tags.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Create release</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/releases">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Tag<br><input class="form-control" name="tag_name" required placeholder="v1.0.0"></label>
+                <label>Release title<br><input class="form-control" name="name" placeholder="Version 1.0.0"></label>
+                <label>Ref<br><input class="form-control" name="ref" value="{{ repo.default_branch or 'main' }}"></label>
+            </div>
+            <div class="form-group mt-3">
+                <div class="form-group-header"><label for="release-description">Description</label></div>
+                <div class="form-group-body">
+                    <textarea id="release-description" class="form-control input-block" name="description" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                <label><input type="checkbox" name="draft" value="1"> Draft</label>
+                <label><input type="checkbox" name="prerelease" value="1"> Prerelease</label>
+                <button class="btn btn-primary" type="submit">Create release</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project releases</h3></div>
+    {% if releases %}
+    {% for release in releases %}
+    <div class="Box-row">
+        <div class="d-flex flex-justify-between flex-wrap" style="gap:12px;">
+            <div>
+                <div class="text-bold">{{ release.name or release.tag_name }}</div>
+                <div class="color-fg-muted">
+                    <code>{{ release.tag_name }}</code>
+                    {% if release.draft %} · Draft{% endif %}
+                    {% if release.prerelease %} · Prerelease{% endif %}
+                    {% if release.published_at %} · Published {{ release.published_at.date().isoformat() }}{% endif %}
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/releases/{{ release.id }}/update" class="mt-3">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Release title<br><input class="form-control" name="name" value="{{ release.name or '' }}"></label>
+                <label>Target<br><input class="form-control" value="{{ release.target_commitish or '' }}" disabled></label>
+            </div>
+            <div class="form-group mt-2">
+                <div class="form-group-header"><label for="release-body-{{ release.id }}">Description</label></div>
+                <div class="form-group-body">
+                    <textarea id="release-body-{{ release.id }}" class="form-control input-block" name="description" rows="3">{{ release.body or '' }}</textarea>
+                </div>
+            </div>
+            <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                <label><input type="checkbox" name="draft" value="1" {% if release.draft %}checked{% endif %}> Draft</label>
+                <label><input type="checkbox" name="prerelease" value="1" {% if release.prerelease %}checked{% endif %}> Prerelease</label>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+        </form>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/releases/{{ release.id }}/delete" class="mt-2"
+              onsubmit="return confirm('Delete release {{ release.tag_name }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No releases yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

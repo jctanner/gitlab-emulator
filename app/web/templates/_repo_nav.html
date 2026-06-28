@@ -112,8 +112,11 @@
             {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'settings' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/settings">Settings</a>
-            {% endif %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'releases' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/releases">Releases</a>
+            {% else %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Releases</span>
+            {% endif %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Package registry</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Container registry</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Model registry</span>

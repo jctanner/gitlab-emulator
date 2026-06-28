@@ -332,8 +332,9 @@ Done when:
   node limit. The broader schema remains an incremental parity area.
 - Full GitLab UI parity. The current UI covers repository/source editing,
   issues/work items, merge requests, branches, commits, tags, project settings,
-  project members, labels, milestones, CI/CD variables, secrets, pipelines,
-  jobs, runners, and the admin CI Lab, but it is not a complete GitLab clone.
+  project members, labels, milestones, releases, CI/CD variables, secrets,
+  pipelines, jobs, runners, and the admin CI Lab, but it is not a complete
+  GitLab clone.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,
   GitLab repository file write gates, and protected-branch management gates now
