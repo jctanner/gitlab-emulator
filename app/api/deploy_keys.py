@@ -7,6 +7,7 @@ from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.models.deploy_key import DeployKey
 from app.schemas.user import _fmt_dt
+from app.services.permissions import MAINTAINER, require_project_access
 
 router = APIRouter(tags=["deploy-keys"])
 
@@ -50,6 +51,7 @@ async def create_deploy_key(
 ):
     """Add a deploy key."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     title = body.get("title", "")
     key_value = body.get("key", "")
@@ -91,6 +93,7 @@ async def delete_deploy_key(
 ):
     """Delete a deploy key."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(DeployKey).where(DeployKey.id == key_id, DeployKey.repo_id == repository.id)
     )

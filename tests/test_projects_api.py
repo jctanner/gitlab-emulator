@@ -1329,3 +1329,35 @@ async def test_project_tag_create_requires_auth(client, test_user, test_token):
     )
 
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_project_requires_owner(client, db_session, test_user, test_token):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "project-delete-maintainer"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "delete-project-owner-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied = await client.delete(
+        f"{API}/projects/{project_id}",
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.delete(
+        f"{API}/projects/{project_id}",
+        headers=auth_headers(test_token),
+    )
+    assert allowed.status_code == 202

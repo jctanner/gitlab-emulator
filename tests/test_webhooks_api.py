@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -27,6 +28,45 @@ async def test_create_webhook(client, test_user, test_token):
     assert data["active"] is True
     assert data["config"]["url"] == "https://example.com/webhook"
     assert "push" in data["events"]
+
+
+@pytest.mark.asyncio
+async def test_repo_webhook_writes_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "repo-hook-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "repo-hook-developer"
+    )
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "hook-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    for user, level in ((maintainer, 40), (developer, 30)):
+        member = await client.post(
+            f"{API}/projects/{project.json()['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/repos/testuser/hook-role-gate/hooks",
+        json={"config": {"url": "https://example.com/denied"}},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/repos/testuser/hook-role-gate/hooks",
+        json={"config": {"url": "https://example.com/allowed"}},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
 
 
 @pytest.mark.asyncio
@@ -236,6 +276,46 @@ async def test_gitlab_project_hook_accepts_encoded_project_path(
 
 
 @pytest.mark.asyncio
+async def test_gitlab_project_hook_writes_require_maintainer(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "project-hook-maintainer"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "project-hook-developer"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "project-hook-role-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    for user, level in ((maintainer, 40), (developer, 30)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/projects/{project_id}/hooks",
+        json={"url": "https://example.com/denied"},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/projects/{project_id}/hooks",
+        json={"url": "https://example.com/allowed"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
+
+
+@pytest.mark.asyncio
 async def test_gitlab_group_hook_crud(client, test_user, test_token):
     group = await client.post(
         f"{API}/groups",
@@ -274,3 +354,39 @@ async def test_gitlab_group_hook_crud(client, test_user, test_token):
         headers=auth_headers(test_token),
     )
     assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_gitlab_group_hook_writes_require_owner(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "group-hook-maintainer"
+    )
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "group-hook-owner-gate", "name": "Group Hook Owner Gate"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+    member = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/groups/{group_id}/hooks",
+        json={"url": "https://example.com/denied"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/groups/{group_id}/hooks",
+        json={"url": "https://example.com/allowed"},
+        headers=auth_headers(test_token),
+    )
+    assert allowed.status_code == 201

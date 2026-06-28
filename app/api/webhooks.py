@@ -13,6 +13,7 @@ from app.models.group import Group
 from app.models.project import Project
 from app.models.webhook import Webhook, WebhookDelivery
 from app.schemas.user import _fmt_dt, _make_node_id
+from app.services.permissions import MAINTAINER, OWNER, require_group_access, require_project_access
 
 router = APIRouter(tags=["webhooks"])
 
@@ -167,6 +168,7 @@ async def create_project_hook(
 ):
     """Create a GitLab-shaped project hook."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, MAINTAINER)
     url = body.get("url")
     if not url:
         raise HTTPException(status_code=400, detail="url is required")
@@ -208,6 +210,7 @@ async def update_project_hook(
 ):
     """Update a GitLab-shaped project hook."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, MAINTAINER)
     hook = await _get_project_hook_or_404(project, hook_id, db)
     if "url" in body:
         hook.url = body["url"]
@@ -230,6 +233,7 @@ async def delete_project_hook(
 ):
     """Delete a GitLab-shaped project hook."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, MAINTAINER)
     hook = await _get_project_hook_or_404(project, hook_id, db)
     await db.delete(hook)
     await db.commit()
@@ -271,6 +275,7 @@ async def create_group_hook(
 ):
     """Create a GitLab-shaped group hook."""
     group = await _get_group_or_404(group_ref, db)
+    await require_group_access(group, user, db, OWNER)
     url = body.get("url")
     if not url:
         raise HTTPException(status_code=400, detail="url is required")
@@ -312,6 +317,7 @@ async def update_group_hook(
 ):
     """Update a GitLab-shaped group hook."""
     group = await _get_group_or_404(group_ref, db)
+    await require_group_access(group, user, db, OWNER)
     hook = await _get_group_hook_or_404(group, hook_id, db)
     if "url" in body:
         hook.url = body["url"]
@@ -334,6 +340,7 @@ async def delete_group_hook(
 ):
     """Delete a GitLab-shaped group hook."""
     group = await _get_group_or_404(group_ref, db)
+    await require_group_access(group, user, db, OWNER)
     hook = await _get_group_hook_or_404(group, hook_id, db)
     await db.delete(hook)
     await db.commit()
@@ -368,6 +375,7 @@ async def create_hook(
 ):
     """Create a webhook."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
 
     config = body.get("config", {})
     url = config.get("url")
@@ -410,6 +418,7 @@ async def update_hook(
 ):
     """Update a webhook."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Webhook).where(Webhook.id == hook_id, Webhook.repo_id == repository.id)
     )
@@ -442,6 +451,7 @@ async def delete_hook(
 ):
     """Delete a webhook."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Webhook).where(Webhook.id == hook_id, Webhook.repo_id == repository.id)
     )

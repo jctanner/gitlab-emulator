@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -97,6 +98,40 @@ async def test_update_repo(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_update_repo_requires_owner(client, db_session, test_user, test_token):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "repo-settings-maintainer"
+    )
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "settings-owner-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    member = await client.post(
+        f"{API}/projects/{project.json()['id']}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied = await client.patch(
+        f"{API}/repos/testuser/settings-owner-gate",
+        json={"description": "denied"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.patch(
+        f"{API}/repos/testuser/settings-owner-gate",
+        json={"description": "allowed"},
+        headers=auth_headers(test_token),
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["description"] == "allowed"
+
+
+@pytest.mark.asyncio
 async def test_delete_repo(client, test_user, test_token):
     """DELETE /repos/{owner}/{repo} removes the repo."""
     await client.post(
@@ -113,6 +148,37 @@ async def test_delete_repo(client, test_user, test_token):
     # Verify it's gone
     resp = await client.get(f"{API}/repos/testuser/delete-test")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_repo_requires_owner(client, db_session, test_user, test_token):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "repo-delete-maintainer"
+    )
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "delete-owner-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    member = await client.post(
+        f"{API}/projects/{project.json()['id']}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied = await client.delete(
+        f"{API}/repos/testuser/delete-owner-gate",
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.delete(
+        f"{API}/repos/testuser/delete-owner-gate",
+        headers=auth_headers(test_token),
+    )
+    assert allowed.status_code == 204
 
 
 @pytest.mark.asyncio

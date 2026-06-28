@@ -31,7 +31,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import _fmt_dt
 from app.services.ci_security import normalize_ci_security_settings
-from app.services.permissions import DEVELOPER, MAINTAINER, require_project_access
+from app.services.permissions import DEVELOPER, MAINTAINER, OWNER, require_project_access
 
 router = APIRouter(tags=["projects"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1531,8 +1531,7 @@ async def list_projects(
 async def delete_project(project_ref: str, user: AuthUser, db: DbSession):
     """Delete a GitLab project and its backing bare repository."""
     project = await _get_project_or_404(project_ref, db, user)
-    if not user.site_admin and project.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    await require_project_access(project, user, db, OWNER)
     disk_path = project.disk_path
     await db.delete(project)
     await db.commit()

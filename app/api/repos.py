@@ -14,6 +14,7 @@ from app.models.repository import Repository
 from app.models.user import User
 from app.models.organization import Organization
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import OWNER, require_project_access
 
 router = APIRouter(tags=["repos"])
 
@@ -247,8 +248,7 @@ async def update_repo(
     if repository is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    if user.id != repository.owner_id and not user.site_admin:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    await require_project_access(repository, user, db, OWNER)
 
     updatable = [
         "description", "homepage", "private", "visibility",
@@ -282,8 +282,7 @@ async def delete_repo(owner: str, repo: str, user: AuthUser, db: DbSession):
     if repository is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    if user.id != repository.owner_id and not user.site_admin:
-        raise HTTPException(status_code=403, detail="Must have admin rights to delete")
+    await require_project_access(repository, user, db, OWNER)
 
     await db.delete(repository)
     await db.commit()

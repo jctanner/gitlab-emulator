@@ -334,7 +334,10 @@ Done when:
   variable/secret, pipeline-variable, repository write, git ref write, and
   protected-branch management gates now use GitLab-shaped access levels.
   Project member/collaborator writes require Maintainer or higher, and group
-  member writes require Owner. Remaining project/group settings and other
-  non-CI configuration endpoints still need broader permission hardening.
+  member writes require Owner. Project/repository destructive settings and org
+  settings require Owner. Project/repository webhook and deploy-key writes
+  require Maintainer or higher, and group webhook writes require Owner.
+  Remaining lower-risk collaboration and metadata endpoints still need broader
+  permission hardening.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
 - Production security hardening.

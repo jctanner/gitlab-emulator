@@ -8,6 +8,7 @@ from app.config import settings
 from app.models.organization import Organization, OrgMembership
 from app.models.user import User
 from app.schemas.user import _fmt_dt, _make_node_id
+from app.services.permissions import OWNER, require_group_access
 
 router = APIRouter(tags=["orgs"])
 
@@ -106,6 +107,7 @@ async def update_org(org: str, body: dict, user: AuthUser, db: DbSession):
     organisation = result.scalar_one_or_none()
     if organisation is None:
         raise HTTPException(status_code=404, detail="Not Found")
+    await require_group_access(organisation, user, db, OWNER)
 
     for key in ("name", "description", "email", "blog", "location", "company", "billing_email"):
         if key in body:
