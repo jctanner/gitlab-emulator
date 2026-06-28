@@ -132,6 +132,85 @@ async def test_delete_review_comment(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_review_comment_writes_require_reporter_access(
+    client, db_session, test_token
+):
+    from tests.test_projects_api import _create_user_and_token
+
+    guest, guest_token = await _create_user_and_token(db_session, "rc-guest")
+    reporter, reporter_token = await _create_user_and_token(db_session, "rc-reporter")
+    repo = await client.post(
+        f"{API}/user/repos",
+        json={"name": "rc-role"},
+        headers=auth_headers(test_token),
+    )
+    assert repo.status_code == 201
+    project = repo.json()
+    for user, level in ((guest, 10), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{project['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    issue = await client.post(
+        f"{API}/repos/testuser/rc-role/issues",
+        json={"title": "Role issue"},
+        headers=auth_headers(test_token),
+    )
+    assert issue.status_code == 201
+    pr = await client.post(
+        f"{API}/repos/testuser/rc-role/pulls",
+        json={"title": "Role PR", "head": "feature", "base": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pr.status_code == 201
+    pr_number = pr.json()["number"]
+
+    denied = await client.post(
+        f"{API}/repos/testuser/rc-role/pulls/{pr_number}/comments",
+        json={"body": "guest denied", "path": "file.py", "commit_id": "abc"},
+        headers=auth_headers(guest_token),
+    )
+    assert denied.status_code == 403
+
+    created = await client.post(
+        f"{API}/repos/testuser/rc-role/pulls/{pr_number}/comments",
+        json={"body": "reporter allowed", "path": "file.py", "commit_id": "abc"},
+        headers=auth_headers(reporter_token),
+    )
+    assert created.status_code == 201
+    comment_id = created.json()["id"]
+
+    denied_update = await client.patch(
+        f"{API}/repos/testuser/rc-role/pulls/comments/{comment_id}",
+        json={"body": "guest update"},
+        headers=auth_headers(guest_token),
+    )
+    assert denied_update.status_code == 403
+
+    updated = await client.patch(
+        f"{API}/repos/testuser/rc-role/pulls/comments/{comment_id}",
+        json={"body": "reporter update"},
+        headers=auth_headers(reporter_token),
+    )
+    assert updated.status_code == 200
+
+    denied_delete = await client.delete(
+        f"{API}/repos/testuser/rc-role/pulls/comments/{comment_id}",
+        headers=auth_headers(guest_token),
+    )
+    assert denied_delete.status_code == 403
+
+    deleted = await client.delete(
+        f"{API}/repos/testuser/rc-role/pulls/comments/{comment_id}",
+        headers=auth_headers(reporter_token),
+    )
+    assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
 async def test_review_comment_requires_body(client, test_user, test_token):
     """Creating review comment without body returns 422."""
     pr = await _create_pr(client, test_token, "rc-nobody")

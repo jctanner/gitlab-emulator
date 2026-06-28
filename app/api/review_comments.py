@@ -13,6 +13,7 @@ from app.models.pull_request import PullRequest
 from app.models.issue import Issue
 from app.models.review import Review
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import REPORTER, require_project_access
 
 router = APIRouter(tags=["review-comments"])
 
@@ -137,6 +138,7 @@ async def create_review_comment(
 ):
     """Create a review comment on a pull request."""
     repository, pr = await _get_pr(owner, repo, pull_number, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     comment_body = body.get("body")
     if not comment_body:
@@ -210,6 +212,7 @@ async def update_review_comment(
 ):
     """Update a review comment."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     result = await db.execute(
         select(PRReviewComment).where(PRReviewComment.id == comment_id)
@@ -243,6 +246,7 @@ async def delete_review_comment(
 ):
     """Delete a review comment."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     result = await db.execute(
         select(PRReviewComment).where(PRReviewComment.id == comment_id)

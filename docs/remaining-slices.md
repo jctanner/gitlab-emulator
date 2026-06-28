@@ -343,7 +343,9 @@ Done when:
   require Maintainer or higher, and group webhook writes require Owner. Label
   and milestone definition writes require Maintainer or higher; issue label
   assignment, release writes, commit status writes, and check run/suite writes
-  require Developer or higher. Issue, issue-comment, and reaction writes require Reporter or higher;
+  require Developer or higher. Issue, issue-comment, PR review-comment, PR review
+  create/submit, and reaction writes require Reporter or higher; PR review
+  dismissal requires Developer or higher;
   merge request create/update/merge requires Developer or higher. Project
   member access levels now preserve GitLab Guest separately from Reporter while
   keeping GitHub-compatible collaborator permissions for inherited routes. Git

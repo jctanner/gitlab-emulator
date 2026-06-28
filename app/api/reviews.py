@@ -11,6 +11,7 @@ from app.models.review import Review
 from app.models.pull_request import PullRequest
 from app.models.issue import Issue
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import DEVELOPER, REPORTER, require_project_access
 
 router = APIRouter(tags=["reviews"])
 
@@ -39,7 +40,7 @@ def _review_json(review: Review, owner: str, repo_name: str, pr_number: int, bas
 
 
 async def _get_pr(owner: str, repo: str, pull_number: int, db):
-    """Resolve owner/repo/pull_number to a PullRequest."""
+    """Resolve owner/repo/pull_number to (repository, PullRequest)."""
     repository = await get_repo_or_404(owner, repo, db)
     result = await db.execute(
         select(PullRequest)
@@ -49,7 +50,7 @@ async def _get_pr(owner: str, repo: str, pull_number: int, db):
     pr = result.scalar_one_or_none()
     if pr is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return pr
+    return repository, pr
 
 
 @router.get("/repos/{owner}/{repo}/pulls/{pull_number}/reviews")
@@ -59,7 +60,7 @@ async def list_reviews(
     per_page: int = Query(30, ge=1, le=100),
 ):
     """List reviews for a pull request."""
-    pr = await _get_pr(owner, repo, pull_number, db)
+    _repository, pr = await _get_pr(owner, repo, pull_number, db)
 
     query = (
         select(Review)
@@ -77,7 +78,8 @@ async def create_review(
     owner: str, repo: str, pull_number: int, body: dict, user: AuthUser, db: DbSession,
 ):
     """Create a review."""
-    pr = await _get_pr(owner, repo, pull_number, db)
+    repository, pr = await _get_pr(owner, repo, pull_number, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     event = body.get("event", "PENDING")
     review_body = body.get("body")
@@ -106,7 +108,7 @@ async def get_review(
     db: DbSession, current_user: CurrentUser,
 ):
     """Get a single review."""
-    pr = await _get_pr(owner, repo, pull_number, db)
+    _repository, pr = await _get_pr(owner, repo, pull_number, db)
     result = await db.execute(
         select(Review).where(Review.id == review_id, Review.pull_request_id == pr.id)
     )
@@ -122,7 +124,8 @@ async def submit_review(
     body: dict, user: AuthUser, db: DbSession,
 ):
     """Submit a pending review."""
-    pr = await _get_pr(owner, repo, pull_number, db)
+    repository, pr = await _get_pr(owner, repo, pull_number, db)
+    await require_project_access(repository, user, db, REPORTER)
     result = await db.execute(
         select(Review).where(Review.id == review_id, Review.pull_request_id == pr.id)
     )
@@ -151,7 +154,8 @@ async def dismiss_review(
     body: dict, user: AuthUser, db: DbSession,
 ):
     """Dismiss a review."""
-    pr = await _get_pr(owner, repo, pull_number, db)
+    repository, pr = await _get_pr(owner, repo, pull_number, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     result = await db.execute(
         select(Review).where(Review.id == review_id, Review.pull_request_id == pr.id)
     )
