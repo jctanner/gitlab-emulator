@@ -48,6 +48,7 @@ from app.models.pull_request import PullRequest
 from app.models.release import Release
 from app.models.repository import Collaborator, Repository
 from app.models.user import User
+from app.models.webhook import Webhook
 from app.services.auth_service import verify_password
 from app.services.ci_security import normalize_ci_security_settings
 from app.services import issue_service, pr_service, repo_service
@@ -76,6 +77,16 @@ _ACCESS_TO_PERMISSION = {
     30: "push",
     40: "maintain",
     50: "admin",
+}
+_WEBHOOK_EVENTS = {
+    "push_events": "Push events",
+    "merge_requests_events": "Merge request events",
+    "issues_events": "Issue events",
+    "tag_push_events": "Tag push events",
+    "note_events": "Comment events",
+    "job_events": "Job events",
+    "pipeline_events": "Pipeline events",
+    "releases_events": "Release events",
 }
 
 
@@ -189,6 +200,24 @@ def _parse_date_input(value: str | None) -> datetime | None:
         return datetime.fromisoformat(raw)
     except ValueError as exc:
         raise ValueError("Due date must be YYYY-MM-DD.") from exc
+
+
+def _selected_webhook_events(events: list[str] | None) -> dict[str, bool]:
+    selected = set(events or [])
+    return {event: event in selected for event in _WEBHOOK_EVENTS}
+
+
+def _webhook_events_from_form(events: list[str] | None) -> list[str]:
+    selected = [event for event in (events or []) if event in _WEBHOOK_EVENTS]
+    return selected or ["push_events"]
+
+
+def _masked_token(value: str | None) -> str:
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return "****"
+    return f"****{value[-4:]}"
 
 
 async def _managed_repo_or_response(
@@ -1958,6 +1987,161 @@ async def repo_deploy_key_delete(
         await db.commit()
     return RedirectResponse(
         url=f"/ui/{owner}/{repo.name}/-/deploy_keys?message={urlencode({'x': 'Deploy key removed.'})[2:]}",
+        status_code=302,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repository webhooks
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/hooks", response_class=HTMLResponse)
+async def repo_webhooks_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project webhooks."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    hooks = (
+        await db.execute(
+            select(Webhook)
+            .where(Webhook.repo_id == repo.id)
+            .order_by(Webhook.created_at.desc(), Webhook.id.desc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_webhooks.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            hooks=hooks,
+            webhook_events=_WEBHOOK_EVENTS,
+            selected_events=_selected_webhook_events,
+            masked_token=_masked_token,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/hooks", response_class=HTMLResponse)
+async def repo_webhook_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    url: str = Form(...),
+    token: str = Form(""),
+    enable_ssl_verification: str = Form(""),
+    active: str = Form(""),
+    events: list[str] = Form(default=[]),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project webhook from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/hooks"
+    hook_url = url.strip()
+    if not hook_url:
+        return RedirectResponse(url=f"{redirect}?error=URL%20is%20required.", status_code=302)
+    hook = Webhook(
+        repo_id=repo.id,
+        url=hook_url,
+        secret=token.strip() or None,
+        content_type="json",
+        insecure_ssl=not _bool_form(enable_ssl_verification),
+        events=_webhook_events_from_form(events),
+        active=_bool_form(active),
+    )
+    db.add(hook)
+    await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Webhook created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/hooks/{hook_id}/update", response_class=HTMLResponse)
+async def repo_webhook_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    hook_id: int,
+    url: str = Form(...),
+    token: str = Form(""),
+    enable_ssl_verification: str = Form(""),
+    active: str = Form(""),
+    events: list[str] = Form(default=[]),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project webhook from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/hooks"
+    hook = (
+        await db.execute(
+            select(Webhook).where(Webhook.id == hook_id, Webhook.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if hook is None:
+        return RedirectResponse(url=f"{redirect}?error=Webhook%20not%20found.", status_code=302)
+    hook_url = url.strip()
+    if not hook_url:
+        return RedirectResponse(url=f"{redirect}?error=URL%20is%20required.", status_code=302)
+    hook.url = hook_url
+    if token.strip():
+        hook.secret = token.strip()
+    hook.insecure_ssl = not _bool_form(enable_ssl_verification)
+    hook.active = _bool_form(active)
+    hook.events = _webhook_events_from_form(events)
+    await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Webhook updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/hooks/{hook_id}/delete", response_class=HTMLResponse)
+async def repo_webhook_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    hook_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project webhook from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    hook = (
+        await db.execute(
+            select(Webhook).where(Webhook.id == hook_id, Webhook.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if hook is not None:
+        await db.delete(hook)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/hooks?message={urlencode({'x': 'Webhook deleted.'})[2:]}",
         status_code=302,
     )
 

@@ -680,6 +680,72 @@ async def test_ui_project_releases_management(client, test_user):
 
 
 @pytest.mark.asyncio
+async def test_ui_project_webhooks_management(client, test_user):
+    """The project UI can create, update, and delete webhooks."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-webhooks", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    hooks_page = await client.get("/ui/testuser/ui-webhooks/-/hooks")
+    assert hooks_page.status_code == 200
+    assert "Webhooks" in hooks_page.text
+    assert "Add webhook" in hooks_page.text
+    assert 'href="/ui/testuser/ui-webhooks/-/hooks">Webhooks</a>' in hooks_page.text
+
+    create_hook = await client.post(
+        "/ui/testuser/ui-webhooks/-/hooks",
+        data={
+            "url": "https://example.test/hook",
+            "token": "super-hook-token",
+            "events": ["push_events", "pipeline_events"],
+            "enable_ssl_verification": "1",
+            "active": "1",
+        },
+        follow_redirects=False,
+    )
+    assert create_hook.status_code in (302, 303)
+
+    hooks_page = await client.get("/ui/testuser/ui-webhooks/-/hooks")
+    assert hooks_page.status_code == 200
+    assert "https://example.test/hook" in hooks_page.text
+    assert "Token ****oken" in hooks_page.text
+    assert "super-hook-token" not in hooks_page.text
+    assert "SSL verified" in hooks_page.text
+    assert "Active" in hooks_page.text
+
+    update_hook = await client.post(
+        "/ui/testuser/ui-webhooks/-/hooks/1/update",
+        data={
+            "url": "https://example.test/updated-hook",
+            "events": ["issues_events", "merge_requests_events"],
+        },
+        follow_redirects=False,
+    )
+    assert update_hook.status_code in (302, 303)
+
+    hooks_page = await client.get("/ui/testuser/ui-webhooks/-/hooks")
+    assert hooks_page.status_code == 200
+    assert "https://example.test/updated-hook" in hooks_page.text
+    assert "Inactive" in hooks_page.text
+    assert "SSL not verified" in hooks_page.text
+    assert "Token ****oken" in hooks_page.text
+
+    delete_hook = await client.post(
+        "/ui/testuser/ui-webhooks/-/hooks/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_hook.status_code in (302, 303)
+    hooks_page = await client.get("/ui/testuser/ui-webhooks/-/hooks")
+    assert "No webhooks yet." in hooks_page.text
+    assert "updated-hook" not in hooks_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_repo_pipeline_and_job_interface(client, test_user):
     """The web UI can create repository pipelines and inspect job runs."""
     _ui_session(client, test_user.login)
