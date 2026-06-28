@@ -6,6 +6,7 @@ import os
 from typing import Annotated, Optional, Union
 
 import strawberry
+import yaml
 from strawberry.types import Info
 from sqlalchemy import exists, or_, select, func as sa_func
 
@@ -271,6 +272,100 @@ async def _code_of_conduct(
     return None
 
 
+def _yaml_mapping(body: str) -> dict:
+    try:
+        parsed = yaml.safe_load(body) or {}
+    except yaml.YAMLError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _as_string_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
+
+
+def _funding_url(platform: str, account: str) -> str:
+    if account.startswith(("http://", "https://")):
+        return account
+    prefixes = {
+        "github": "https://github.com/sponsors/",
+        "patreon": "https://www.patreon.com/",
+        "open_collective": "https://opencollective.com/",
+        "ko_fi": "https://ko-fi.com/",
+        "liberapay": "https://liberapay.com/",
+        "issuehunt": "https://issuehunt.io/r/",
+        "otechie": "https://otechie.com/",
+        "lfx_crowdfunding": "https://crowdfunding.lfx.linuxfoundation.org/projects/",
+    }
+    prefix = prefixes.get(platform)
+    if prefix:
+        return f"{prefix}{account}"
+    if platform == "tidelift":
+        return f"https://tidelift.com/funding/github/{account}"
+    if platform == "community_bridge":
+        return f"https://funding.communitybridge.org/projects/{account}"
+    return account
+
+
+async def _funding_links(repo_path: str, ref: str) -> list[FundingLink]:
+    body = await _git_text(repo_path, "show", f"{ref}:.github/FUNDING.yml")
+    if body is None:
+        return []
+    data = _yaml_mapping(body)
+    links: list[FundingLink] = []
+    for platform, value in data.items():
+        if platform == "custom":
+            for url in _as_string_list(value):
+                links.append(FundingLink(platform="custom", url=url))
+            continue
+        for account in _as_string_list(value):
+            links.append(
+                FundingLink(
+                    platform=platform,
+                    url=_funding_url(platform, account),
+                )
+            )
+    return links
+
+
+async def _contact_links(repo_path: str, ref: str) -> list[ContactLink]:
+    for path in (
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".gitlab/issue_templates/config.yml",
+    ):
+        body = await _git_text(repo_path, "show", f"{ref}:{path}")
+        if body is None:
+            continue
+        data = _yaml_mapping(body)
+        contact_links = data.get("contact_links")
+        if not isinstance(contact_links, list):
+            return []
+        links: list[ContactLink] = []
+        for item in contact_links:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            url = item.get("url")
+            about = item.get("about")
+            if not isinstance(name, str) or not isinstance(url, str):
+                continue
+            links.append(
+                ContactLink(
+                    name=name,
+                    url=url,
+                    about=about if isinstance(about, str) else "",
+                )
+            )
+        return links
+    return []
+
+
 @strawberry.type
 class Repository:
     """A GitLab repository."""
@@ -477,12 +572,12 @@ class Repository:
         )
 
     @strawberry.field
-    def funding_links(self) -> list[FundingLink]:
-        return []
+    async def funding_links(self) -> list[FundingLink]:
+        return await _funding_links(self._disk_path or "", self._default_branch)
 
     @strawberry.field
-    def contact_links(self) -> list[ContactLink]:
-        return []
+    async def contact_links(self) -> list[ContactLink]:
+        return await _contact_links(self._disk_path or "", self._default_branch)
 
     @strawberry.field
     async def code_of_conduct(self) -> Optional[CodeOfConduct]:

@@ -438,6 +438,91 @@ async def test_graphql_repository_code_of_conduct(client, test_user, test_token)
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_funding_and_contact_links(
+    client, test_user, test_token
+):
+    """Repository fundingLinks and contactLinks resolve from committed config."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-repo-links", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    funding = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/.github%2FFUNDING.yml",
+        json={
+            "branch": "main",
+            "commit_message": "add funding links",
+            "content": (
+                "github: [octocat]\n"
+                "patreon: example\n"
+                "custom:\n"
+                "  - https://example.test/support\n"
+            ),
+        },
+        headers=auth_headers(test_token),
+    )
+    assert funding.status_code == 201
+
+    contacts = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/.github%2FISSUE_TEMPLATE%2Fconfig.yml",
+        json={
+            "branch": "main",
+            "commit_message": "add contact links",
+            "content": (
+                "contact_links:\n"
+                "  - name: Security issue\n"
+                "    url: https://example.test/security\n"
+                "    about: Report security issues privately\n"
+            ),
+        },
+        headers=auth_headers(test_token),
+    )
+    assert contacts.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-repo-links") {
+                    fundingLinks {
+                      platform
+                      url
+                    }
+                    contactLinks {
+                      name
+                      url
+                      about
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["fundingLinks"] == [
+        {"platform": "github", "url": "https://github.com/sponsors/octocat"},
+        {"platform": "patreon", "url": "https://www.patreon.com/example"},
+        {"platform": "custom", "url": "https://example.test/support"},
+    ]
+    assert repo["contactLinks"] == [
+        {
+            "name": "Security issue",
+            "url": "https://example.test/security",
+            "about": "Report security issues privately",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_graphql_user(client, test_user, test_token):
     """Query user returns user details."""
     resp = await client.post(
