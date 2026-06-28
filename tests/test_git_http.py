@@ -10,6 +10,7 @@ import base64
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 RUNNER_TOKEN = "glrt-emulator-runner-token"
@@ -154,6 +155,59 @@ async def test_upload_pack_allows_pipeline_job_token_for_private_repo(client, te
         headers={"Authorization": f"Basic {basic}"},
     )
     assert push_refs.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_private_git_http_uses_project_member_access_levels(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "git-http-reporter"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "git-http-developer"
+    )
+    guest, guest_token = await _create_user_and_token(db_session, "git-http-guest")
+    repo_resp = await client.post(
+        f"{API}/user/repos",
+        json={"name": "private-members", "auto_init": True, "private": True},
+        headers=auth_headers(test_token),
+    )
+    assert repo_resp.status_code == 201
+    project_id = repo_resp.json()["id"]
+
+    for user, level in ((reporter, 20), (developer, 30), (guest, 10)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    reporter_fetch = await client.get(
+        "/testuser/private-members.git/info/refs?service=git-upload-pack",
+        headers=auth_headers(reporter_token),
+    )
+    assert reporter_fetch.status_code == 200
+
+    guest_fetch = await client.get(
+        "/testuser/private-members.git/info/refs?service=git-upload-pack",
+        headers=auth_headers(guest_token),
+    )
+    assert guest_fetch.status_code == 404
+
+    reporter_push = await client.get(
+        "/testuser/private-members.git/info/refs?service=git-receive-pack",
+        headers=auth_headers(reporter_token),
+    )
+    assert reporter_push.status_code == 403
+
+    developer_push = await client.get(
+        "/testuser/private-members.git/info/refs?service=git-receive-pack",
+        headers=auth_headers(developer_token),
+    )
+    assert developer_push.status_code == 200
+    assert b"# service=git-receive-pack" in developer_push.content
 
 
 @pytest.mark.asyncio

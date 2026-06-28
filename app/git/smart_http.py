@@ -26,6 +26,7 @@ from app.models.repository import Repository
 from app.models.user import User
 from app.api.deps import get_current_user
 from app.git.bare_repo import get_branches as get_disk_branches
+from app.services.permissions import DEVELOPER, REPORTER, project_access_level
 
 router = APIRouter()
 
@@ -67,10 +68,10 @@ async def _check_read_access(
     """Check if user has read access to the repository."""
     if not repository.private:
         return
-    if user is not None and user.id == repository.owner_id:
-        return
     token = _auth_token_from_request(request)
     if await _job_token_can_read(db, repository, request):
+        return
+    if user is not None and await project_access_level(repository, user, db) >= REPORTER:
         return
     if user is None and token is None:
         raise HTTPException(
@@ -82,7 +83,9 @@ async def _check_read_access(
 
 
 async def _check_write_access(
-    repository: Repository, user: User | None
+    db: AsyncSession,
+    repository: Repository,
+    user: User | None,
 ) -> None:
     """Check if user has write access to the repository."""
     if user is None:
@@ -91,8 +94,7 @@ async def _check_write_access(
             detail="Authentication required",
             headers={"WWW-Authenticate": 'Basic realm="GitLab Emulator"'},
         )
-    if user.id != repository.owner_id and not user.site_admin:
-        # TODO: check collaborator access
+    if await project_access_level(repository, user, db) < DEVELOPER:
         raise HTTPException(status_code=403, detail="Permission denied")
 
 
@@ -242,7 +244,7 @@ async def info_refs(
 
     # Check access
     if service == "git-receive-pack":
-        await _check_write_access(repository, user)
+        await _check_write_access(db, repository, user)
     else:
         await _check_read_access(db, repository, user, request)
 
@@ -322,7 +324,7 @@ async def git_receive_pack(
     Requires authentication with write access.
     """
     repository = await _resolve_repo(db, owner, repo_name)
-    await _check_write_access(repository, user)
+    await _check_write_access(db, repository, user)
 
     repo_path = repository.disk_path
     if not os.path.isdir(repo_path):

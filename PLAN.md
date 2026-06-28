@@ -299,7 +299,9 @@ Done when:
   higher. Issue, issue-comment, and reaction writes require Reporter or higher;
   merge request create/update/merge requires Developer or higher. Project
   member access levels now preserve GitLab Guest separately from Reporter while
-  keeping GitHub-compatible collaborator permissions for inherited routes.
+  keeping GitHub-compatible collaborator permissions for inherited routes. Git
+  Smart HTTP read access for private projects requires Reporter or higher, while
+  push advertisement and receive-pack require Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Production security hardening. This emulator is for controlled integration
   testing environments.
