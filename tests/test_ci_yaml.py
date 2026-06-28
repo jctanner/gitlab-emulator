@@ -436,6 +436,37 @@ exists_miss:
     assert [job.name for job in jobs] == ["changes_match", "exists_match"]
 
 
+def test_parse_gitlab_ci_applies_rules_exists_and_changes_path_objects():
+    jobs = parse_gitlab_ci(
+        """
+exists_object:
+  script: echo exists
+  rules:
+    - exists:
+        paths:
+          - src/*.py
+
+changes_object:
+  script: echo changes
+  rules:
+    - changes:
+        paths:
+          - docs/**
+
+object_miss:
+  script: echo miss
+  rules:
+    - exists:
+        paths:
+          - missing.txt
+""",
+        existing_paths={"src/app.py", "docs/readme.md"},
+        changed_paths={"docs/readme.md"},
+    )
+
+    assert [job.name for job in jobs] == ["changes_object", "exists_object"]
+
+
 def test_parse_gitlab_ci_marks_manual_jobs():
     jobs = parse_gitlab_ci(
         """

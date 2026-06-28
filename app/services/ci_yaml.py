@@ -401,8 +401,14 @@ def _path_matches(pattern: str, paths: set[str]) -> bool:
     )
 
 
+def _rule_path_patterns(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        return _string_list(value.get("paths"))
+    return _string_list(value)
+
+
 def _rule_paths_match(value: Any, paths: set[str]) -> bool:
-    patterns = _string_list(value)
+    patterns = _rule_path_patterns(value)
     if not patterns:
         return False
     return any(_path_matches(pattern, paths) for pattern in patterns)
