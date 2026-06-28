@@ -437,6 +437,50 @@ async def test_graphql_search_repos(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_search_total_count_ignores_first_limit(
+    client, test_user, test_token
+):
+    """Search totalCount reports all matches, not just returned nodes."""
+    for name in (
+        "gql-search-count-one",
+        "gql-search-count-two",
+        "gql-search-count-three",
+    ):
+        project_resp = await client.post(
+            f"{API}/projects",
+            json={"name": name},
+            headers=auth_headers(test_token),
+        )
+        assert project_resp.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  search(query: "gql-search-count", type: REPOSITORY, first: 1) {
+                    repositoryCount
+                    totalCount
+                    nodes {
+                      ... on Repository { name }
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    search = data["data"]["search"]
+    assert search["repositoryCount"] == 3
+    assert search["totalCount"] == 3
+    assert len(search["nodes"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_graphql_invalid_query(client, test_user, test_token):
     """Invalid GraphQL query returns errors."""
     resp = await client.post(

@@ -362,11 +362,10 @@ class Query:
                         RepoModel.description.ilike(search_term),
                     )
                 )
-                .limit(first)
             )
             repos = result.scalars().all()
-            nodes = [repository_from_model(r) for r in repos]
-            total_count = len(nodes)
+            total_count = len(repos)
+            nodes = [repository_from_model(r) for r in repos[:first]]
 
         elif type in (SearchType.ISSUE, SearchType.ISSUE_ADVANCED):
             from app.models.issue import Issue as IssueModel
@@ -381,9 +380,10 @@ class Query:
                         IssueModel.body.ilike(search_term),
                     )
                 )
-                .limit(first)
             )
-            issues = issue_result.scalars().all()
+            all_issues = issue_result.scalars().all()
+            total_count = len(all_issues)
+            issues = all_issues[:first]
 
             # Check which issues have associated PRs
             issue_ids = [i.id for i in issues]
@@ -402,8 +402,6 @@ class Query:
                 else:
                     nodes.append(issue_from_model(issue))
 
-            total_count = len(nodes)
-
         elif type == SearchType.USER:
             from app.models.user import User
             result = await db.execute(
@@ -415,10 +413,9 @@ class Query:
                         User.email.ilike(search_term),
                     )
                 )
-                .limit(first)
             )
             users = result.scalars().all()
-            nodes = [user_from_model(u) for u in users]
-            total_count = len(nodes)
+            total_count = len(users)
+            nodes = [user_from_model(u) for u in users[:first]]
 
         return SearchResultConnection(nodes=nodes, total_count=total_count)
