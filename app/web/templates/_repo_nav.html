@@ -101,7 +101,8 @@
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs">Jobs</a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Pipeline schedules</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Test cases</span>
-            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Artifacts</span>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/artifacts' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/artifacts">Artifacts</a>
         </div>
         <div class="gl-sidebar-group">
             <div class="gl-sidebar-group-title">

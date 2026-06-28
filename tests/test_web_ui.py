@@ -879,3 +879,84 @@ ui_job:
     assert canceled_page.status_code == 200
     assert "Job canceled." in canceled_page.text
     assert "canceled" in canceled_page.text
+
+
+@pytest.mark.asyncio
+async def test_ui_project_artifacts_page(client, db_session, test_user):
+    """The project UI lists job artifacts and links to existing downloads."""
+    from sqlalchemy import select
+
+    from app.models.ci import JobArtifact, Pipeline, PipelineJob
+    from app.models.repository import Repository
+
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-artifacts", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    repo = (
+        await db_session.execute(
+            select(Repository).where(Repository.full_name == "testuser/ui-artifacts")
+        )
+    ).scalar_one()
+    pipeline = Pipeline(
+        project_id=repo.id,
+        iid=1,
+        ref="main",
+        sha="abc123artifact",
+        status="success",
+        source="web",
+    )
+    db_session.add(pipeline)
+    await db_session.flush()
+    job = PipelineJob(
+        pipeline_id=pipeline.id,
+        project_id=repo.id,
+        name="package",
+        stage="build",
+        status="success",
+        script=["echo package"],
+        artifacts_paths=["dist/package.zip"],
+        job_token="gljt-ui-artifacts-job",
+    )
+    db_session.add(job)
+    await db_session.flush()
+    db_session.add(
+        JobArtifact(
+            job_id=job.id,
+            filename="job-package-artifacts.zip",
+            content_type="application/zip",
+            file_type="archive",
+            file_format="zip",
+            size=512,
+            storage_path="/tmp/gitlab-emulator-ui-artifact.zip",
+        )
+    )
+    await db_session.commit()
+
+    artifacts_page = await client.get("/ui/testuser/ui-artifacts/-/artifacts")
+    assert artifacts_page.status_code == 200
+    assert "Artifacts" in artifacts_page.text
+    assert "Recent artifacts" in artifacts_page.text
+    assert "job-package-artifacts.zip" in artifacts_page.text
+    assert "archive/zip" in artifacts_page.text
+    assert "512 bytes" in artifacts_page.text
+    assert f"/api/v4/projects/{repo.id}/jobs/{job.id}/artifacts" in artifacts_page.text
+    assert f"/ui/testuser/ui-artifacts/-/jobs/{job.id}" in artifacts_page.text
+    assert f"/ui/testuser/ui-artifacts/-/pipelines/{pipeline.id}" in artifacts_page.text
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-artifacts/-/artifacts">Artifacts</a>',
+        artifacts_page.text,
+    )
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Pipelines</a>',
+        artifacts_page.text,
+    )
+    assert not re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Jobs</a>',
+        artifacts_page.text,
+    )

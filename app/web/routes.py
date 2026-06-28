@@ -38,7 +38,7 @@ from app.git.bare_repo import (
     write_file,
 )
 from app.models.comment import IssueComment
-from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
+from app.models.ci import CiSecret, CiVariable, JobArtifact, Pipeline, PipelineJob
 from app.models.deploy_key import DeployKey
 from app.models.issue import Issue
 from app.models.label import Label
@@ -2321,6 +2321,53 @@ async def repo_jobs_page(
             repo_name=repo.name,
             current_user=current_user,
             jobs=jobs,
+        ),
+    )
+
+
+@router.get("/{owner}/{repo_name}/-/artifacts", response_class=HTMLResponse)
+async def repo_artifacts_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Repository-scoped CI artifact list across jobs."""
+    current_user = await _get_current_user(request, db)
+    repo = await _get_repo(db, owner, repo_name)
+    if repo is None:
+        return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+
+    rows = (
+        await db.execute(
+            select(JobArtifact, PipelineJob, Pipeline)
+            .join(PipelineJob, JobArtifact.job_id == PipelineJob.id)
+            .join(Pipeline, PipelineJob.pipeline_id == Pipeline.id)
+            .where(Pipeline.project_id == repo.id)
+            .order_by(JobArtifact.created_at.desc(), JobArtifact.id.desc())
+            .limit(100)
+        )
+    ).all()
+    artifacts = [
+        {
+            "artifact": artifact,
+            "job": job,
+            "pipeline": pipeline,
+            "download_url": f"/api/v4/projects/{repo.id}/jobs/{job.id}/artifacts",
+        }
+        for artifact, job, pipeline in rows
+    ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_artifacts.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            artifacts=artifacts,
         ),
     )
 

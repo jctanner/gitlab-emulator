@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Artifacts - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "artifacts" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-items-center flex-justify-between flex-wrap mb-3" style="gap:12px;">
+    <div>
+        <h2 class="f2 mb-1">Artifacts</h2>
+        <p class="color-fg-muted mb-0">Download CI artifacts uploaded by jobs in this project.</p>
+    </div>
+    <a class="btn" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs">View jobs</a>
+</div>
+
+<div class="Box mb-4">
+    <div class="Box-header d-flex flex-items-center flex-justify-between">
+        <h3 class="Box-title">Recent artifacts</h3>
+        <span class="color-fg-muted f6">{{ artifacts|length }} artifact{{ 's' if artifacts|length != 1 else '' }}</span>
+    </div>
+    {% if artifacts %}
+    {% for item in artifacts %}
+    <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
+        <div>
+            <a class="text-bold" href="{{ item.download_url }}">{{ item.artifact.filename }}</a>
+            <span class="Label Label--secondary ml-1">{{ item.artifact.file_type }}/{{ item.artifact.file_format }}</span>
+            <div class="color-fg-muted f6 mt-1">
+                Job
+                <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ item.job.id }}">#{{ item.job.id }} {{ item.job.name }}</a>
+                <span class="ml-1">· Pipeline</span>
+                <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/{{ item.pipeline.id }}">#{{ item.pipeline.id }}</a>
+                <span class="branch-name ml-1">{{ item.pipeline.ref }}</span>
+            </div>
+            {% if item.artifact.expire_at %}
+            <div class="color-fg-muted f6 mt-1">Expires {{ item.artifact.expire_at }}</div>
+            {% endif %}
+        </div>
+        <div class="d-flex flex-items-center flex-wrap" style="gap:8px;">
+            <span class="color-fg-muted f6">{{ item.artifact.size }} bytes</span>
+            <a class="btn btn-sm" href="{{ item.download_url }}">Download</a>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No artifacts yet.</div>
+    {% endif %}
+</div>
+{% endblock %}
