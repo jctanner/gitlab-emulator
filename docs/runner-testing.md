@@ -477,9 +477,10 @@ upload/restore plus dependency artifact download across two-stage pipelines.
 
 Missing behavior for fuller GitLab CI execution:
 
-- broader `.gitlab-ci.yml` support such as richer `needs` edge cases and
-  remaining long-tail `rules`, `extends`, and `include` semantics beyond the
-  current local/project/remote/template include coverage, including
+- broader `.gitlab-ci.yml` support such as richer `needs` edge cases beyond
+  current validation and clear unsupported `needs:parallel:matrix` rejection,
+  plus remaining long-tail `rules`, `extends`, and `include` semantics beyond
+  the current local/project/remote/template include coverage, including
   list-valued remote/template entries
 - remaining richer cache options and edge cases beyond the current MinIO/S3
   validation path

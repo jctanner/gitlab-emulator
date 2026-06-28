@@ -48,9 +48,10 @@ harness architecture.
   `needs` forms to unlock from dependency completion instead of pure stage
   gating, `needs: []` can run immediately, optional missing needs do not block,
   missing required needs, duplicate needs, self-needs, future-stage needs, and
-  unsupported cross-project/pipeline needs are rejected, `needs:artifacts`
-  feeds official runner dependency downloads in declared needs order, and
-  pipeline creation applies `rules`, `only`, and `except` filters. Current
+  unsupported cross-project/pipeline and `needs:parallel:matrix` needs are
+  rejected, `needs:artifacts` feeds official runner dependency downloads in
+  declared needs order, and pipeline creation applies `rules`, `only`, and
+  `except` filters. Current
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
   boolean expressions, null and empty-string variable comparisons, regex
   match/non-match operators, `exists`, commit-local `changes`, `when: never`,

@@ -281,6 +281,27 @@ unit:
             raise AssertionError("expected ValueError")
 
 
+def test_parse_gitlab_ci_rejects_needs_parallel_matrix():
+    content = """
+compile:
+  script: echo compile
+
+unit:
+  needs:
+    - job: compile
+      parallel:
+        matrix:
+          - OS: linux
+  script: echo unit
+"""
+    try:
+        parse_gitlab_ci(content)
+    except ValueError as exc:
+        assert "needs parallel matrix is not supported" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_rejects_unsupported_execution_keywords():
     for keyword, content in {
         "trigger": """

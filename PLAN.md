@@ -58,7 +58,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   using CI job tokens.
 - Minimal CI support exists for stages, image, variables, before_script, script,
   after_script, artifacts, stage gating, needs, needs:artifacts, needs
-  validation edge cases, common ref filters, richer `rules` job selection with
+  validation edge cases including clear rejection of unsupported
+  `needs:parallel:matrix`, common ref filters, richer `rules` job selection with
   grouped boolean `if` expressions, null/empty checks, and regex
   match/non-match operators, `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, branch/tag/source-aware

@@ -176,6 +176,8 @@ def _needs(value: Any) -> list[dict] | None:
     if isinstance(value, dict):
         if value.get("project") or value.get("pipeline"):
             raise ValueError("Cross-project and pipeline needs are not supported")
+        if value.get("parallel"):
+            raise ValueError("needs parallel matrix is not supported")
         if value.get("job"):
             return [
                 {
@@ -195,6 +197,8 @@ def _needs(value: Any) -> list[dict] | None:
                 raise ValueError("needs entries must be strings or mappings")
             if item.get("project") or item.get("pipeline"):
                 raise ValueError("Cross-project and pipeline needs are not supported")
+            if item.get("parallel"):
+                raise ValueError("needs parallel matrix is not supported")
             if not item.get("job"):
                 raise ValueError("needs entries must define a job")
             parsed.append(
