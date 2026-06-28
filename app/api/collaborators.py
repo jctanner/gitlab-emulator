@@ -13,8 +13,10 @@ from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
 from app.services.permissions import (
     MAINTAINER,
+    REPORTER,
     access_level_for_permission,
     collaborator_access_level,
+    project_access_level,
     require_project_access,
 )
 
@@ -41,25 +43,65 @@ PERMISSION_TO_ACCESS = {
 def _collab_json(user_obj: User, permission: str, base_url: str) -> dict:
     simple = SimpleUser.from_db(user_obj, base_url).model_dump()
     perm_map = {
-        "admin": {"admin": True, "maintain": True, "push": True, "triage": True, "pull": True},
-        "maintain": {"admin": False, "maintain": True, "push": True, "triage": True, "pull": True},
-        "push": {"admin": False, "maintain": False, "push": True, "triage": True, "pull": True},
-        "triage": {"admin": False, "maintain": False, "push": False, "triage": True, "pull": True},
-        "pull": {"admin": False, "maintain": False, "push": False, "triage": False, "pull": True},
+        "admin": {
+            "admin": True,
+            "maintain": True,
+            "push": True,
+            "triage": True,
+            "pull": True,
+        },
+        "maintain": {
+            "admin": False,
+            "maintain": True,
+            "push": True,
+            "triage": True,
+            "pull": True,
+        },
+        "push": {
+            "admin": False,
+            "maintain": False,
+            "push": True,
+            "triage": True,
+            "pull": True,
+        },
+        "triage": {
+            "admin": False,
+            "maintain": False,
+            "push": False,
+            "triage": True,
+            "pull": True,
+        },
+        "pull": {
+            "admin": False,
+            "maintain": False,
+            "push": False,
+            "triage": False,
+            "pull": True,
+        },
     }
     simple["permissions"] = perm_map.get(permission, perm_map["pull"])
     simple["role_name"] = permission
     return simple
 
 
-async def _get_project_or_404(project_ref: str, db: DbSession) -> Project:
+async def _get_project_or_404(
+    project_ref: str,
+    db: DbSession,
+    user: User | None = None,
+) -> Project:
     decoded_ref = unquote(str(project_ref)).strip("/")
     if decoded_ref.isdigit():
         result = await db.execute(select(Project).where(Project.id == int(decoded_ref)))
     else:
-        result = await db.execute(select(Project).where(Project.full_name == decoded_ref))
+        result = await db.execute(
+            select(Project).where(Project.full_name == decoded_ref)
+        )
     project = result.scalar_one_or_none()
     if project is None:
+        raise HTTPException(status_code=404, detail="Project Not Found")
+    if project.private and (
+        user is None or await project_access_level(project, user, db) < REPORTER
+    ):
         raise HTTPException(status_code=404, detail="Project Not Found")
     return project
 
@@ -92,7 +134,9 @@ def _member_json(
     }
 
 
-async def _project_member(project: Project, user_id: int, db: DbSession) -> tuple[User, int] | None:
+async def _project_member(
+    project: Project, user_id: int, db: DbSession
+) -> tuple[User, int] | None:
     if project.owner and project.owner.id == user_id:
         return project.owner, 50
     result = await db.execute(
@@ -118,7 +162,7 @@ async def list_project_members(
     per_page: int = Query(30, ge=1, le=100),
 ):
     """List GitLab-shaped project members."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, user)
     members: list[dict] = []
     seen_user_ids: set[int] = set()
     if project.owner:
@@ -137,13 +181,14 @@ async def list_project_members(
         members = [
             member
             for member in members
-            if lowered in member["username"].lower() or lowered in member["name"].lower()
+            if lowered in member["username"].lower()
+            or lowered in member["name"].lower()
         ]
     members.sort(key=lambda member: member["id"])
     total = len(members)
     start = (page - 1) * per_page
     return paginated_json(
-        members[start:start + per_page],
+        members[start : start + per_page],
         request,
         page,
         per_page,
@@ -159,7 +204,7 @@ async def get_project_member(
     user: AuthUser,
 ):
     """Get one GitLab-shaped project member."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, user)
     member = await _project_member(project, user_id, db)
     if member is None:
         raise HTTPException(status_code=404, detail="Member Not Found")
@@ -175,7 +220,7 @@ async def add_project_member(
     db: DbSession,
 ):
     """Add or update a GitLab-shaped project member."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, MAINTAINER)
     user_id = body.get("user_id")
     if user_id is None:
@@ -219,7 +264,7 @@ async def delete_project_member(
     db: DbSession,
 ):
     """Remove a GitLab-shaped project member."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, MAINTAINER)
     result = await db.execute(
         select(Collaborator).where(
@@ -237,7 +282,10 @@ async def delete_project_member(
 
 @router.get("/repos/{owner}/{repo}/collaborators")
 async def list_collaborators(
-    owner: str, repo: str, db: DbSession, user: AuthUser,
+    owner: str,
+    repo: str,
+    db: DbSession,
+    user: AuthUser,
 ):
     """List collaborators for a repository."""
     repository = await get_repo_or_404(owner, repo, db)
@@ -259,7 +307,11 @@ async def list_collaborators(
 
 @router.get("/repos/{owner}/{repo}/collaborators/{username}")
 async def check_collaborator(
-    owner: str, repo: str, username: str, db: DbSession, user: AuthUser,
+    owner: str,
+    repo: str,
+    username: str,
+    db: DbSession,
+    user: AuthUser,
 ):
     """Check if a user is a collaborator (204 = yes, 404 = no)."""
     repository = await get_repo_or_404(owner, repo, db)
@@ -280,7 +332,12 @@ async def check_collaborator(
 
 @router.put("/repos/{owner}/{repo}/collaborators/{username}", status_code=201)
 async def add_collaborator(
-    owner: str, repo: str, username: str, body: dict, user: AuthUser, db: DbSession,
+    owner: str,
+    repo: str,
+    username: str,
+    body: dict,
+    user: AuthUser,
+    db: DbSession,
 ):
     """Add a collaborator to a repository."""
     repository = await get_repo_or_404(owner, repo, db)
@@ -318,7 +375,11 @@ async def add_collaborator(
 
 @router.delete("/repos/{owner}/{repo}/collaborators/{username}", status_code=204)
 async def remove_collaborator(
-    owner: str, repo: str, username: str, user: AuthUser, db: DbSession,
+    owner: str,
+    repo: str,
+    username: str,
+    user: AuthUser,
+    db: DbSession,
 ):
     """Remove a collaborator."""
     repository = await get_repo_or_404(owner, repo, db)
@@ -339,7 +400,11 @@ async def remove_collaborator(
 
 @router.get("/repos/{owner}/{repo}/collaborators/{username}/permission")
 async def get_collaborator_permission(
-    owner: str, repo: str, username: str, db: DbSession, user: AuthUser,
+    owner: str,
+    repo: str,
+    username: str,
+    db: DbSession,
+    user: AuthUser,
 ):
     """Get a collaborator's permission level."""
     repository = await get_repo_or_404(owner, repo, db)

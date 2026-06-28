@@ -12,7 +12,9 @@ API = "/api/v4"
 async def test_list_collaborators(client, test_user, test_token):
     """GET /repos/{owner}/{repo}/collaborators lists collaborators."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-repo"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-repo"},
+        headers=auth_headers(test_token),
     )
     resp = await client.get(
         f"{API}/repos/testuser/collab-repo/collaborators",
@@ -29,7 +31,9 @@ async def test_list_collaborators(client, test_user, test_token):
 async def test_add_collaborator(client, test_user, test_token, admin_user, admin_token):
     """PUT /repos/{owner}/{repo}/collaborators/{username} adds a collaborator."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-add"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-add"},
+        headers=auth_headers(test_token),
     )
     resp = await client.put(
         f"{API}/repos/testuser/collab-add/collaborators/admin",
@@ -43,7 +47,9 @@ async def test_add_collaborator(client, test_user, test_token, admin_user, admin
 async def test_check_collaborator_is_owner(client, test_user, test_token):
     """GET /repos/{owner}/{repo}/collaborators/{username} returns 204 for owner."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-chk"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-chk"},
+        headers=auth_headers(test_token),
     )
     resp = await client.get(
         f"{API}/repos/testuser/collab-chk/collaborators/testuser",
@@ -56,7 +62,9 @@ async def test_check_collaborator_is_owner(client, test_user, test_token):
 async def test_check_collaborator_not_found(client, test_user, test_token):
     """GET /repos/{owner}/{repo}/collaborators/{username} returns 404 for non-collaborator."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-404"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-404"},
+        headers=auth_headers(test_token),
     )
     resp = await client.get(
         f"{API}/repos/testuser/collab-404/collaborators/nobody",
@@ -66,10 +74,14 @@ async def test_check_collaborator_not_found(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
-async def test_remove_collaborator(client, test_user, test_token, admin_user, admin_token):
+async def test_remove_collaborator(
+    client, test_user, test_token, admin_user, admin_token
+):
     """DELETE /repos/{owner}/{repo}/collaborators/{username} removes collaborator."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-rm"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-rm"},
+        headers=auth_headers(test_token),
     )
     await client.put(
         f"{API}/repos/testuser/collab-rm/collaborators/admin",
@@ -84,10 +96,14 @@ async def test_remove_collaborator(client, test_user, test_token, admin_user, ad
 
 
 @pytest.mark.asyncio
-async def test_get_collaborator_permission(client, test_user, test_token, admin_user, admin_token):
+async def test_get_collaborator_permission(
+    client, test_user, test_token, admin_user, admin_token
+):
     """GET /repos/{owner}/{repo}/collaborators/{username}/permission returns permission."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-perm"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-perm"},
+        headers=auth_headers(test_token),
     )
     await client.put(
         f"{API}/repos/testuser/collab-perm/collaborators/admin",
@@ -108,7 +124,9 @@ async def test_get_collaborator_permission(client, test_user, test_token, admin_
 async def test_owner_permission_is_admin(client, test_user, test_token):
     """Owner always has admin permission."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-own"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-own"},
+        headers=auth_headers(test_token),
     )
     resp = await client.get(
         f"{API}/repos/testuser/collab-own/collaborators/testuser/permission",
@@ -122,7 +140,9 @@ async def test_owner_permission_is_admin(client, test_user, test_token):
 async def test_add_nonexistent_user_as_collaborator(client, test_user, test_token):
     """PUT collaborator for non-existent user returns 404."""
     await client.post(
-        f"{API}/user/repos", json={"name": "collab-nf"}, headers=auth_headers(test_token)
+        f"{API}/user/repos",
+        json={"name": "collab-nf"},
+        headers=auth_headers(test_token),
     )
     resp = await client.put(
         f"{API}/repos/testuser/collab-nf/collaborators/nonexistent_user_xyz",
@@ -179,6 +199,55 @@ async def test_gitlab_project_members_crud(client, test_user, test_token, admin_
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_private_project_members_require_reporter_read_access(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "private-member-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "private-member-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "private-members-project", "visibility": "private"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    outsider_list = await client.get(
+        f"{API}/projects/{project_id}/members",
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_list.status_code == 404
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    allowed_list = await client.get(
+        f"{API}/projects/{project_id}/members",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_list.status_code == 200
+    assert {item["username"] for item in allowed_list.json()} == {
+        "private-member-reporter",
+        "testuser",
+    }
+
+    allowed_get = await client.get(
+        f"{API}/projects/{project_id}/members/{reporter.id}",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_get.status_code == 200
+    assert allowed_get.json()["access_level"] == 20
 
 
 @pytest.mark.asyncio
@@ -374,7 +443,9 @@ async def test_gitlab_project_members_pagination_and_query(
 
 
 @pytest.mark.asyncio
-async def test_gitlab_project_members_accept_url_encoded_path(client, test_user, test_token):
+async def test_gitlab_project_members_accept_url_encoded_path(
+    client, test_user, test_token
+):
     """GitLab project member routes accept URL-encoded path_with_namespace."""
     await client.post(
         f"{API}/user/repos",
