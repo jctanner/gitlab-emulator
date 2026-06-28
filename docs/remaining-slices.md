@@ -344,6 +344,9 @@ Done when:
 - Inherited GitHub-compatible `/pulls/:number/commits` and
   `/pulls/:number/files` now resolve real git commits and changed-file metadata
   instead of placeholder head-SHA and empty-file responses.
+- Inherited GitHub-compatible `/repos/:owner/:repo/compare/:base...:head`
+  now resolves real commit and changed-file metadata instead of placeholder
+  compare payloads.
 - The backing database tables and inherited GitHub-compatible repos/orgs/
   `/pulls`, review, review-comment, GraphQL, and admin/web scaffolding still
   use legacy naming intentionally for compatibility.

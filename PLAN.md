@@ -279,7 +279,8 @@ Done when:
 - GitHub-specific naming remains only in shared historical scaffolding or has a
   clear compatibility reason; inherited `/pulls/:number/commits` and
   `/pulls/:number/files` compatibility endpoints now return real git-backed
-  data rather than placeholder responses
+  data rather than placeholder responses, and inherited repository compare
+  compatibility returns real commit and changed-file data
 
 ### 5. Validation and Operations
 
