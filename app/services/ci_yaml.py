@@ -236,6 +236,9 @@ def _cache_key(value: Any, variables: dict[str, str] | None = None) -> str:
         return "default"
     if isinstance(value, str):
         return _expand_ci_variables(value, variables)
+    if isinstance(value, list):
+        files = _expand_string_list(value, variables)
+        return "-".join(files) if files else "default"
     if isinstance(value, dict):
         prefix = _expand_ci_variables(str(value.get("prefix") or "").strip(), variables)
         if value.get("key"):

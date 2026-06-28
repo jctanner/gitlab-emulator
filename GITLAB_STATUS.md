@@ -109,10 +109,10 @@ harness architecture.
   `when`, and `expire_in` settings. Uploaded artifact records store file type,
   file format, size, creation time, and expiration time, and expired artifacts
   are no longer downloadable.
-- Cache key parsing supports common `key: { prefix, files }` and
-  `files_commits` forms, and the emulator cache endpoints support fallback-key
-  lookup for API-level cache coverage. Official runner cache validation still
-  uses GitLab Runner's S3 adapter backed by MinIO.
+- Cache key parsing supports list-form keys, common `key: { prefix, files }`,
+  and `files_commits` forms, and the emulator cache endpoints support
+  fallback-key lookup for API-level cache coverage. Official runner cache
+  validation still uses GitLab Runner's S3 adapter backed by MinIO.
 - User responses now include GitLab-native fields such as `username`, `web_url`,
   `state`, `locked`, and `is_admin`, while retaining legacy compatibility
   fields. Public users can be looked up by numeric ID or username, and newly
