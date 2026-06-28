@@ -308,9 +308,11 @@ Done when:
   dismissal requires Developer or higher;
   merge request create/update/merge requires Developer or higher. Project
   member access levels now preserve GitLab Guest separately from Reporter while
-  keeping GitHub-compatible collaborator permissions for inherited routes. Git
-  Smart HTTP read access for private projects requires Reporter or higher, while
-  push advertisement and receive-pack require Developer or higher. Implemented
+  keeping GitHub-compatible collaborator permissions for inherited routes.
+  GitLab project API read access for private projects honors direct and group
+  Reporter-or-higher access. Git Smart HTTP read access for private projects
+  requires Reporter or higher, while push advertisement and receive-pack require
+  Developer or higher. Implemented
   GraphQL issue/comment/reaction mutations use Reporter or higher, and GraphQL
   merge request mutations use Developer or higher. CI trigger token management
   requires Maintainer or higher; pipeline schedules and pipeline/job

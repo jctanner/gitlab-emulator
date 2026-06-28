@@ -35,7 +35,9 @@ from app.services.permissions import (
     DEVELOPER,
     MAINTAINER,
     OWNER,
+    REPORTER,
     access_level_for_role,
+    project_access_level,
     require_project_access,
 )
 
@@ -166,7 +168,7 @@ async def _get_project_or_404(
         raise HTTPException(status_code=404, detail="404 Project Not Found")
     if project.private and (
         current_user is None
-        or (current_user.id != project.owner_id and not current_user.site_admin)
+        or await project_access_level(project, current_user, db) < REPORTER
     ):
         raise HTTPException(status_code=404, detail="404 Project Not Found")
     return project

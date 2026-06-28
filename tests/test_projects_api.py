@@ -100,6 +100,92 @@ async def test_get_project_by_id(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_private_project_read_allows_reporter_access(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "private-project-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "private-project-outsider"
+    )
+    create_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "private-read-project", "visibility": "private"},
+        headers=auth_headers(test_token),
+    )
+    assert create_resp.status_code == 201
+    project_id = create_resp.json()["id"]
+
+    anonymous = await client.get(f"{API}/projects/{project_id}")
+    assert anonymous.status_code == 404
+
+    outsider_resp = await client.get(
+        f"{API}/projects/{project_id}",
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_resp.status_code == 404
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    allowed = await client.get(
+        f"{API}/projects/{project_id}",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["path_with_namespace"] == "testuser/private-read-project"
+
+
+@pytest.mark.asyncio
+async def test_private_group_project_read_allows_group_reporter_access(
+    client, db_session, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "private-group-project-reporter"
+    )
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "private-read-group", "name": "Private Read Group"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+    member = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "private-group-project",
+            "namespace_id": group_id,
+            "visibility": "private",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    allowed = await client.get(
+        f"{API}/projects/{project_id}",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed.status_code == 200
+    assert (
+        allowed.json()["path_with_namespace"]
+        == "private-read-group/private-group-project"
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_project_normalizes_blank_default_branch(
     client, test_user, test_token
 ):
