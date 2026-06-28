@@ -1,7 +1,6 @@
 """Search endpoints -- repos, issues, users, code, commits."""
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from sqlalchemy import func as sa_func
 from sqlalchemy import select, or_
 
 from app.api.deps import CurrentUser, DbSession
@@ -17,6 +16,7 @@ from app.api.repos import _repo_json
 from app.api.issues import _gitlab_issue_json, _issue_json
 from app.api.merge_requests import _mr_json, _mr_query
 from app.schemas.user import UserResponse, _make_node_id
+from app.services.permissions import REPORTER, project_access_level
 
 router = APIRouter(tags=["search"])
 
@@ -41,6 +41,41 @@ def _parse_qualifiers(q: str) -> tuple[str, dict[str, str]]:
     return " ".join(free_text_parts), qualifiers
 
 
+async def _can_read_project(
+    project: Project | None, current_user, db: DbSession
+) -> bool:
+    if project is None:
+        return False
+    if not project.private:
+        return True
+    return (
+        current_user is not None
+        and await project_access_level(project, current_user, db) >= REPORTER
+    )
+
+
+async def _filter_readable_projects(
+    projects: list[Project],
+    current_user,
+    db: DbSession,
+) -> list[Project]:
+    readable = []
+    for project in projects:
+        if await _can_read_project(project, current_user, db):
+            readable.append(project)
+    return readable
+
+
+async def _project_map_for_repo_ids(
+    repo_ids: set[int],
+    db: DbSession,
+) -> dict[int, Project]:
+    if not repo_ids:
+        return {}
+    result = await db.execute(select(Project).where(Project.id.in_(repo_ids)))
+    return {project.id: project for project in result.scalars().all()}
+
+
 @router.get("/search")
 async def gitlab_search(
     request: Request,
@@ -63,14 +98,15 @@ async def gitlab_search(
                 Project.description.ilike(pattern),
             )
         )
-        if current_user is None:
-            query = query.where(Project.private == False)
         query = query.order_by(Project.id)
-        total = (await db.execute(select(sa_func.count()).select_from(query.subquery()))).scalar() or 0
-        query = query.offset(offset).limit(per_page)
         projects = (await db.execute(query)).scalars().all()
+        projects = await _filter_readable_projects(projects, current_user, db)
+        total = len(projects)
         return paginated_json(
-            [await _project_json(project, BASE, db) for project in projects],
+            [
+                await _project_json(project, BASE, db)
+                for project in projects[offset : offset + per_page]
+            ],
             request,
             page,
             per_page,
@@ -86,11 +122,22 @@ async def gitlab_search(
             )
             .order_by(Issue.updated_at.desc())
         )
-        total = (await db.execute(select(sa_func.count()).select_from(query.subquery()))).scalar() or 0
-        query = query.offset(offset).limit(per_page)
         issues = (await db.execute(query)).scalars().all()
+        projects = await _project_map_for_repo_ids(
+            {issue.repo_id for issue in issues},
+            db,
+        )
+        issues = [
+            issue
+            for issue in issues
+            if await _can_read_project(projects.get(issue.repo_id), current_user, db)
+        ]
+        total = len(issues)
         return paginated_json(
-            [_gitlab_issue_json(issue, BASE) for issue in issues],
+            [
+                _gitlab_issue_json(issue, BASE)
+                for issue in issues[offset : offset + per_page]
+            ],
             request,
             page,
             per_page,
@@ -104,11 +151,26 @@ async def gitlab_search(
             .where(or_(Issue.title.ilike(pattern), Issue.body.ilike(pattern)))
             .order_by(Issue.updated_at.desc())
         )
-        total = (await db.execute(select(sa_func.count()).select_from(query.subquery()))).scalar() or 0
-        query = query.offset(offset).limit(per_page)
         merge_requests = (await db.execute(query)).scalars().all()
+        projects = await _project_map_for_repo_ids(
+            {merge_request.repo_id for merge_request in merge_requests},
+            db,
+        )
+        merge_requests = [
+            merge_request
+            for merge_request in merge_requests
+            if await _can_read_project(
+                projects.get(merge_request.repo_id),
+                current_user,
+                db,
+            )
+        ]
+        total = len(merge_requests)
         return paginated_json(
-            [_mr_json(merge_request, BASE) for merge_request in merge_requests],
+            [
+                _mr_json(merge_request, BASE)
+                for merge_request in merge_requests[offset : offset + per_page]
+            ],
             request,
             page,
             per_page,
@@ -126,14 +188,17 @@ async def gitlab_search(
             )
             .order_by(FileContent.file_path)
         )
-        total = (await db.execute(select(sa_func.count()).select_from(query.subquery()))).scalar() or 0
-        query = query.offset(offset).limit(per_page)
         rows = (await db.execute(query)).scalars().all()
+        projects = await _project_map_for_repo_ids({row.repo_id for row in rows}, db)
+        rows = [
+            row
+            for row in rows
+            if await _can_read_project(projects.get(row.repo_id), current_user, db)
+        ]
+        total = len(rows)
         items = []
-        for row in rows:
-            repo = (
-                await db.execute(select(Project).where(Project.id == row.repo_id))
-            ).scalar_one_or_none()
+        for row in rows[offset : offset + per_page]:
+            repo = projects.get(row.repo_id)
             project_id = repo.id if repo else row.repo_id
             project_path = repo.full_name if repo else ""
             items.append(
@@ -173,10 +238,6 @@ async def search_repositories(
         )
     )
 
-    # Hide private repos from unauthenticated users
-    if current_user is None:
-        query = query.where(Project.private == False)
-
     if sort == "stars":
         sort_col = Project.stargazers_count
     elif sort == "forks":
@@ -191,18 +252,15 @@ async def search_repositories(
     else:
         query = query.order_by(sort_col.desc())
 
-    # Get total count
-    from sqlalchemy import func as sa_func
-    count_q = select(sa_func.count()).select_from(query.subquery())
-    total = (await db.execute(count_q)).scalar() or 0
-
-    query = query.offset((page - 1) * per_page).limit(per_page)
     repos = (await db.execute(query)).scalars().all()
+    repos = await _filter_readable_projects(repos, current_user, db)
+    total = len(repos)
+    start = (page - 1) * per_page
 
     return {
         "total_count": total,
         "incomplete_results": False,
-        "items": [_repo_json(r, BASE) for r in repos],
+        "items": [_repo_json(r, BASE) for r in repos[start : start + per_page]],
     }
 
 
@@ -238,17 +296,23 @@ async def search_issues(
     else:
         query = query.order_by(sort_col.desc())
 
-    from sqlalchemy import func as sa_func
-    count_q = select(sa_func.count()).select_from(query.subquery())
-    total = (await db.execute(count_q)).scalar() or 0
-
-    query = query.offset((page - 1) * per_page).limit(per_page)
     issues = (await db.execute(query)).scalars().all()
+    projects = await _project_map_for_repo_ids(
+        {issue.repo_id for issue in issues},
+        db,
+    )
+    issues = [
+        issue
+        for issue in issues
+        if await _can_read_project(projects.get(issue.repo_id), current_user, db)
+    ]
+    total = len(issues)
+    start = (page - 1) * per_page
 
     return {
         "total_count": total,
         "incomplete_results": False,
-        "items": [_issue_json(i, BASE) for i in issues],
+        "items": [_issue_json(i, BASE) for i in issues[start : start + per_page]],
     }
 
 
@@ -286,6 +350,7 @@ async def search_users(
         query = query.order_by(sort_col.desc())
 
     from sqlalchemy import func as sa_func
+
     count_q = select(sa_func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
 
@@ -321,7 +386,7 @@ async def search_code(
             select(Project).where(Project.full_name == repo_full)
         )
         repo = repo_result.scalar_one_or_none()
-        if repo:
+        if repo and await _can_read_project(repo, current_user, db):
             query = query.where(FileContent.repo_id == repo.id)
         else:
             return {"total_count": 0, "incomplete_results": False, "items": []}
@@ -341,21 +406,21 @@ async def search_code(
             )
         )
 
-    from sqlalchemy import func as sa_func
-    count_q = select(sa_func.count()).select_from(query.subquery())
-    total = (await db.execute(count_q)).scalar() or 0
-
-    query = query.offset((page - 1) * per_page).limit(per_page)
     results = (await db.execute(query)).scalars().all()
+    projects = await _project_map_for_repo_ids({fc.repo_id for fc in results}, db)
+    results = [
+        fc
+        for fc in results
+        if await _can_read_project(projects.get(fc.repo_id), current_user, db)
+    ]
+    total = len(results)
+    start = (page - 1) * per_page
 
     # Build response items
     items = []
-    for fc in results:
+    for fc in results[start : start + per_page]:
         # Look up repo info
-        repo_result = await db.execute(
-            select(Project).where(Project.id == fc.repo_id)
-        )
-        repo = repo_result.scalar_one_or_none()
+        repo = projects.get(fc.repo_id)
         repo_full = repo.full_name if repo else ""
         owner_login = repo_full.split("/")[0] if "/" in repo_full else ""
         repo_name = repo_full.split("/")[1] if "/" in repo_full else ""
@@ -365,25 +430,29 @@ async def search_code(
         if fc.content and free_text:
             for line in fc.content.split("\n"):
                 if free_text.lower() in line.lower():
-                    text_matches.append({
-                        "fragment": line.strip()[:200],
-                        "matches": [{"text": free_text}],
-                    })
+                    text_matches.append(
+                        {
+                            "fragment": line.strip()[:200],
+                            "matches": [{"text": free_text}],
+                        }
+                    )
                     if len(text_matches) >= 3:
                         break
 
         api = f"{BASE}/api/v4"
-        items.append({
-            "name": fc.file_path.split("/")[-1],
-            "path": fc.file_path,
-            "sha": fc.blob_sha,
-            "url": f"{api}/repos/{repo_full}/contents/{fc.file_path}?ref={fc.ref}",
-            "git_url": f"{api}/repos/{repo_full}/git/blobs/{fc.blob_sha}",
-            "html_url": f"{BASE}/{repo_full}/blob/{fc.ref}/{fc.file_path}",
-            "repository": _repo_json(repo, BASE) if repo else {},
-            "score": 1.0,
-            "text_matches": text_matches,
-        })
+        items.append(
+            {
+                "name": fc.file_path.split("/")[-1],
+                "path": fc.file_path,
+                "sha": fc.blob_sha,
+                "url": f"{api}/repos/{repo_full}/contents/{fc.file_path}?ref={fc.ref}",
+                "git_url": f"{api}/repos/{repo_full}/git/blobs/{fc.blob_sha}",
+                "html_url": f"{BASE}/{repo_full}/blob/{fc.ref}/{fc.file_path}",
+                "repository": _repo_json(repo, BASE) if repo else {},
+                "score": 1.0,
+                "text_matches": text_matches,
+            }
+        )
 
     return {
         "total_count": total,
@@ -414,7 +483,7 @@ async def search_commits(
             select(Project).where(Project.full_name == repo_full)
         )
         repo = repo_result.scalar_one_or_none()
-        if repo:
+        if repo and await _can_read_project(repo, current_user, db):
             query = query.where(CommitMetadata.repo_id == repo.id)
         else:
             return {"total_count": 0, "incomplete_results": False, "items": []}
@@ -444,43 +513,45 @@ async def search_commits(
     else:
         query = query.order_by(sort_col.desc())
 
-    from sqlalchemy import func as sa_func
-    count_q = select(sa_func.count()).select_from(query.subquery())
-    total = (await db.execute(count_q)).scalar() or 0
-
-    query = query.offset((page - 1) * per_page).limit(per_page)
     results = (await db.execute(query)).scalars().all()
+    projects = await _project_map_for_repo_ids({cm.repo_id for cm in results}, db)
+    results = [
+        cm
+        for cm in results
+        if await _can_read_project(projects.get(cm.repo_id), current_user, db)
+    ]
+    total = len(results)
+    start = (page - 1) * per_page
 
     items = []
-    for cm in results:
-        repo_result = await db.execute(
-            select(Project).where(Project.id == cm.repo_id)
-        )
-        repo = repo_result.scalar_one_or_none()
+    for cm in results[start : start + per_page]:
+        repo = projects.get(cm.repo_id)
         repo_full = repo.full_name if repo else ""
 
         api = f"{BASE}/api/v4"
-        items.append({
-            "url": f"{api}/repos/{repo_full}/commits/{cm.commit_sha}",
-            "sha": cm.commit_sha,
-            "html_url": f"{BASE}/{repo_full}/commit/{cm.commit_sha}",
-            "commit": {
-                "url": f"{api}/repos/{repo_full}/git/commits/{cm.commit_sha}",
-                "message": cm.message,
-                "author": {
-                    "name": cm.author_name,
-                    "email": cm.author_email,
-                    "date": cm.author_date,
+        items.append(
+            {
+                "url": f"{api}/repos/{repo_full}/commits/{cm.commit_sha}",
+                "sha": cm.commit_sha,
+                "html_url": f"{BASE}/{repo_full}/commit/{cm.commit_sha}",
+                "commit": {
+                    "url": f"{api}/repos/{repo_full}/git/commits/{cm.commit_sha}",
+                    "message": cm.message,
+                    "author": {
+                        "name": cm.author_name,
+                        "email": cm.author_email,
+                        "date": cm.author_date,
+                    },
+                    "committer": {
+                        "name": cm.committer_name,
+                        "email": cm.committer_email,
+                        "date": cm.committer_date,
+                    },
                 },
-                "committer": {
-                    "name": cm.committer_name,
-                    "email": cm.committer_email,
-                    "date": cm.committer_date,
-                },
-            },
-            "repository": _repo_json(repo, BASE) if repo else {},
-            "score": 1.0,
-        })
+                "repository": _repo_json(repo, BASE) if repo else {},
+                "score": 1.0,
+            }
+        )
 
     return {
         "total_count": total,

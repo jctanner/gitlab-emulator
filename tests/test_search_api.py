@@ -5,6 +5,7 @@ from urllib.parse import quote
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -62,7 +63,9 @@ async def test_search_repositories_by_name(client, test_user, test_token, search
 
 
 @pytest.mark.asyncio
-async def test_search_repositories_by_description(client, test_user, test_token, search_data):
+async def test_search_repositories_by_description(
+    client, test_user, test_token, search_data
+):
     """Search repositories matches on description."""
     resp = await client.get(
         f"{API}/search/repositories?q=utility",
@@ -76,7 +79,9 @@ async def test_search_repositories_by_description(client, test_user, test_token,
 
 
 @pytest.mark.asyncio
-async def test_search_repositories_no_results(client, test_user, test_token, search_data):
+async def test_search_repositories_no_results(
+    client, test_user, test_token, search_data
+):
     """Search with no matches returns zero results."""
     resp = await client.get(
         f"{API}/search/repositories?q=zzzznonexistent",
@@ -90,7 +95,9 @@ async def test_search_repositories_no_results(client, test_user, test_token, sea
 
 
 @pytest.mark.asyncio
-async def test_search_repositories_pagination(client, test_user, test_token, search_data):
+async def test_search_repositories_pagination(
+    client, test_user, test_token, search_data
+):
     """Search repositories respects per_page parameter."""
     resp = await client.get(
         f"{API}/search/repositories?q=project&per_page=1",
@@ -343,3 +350,128 @@ async def test_gitlab_global_search_blobs(client, test_user, test_token, db_sess
     assert resp.status_code == 200
     data = resp.json()
     assert any(item["filename"] == "docs/search.md" for item in data)
+
+
+@pytest.mark.asyncio
+async def test_search_hides_private_project_content_from_non_members(
+    client, db_session, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "search-private-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "search-private-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "private-search-project",
+            "description": "private-search-needle project",
+            "visibility": "private",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    issue = await client.post(
+        f"{API}/projects/{project_id}/issues",
+        json={
+            "title": "private-search-needle issue",
+            "description": "private-search-needle issue body",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert issue.status_code == 201
+
+    from app.models.search_index import CommitMetadata, FileContent
+
+    db_session.add(
+        FileContent(
+            repo_id=project_id,
+            file_path="docs/private-search.md",
+            blob_sha="b" * 40,
+            content="private-search-needle blob",
+            language="Markdown",
+            size=26,
+            ref="main",
+        )
+    )
+    db_session.add(
+        CommitMetadata(
+            repo_id=project_id,
+            commit_sha="c" * 40,
+            author_name="Search Author",
+            author_email="search@example.com",
+            committer_name="Search Committer",
+            committer_email="search@example.com",
+            message="private-search-needle commit",
+            author_date="2026-01-01T00:00:00Z",
+            committer_date="2026-01-01T00:00:00Z",
+        )
+    )
+    await db_session.commit()
+
+    for path, params, result_key in [
+        (
+            f"{API}/search",
+            {"scope": "projects", "search": "private-search-needle"},
+            None,
+        ),
+        (f"{API}/search", {"scope": "issues", "search": "private-search-needle"}, None),
+        (f"{API}/search", {"scope": "blobs", "search": "private-search-needle"}, None),
+        (f"{API}/search/repositories", {"q": "private-search-needle"}, "items"),
+        (f"{API}/search/issues", {"q": "private-search-needle"}, "items"),
+        (f"{API}/search/code", {"q": "private-search-needle"}, "items"),
+        (f"{API}/search/commits", {"q": "private-search-needle"}, "items"),
+    ]:
+        denied = await client.get(
+            path,
+            params=params,
+            headers=auth_headers(outsider_token),
+        )
+        assert denied.status_code == 200
+        denied_data = denied.json()
+        denied_items = denied_data[result_key] if result_key else denied_data
+        assert denied_items == []
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    projects = await client.get(
+        f"{API}/search",
+        params={"scope": "projects", "search": "private-search-needle"},
+        headers=auth_headers(reporter_token),
+    )
+    assert projects.status_code == 200
+    assert [item["id"] for item in projects.json()] == [project_id]
+
+    issues = await client.get(
+        f"{API}/search/issues",
+        params={"q": "private-search-needle"},
+        headers=auth_headers(reporter_token),
+    )
+    assert issues.status_code == 200
+    assert [item["title"] for item in issues.json()["items"]] == [
+        "private-search-needle issue"
+    ]
+
+    code = await client.get(
+        f"{API}/search/code",
+        params={"q": "private-search-needle"},
+        headers=auth_headers(reporter_token),
+    )
+    assert code.status_code == 200
+    assert [item["path"] for item in code.json()["items"]] == ["docs/private-search.md"]
+
+    commits = await client.get(
+        f"{API}/search/commits",
+        params={"q": "private-search-needle"},
+        headers=auth_headers(reporter_token),
+    )
+    assert commits.status_code == 200
+    assert [item["sha"] for item in commits.json()["items"]] == ["c" * 40]
