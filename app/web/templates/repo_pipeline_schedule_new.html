@@ -11,6 +11,7 @@
 {% endblock %}
 
 {% block content %}
+<div class="pipeline-schedule-page">
 <nav class="gl-breadcrumbs mb-3" aria-label="Breadcrumb">
     <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ owner }}</a>
     <span>/</span>
@@ -74,7 +75,6 @@
                 <label>Variable key<br><input class="form-control input-block" name="variable_key"></label>
                 <label>Variable value<br><textarea class="form-control input-block" name="variable_value" rows="1"></textarea></label>
             </div>
-            <textarea class="form-control input-block mt-2" name="variables_text" rows="3" placeholder="Additional variables as KEY=VALUE lines"></textarea>
         </div>
 
         <label class="d-block mb-3"><input type="checkbox" name="active" value="1" checked> Activated</label>
@@ -84,4 +84,5 @@
         </div>
     </form>
 </section>
+</div>
 {% endblock %}

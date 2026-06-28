@@ -859,6 +859,14 @@ td.blob-code {
 }
 
 /* ---- Pipeline schedules ---- */
+.pipeline-schedule-page {
+    max-width: 1120px;
+}
+@media (min-width: 1280px) {
+    .pipeline-schedule-page {
+        margin-left: 90px;
+    }
+}
 .gl-breadcrumbs {
     display: flex;
     align-items: center;
@@ -875,6 +883,12 @@ td.blob-code {
 .pipeline-schedule-form .input-block {
     width: 100%;
     max-width: 720px;
+}
+.pipeline-schedule-form label {
+    line-height: 20px;
+}
+.pipeline-schedule-form .mb-3 {
+    margin-bottom: 14px !important;
 }
 .schedule-inputs-placeholder {
     max-width: 1020px;
