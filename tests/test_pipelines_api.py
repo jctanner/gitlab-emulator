@@ -1710,8 +1710,15 @@ async def test_pipeline_trigger_creates_trigger_source_pipeline(client, test_tok
     ci_yaml = """
 trigger_probe:
   image: alpine:3.20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
   script:
     - echo trigger $TRIGGER_VAR
+api_only:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
@@ -1761,6 +1768,7 @@ trigger_probe:
     assert request.status_code == 201
     payload = request.json()
     assert payload["job_info"]["pipeline_id"] == pipeline["id"]
+    assert payload["job_info"]["name"] == "trigger_probe"
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["TRIGGER_VAR"] == "from-trigger"
 
@@ -1778,8 +1786,15 @@ async def test_pipeline_schedule_crud_and_play_creates_schedule_source_pipeline(
     ci_yaml = """
 scheduled_probe:
   image: alpine:3.20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
   script:
     - echo schedule $SCHEDULE_VAR
+api_only:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
@@ -1840,6 +1855,7 @@ scheduled_probe:
     assert request.status_code == 201
     payload = request.json()
     assert payload["job_info"]["pipeline_id"] == pipeline["id"]
+    assert payload["job_info"]["name"] == "scheduled_probe"
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["SCHEDULE_VAR"] == "from-schedule"
 

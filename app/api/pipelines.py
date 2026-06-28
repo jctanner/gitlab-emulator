@@ -823,6 +823,7 @@ async def _create_pipeline(
                     {
                         **rule_project_variable_entries,
                         **pipeline_variable_entries,
+                        "CI_PIPELINE_SOURCE": {"value": source},
                     }
                 ),
                 existing_paths=await _repo_paths_at_ref(project, body.ref),

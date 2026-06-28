@@ -53,6 +53,8 @@ and cache APIs for controlled integration testing.
   and metadata for raw, masked/public, and file variables
 - project trigger tokens and trigger-created `source=trigger` pipelines
 - project pipeline schedules and manually played `source=schedule` pipelines
+- job `rules:if` can match `CI_PIPELINE_SOURCE` for API, trigger, and
+  schedule-created pipelines
 - runner tag matching and `run_untagged`
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing and emulator cache fallback-key lookup
@@ -70,7 +72,8 @@ and cache APIs for controlled integration testing.
 
 ### YAML Semantics
 
-- deeper pipeline event behavior
+- deeper pipeline event behavior beyond current `CI_PIPELINE_SOURCE` support,
+  such as full `workflow:rules` and merge request event semantics
 
 ### Runner Coordinator
 
