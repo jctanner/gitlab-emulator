@@ -16,6 +16,7 @@ from app.api.pagination import paginated_json
 from app.api.projects import _get_project_or_404
 from app.config import settings
 from app.models.project import Project
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["repository-files"])
 
@@ -392,6 +393,7 @@ async def create_repository_file(
 ):
     """Create a repository file."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     decoded_path = _normalize_file_path(file_path)
     branch = _branch_from_body(project, body)
     start_ref = _start_ref_from_body(body)
@@ -427,6 +429,7 @@ async def update_repository_file(
 ):
     """Update a repository file."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     decoded_path = _normalize_file_path(file_path)
     branch = _branch_from_body(project, body)
     start_ref = _start_ref_from_body(body)
@@ -450,6 +453,7 @@ async def delete_repository_file(
 ):
     """Delete a repository file."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     decoded_path = _normalize_file_path(file_path)
     branch = _branch_from_body(project, body)
     start_ref = _start_ref_from_body(body)
