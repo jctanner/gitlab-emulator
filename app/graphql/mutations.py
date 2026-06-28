@@ -13,6 +13,7 @@ from app.graphql.types.user import GitLabUser, user_from_model
 from app.graphql.types.repository import Repository, repository_from_model
 from app.graphql.types.issue import Issue, issue_from_model, IssueComment, comment_from_model
 from app.graphql.types.pull_request import PullRequest, pull_request_from_model
+from app.services.permissions import DEVELOPER, REPORTER, require_project_access
 
 
 def _decode_node_id(node_id: str) -> int:
@@ -243,6 +244,24 @@ def _require_auth(info: Info):
     return user
 
 
+async def _repo_for_issue(db, issue):
+    from app.models.repository import Repository as RepoModel
+    result = await db.execute(select(RepoModel).where(RepoModel.id == issue.repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise ValueError(f"Repository with id {issue.repo_id} not found")
+    return repo
+
+
+async def _repo_for_pull_request(db, pr):
+    from app.models.repository import Repository as RepoModel
+    result = await db.execute(select(RepoModel).where(RepoModel.id == pr.repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise ValueError(f"Repository with id {pr.repo_id} not found")
+    return repo
+
+
 # ---------------------------------------------------------------------------
 # Mutation class
 # ---------------------------------------------------------------------------
@@ -267,6 +286,7 @@ class Mutation:
         repo = result.scalar_one_or_none()
         if not repo:
             raise ValueError(f"Repository with id {repo_id} not found")
+        await require_project_access(repo, current_user, db, REPORTER)
 
         # Assign next issue number
         issue_number = repo.next_issue_number
@@ -310,7 +330,7 @@ class Mutation:
         """Update an existing issue."""
         from app.models.issue import Issue as IssueModel, IssueLabel, IssueAssignee
 
-        _require_auth(info)
+        current_user = _require_auth(info)
         db = info.context["db"]
 
         issue_id = _decode_node_id(input.id)
@@ -320,6 +340,12 @@ class Mutation:
         issue = result.scalar_one_or_none()
         if not issue:
             raise ValueError(f"Issue with id {issue_id} not found")
+        await require_project_access(
+            await _repo_for_issue(db, issue),
+            current_user,
+            db,
+            REPORTER,
+        )
 
         if input.title is not None:
             issue.title = input.title
@@ -380,6 +406,12 @@ class Mutation:
         issue = result.scalar_one_or_none()
         if not issue:
             raise ValueError(f"Issue with id {issue_id} not found")
+        await require_project_access(
+            await _repo_for_issue(db, issue),
+            current_user,
+            db,
+            REPORTER,
+        )
 
         if issue.state == "open":
             issue.state = "closed"
@@ -410,7 +442,7 @@ class Mutation:
         from app.models.issue import Issue as IssueModel
         from app.models.repository import Repository as RepoModel
 
-        _require_auth(info)
+        current_user = _require_auth(info)
         db = info.context["db"]
 
         issue_id = _decode_node_id(input.issue_id)
@@ -420,6 +452,12 @@ class Mutation:
         issue = result.scalar_one_or_none()
         if not issue:
             raise ValueError(f"Issue with id {issue_id} not found")
+        await require_project_access(
+            await _repo_for_issue(db, issue),
+            current_user,
+            db,
+            REPORTER,
+        )
 
         if issue.state == "closed":
             issue.state = "open"
@@ -461,6 +499,12 @@ class Mutation:
         issue = result.scalar_one_or_none()
         if not issue:
             raise ValueError(f"Subject with id {subject_id} not found")
+        await require_project_access(
+            await _repo_for_issue(db, issue),
+            current_user,
+            db,
+            REPORTER,
+        )
 
         new_comment = IssueCommentModel(
             issue_id=issue.id,
@@ -497,6 +541,7 @@ class Mutation:
         repo = result.scalar_one_or_none()
         if not repo:
             raise ValueError(f"Repository with id {repo_id} not found")
+        await require_project_access(repo, current_user, db, DEVELOPER)
 
         if not input.head_ref_name:
             raise ValueError("head_ref_name is required")
@@ -582,6 +627,12 @@ class Mutation:
         pr = result.scalar_one_or_none()
         if not pr:
             raise ValueError(f"Pull request with id {pr_id} not found")
+        await require_project_access(
+            await _repo_for_pull_request(db, pr),
+            current_user,
+            db,
+            DEVELOPER,
+        )
 
         if pr.merged:
             raise ValueError("Pull request is already merged")
@@ -620,12 +671,23 @@ class Mutation:
     @strawberry.mutation
     async def add_reaction(self, info: Info, input: AddReactionInput) -> AddReactionPayload:
         """Add a reaction to a subject (issue, comment, etc.)."""
+        from app.models.issue import Issue as IssueModel
         from app.models.reaction import Reaction
 
         current_user = _require_auth(info)
         db = info.context["db"]
 
         subject_id = _decode_node_id(input.subject_id)
+        subject_result = await db.execute(select(IssueModel).where(IssueModel.id == subject_id))
+        subject = subject_result.scalar_one_or_none()
+        if not subject:
+            raise ValueError(f"Subject with id {subject_id} not found")
+        await require_project_access(
+            await _repo_for_issue(db, subject),
+            current_user,
+            db,
+            REPORTER,
+        )
 
         # Determine reactable type by trying to look up the subject
         # Default to "issue" as the most common case
@@ -766,6 +828,12 @@ class Mutation:
         pr = result.scalar_one_or_none()
         if not pr:
             raise ValueError(f"Pull request with id {pr_id} not found")
+        await require_project_access(
+            await _repo_for_pull_request(db, pr),
+            current_user,
+            db,
+            DEVELOPER,
+        )
 
         # Close the backing issue
         issue_result = await db.execute(
@@ -807,7 +875,7 @@ class Mutation:
         from app.models.issue import Issue as IssueModel
         from app.models.repository import Repository as RepoModel
 
-        _require_auth(info)
+        current_user = _require_auth(info)
         db = info.context["db"]
 
         pr_id = _decode_node_id(input.pull_request_id)
@@ -817,6 +885,12 @@ class Mutation:
         pr = result.scalar_one_or_none()
         if not pr:
             raise ValueError(f"Pull request with id {pr_id} not found")
+        await require_project_access(
+            await _repo_for_pull_request(db, pr),
+            current_user,
+            db,
+            DEVELOPER,
+        )
 
         if pr.merged:
             raise ValueError("Cannot reopen a merged pull request")
@@ -861,7 +935,7 @@ class Mutation:
         from app.models.pull_request import PullRequest as PRModel
         from app.models.issue import Issue as IssueModel
 
-        _require_auth(info)
+        current_user = _require_auth(info)
         db = info.context["db"]
 
         pr_id = _decode_node_id(input.pull_request_id)
@@ -871,6 +945,12 @@ class Mutation:
         pr = result.scalar_one_or_none()
         if not pr:
             raise ValueError(f"Pull request with id {pr_id} not found")
+        await require_project_access(
+            await _repo_for_pull_request(db, pr),
+            current_user,
+            db,
+            DEVELOPER,
+        )
 
         # Update backing issue fields
         issue_result = await db.execute(

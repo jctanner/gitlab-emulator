@@ -347,6 +347,8 @@ Done when:
   member access levels now preserve GitLab Guest separately from Reporter while
   keeping GitHub-compatible collaborator permissions for inherited routes. Git
   Smart HTTP read access for private projects requires Reporter or higher, while
-  push advertisement and receive-pack require Developer or higher.
+  push advertisement and receive-pack require Developer or higher. Implemented
+  GraphQL issue/comment/reaction mutations use Reporter or higher, and GraphQL
+  merge request mutations use Developer or higher.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
 - Production security hardening.

@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -109,6 +110,56 @@ async def test_graphql_create_issue(client, test_user, test_token):
     if "data" in data and data["data"]["repository"] is not None:
         issues = data["data"]["repository"]["issues"]
         assert issues["totalCount"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_graphql_issue_mutation_requires_reporter(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "gql-issue-reporter"
+    )
+    guest, guest_token = await _create_user_and_token(db_session, "gql-issue-guest")
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-issue-roles"},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    for user, level in ((reporter, 20), (guest, 10)):
+        member = await client.post(
+            f"{API}/projects/{project['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    mutation = """
+        mutation($repo: ID!) {
+          createIssue(input: {repositoryId: $repo, title: "GraphQL role issue"}) {
+            issue { title }
+          }
+        }
+    """
+    denied = await client.post(
+        "/graphql",
+        json={"query": mutation, "variables": {"repo": str(project["id"])}},
+        headers=auth_headers(guest_token),
+    )
+    assert denied.status_code == 200
+    assert "errors" in denied.json()
+
+    allowed = await client.post(
+        "/graphql",
+        json={"query": mutation, "variables": {"repo": str(project["id"])}},
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed.status_code == 200
+    data = allowed.json()
+    assert "errors" not in data
+    assert data["data"]["createIssue"]["issue"]["title"] == "GraphQL role issue"
 
 
 @pytest.mark.asyncio
@@ -265,6 +316,73 @@ async def test_graphql_project_merge_requests_alias(client, test_user, test_toke
     assert merge_requests["nodes"][0]["title"] == "GraphQL MR"
     assert merge_requests["nodes"][0]["headRefName"] == "feature"
     assert merge_requests["nodes"][0]["baseRefName"] == "main"
+
+
+@pytest.mark.asyncio
+async def test_graphql_pull_request_mutation_requires_developer(
+    client, db_session, test_user, test_token
+):
+    developer, developer_token = await _create_user_and_token(
+        db_session, "gql-pr-developer"
+    )
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "gql-pr-reporter"
+    )
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-pr-roles", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    for user, level in ((developer, 30), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{project['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    mutation = """
+        mutation($repo: ID!) {
+          createPullRequest(input: {
+            repositoryId: $repo,
+            title: "GraphQL role MR",
+            headRefName: "feature",
+            baseRefName: "main"
+          }) {
+            pullRequest { title headRefName baseRefName }
+          }
+        }
+    """
+    denied = await client.post(
+        "/graphql",
+        json={"query": mutation, "variables": {"repo": str(project["id"])}},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied.status_code == 200
+    assert "errors" in denied.json()
+
+    allowed = await client.post(
+        "/graphql",
+        json={"query": mutation, "variables": {"repo": str(project["id"])}},
+        headers=auth_headers(developer_token),
+    )
+    assert allowed.status_code == 200
+    data = allowed.json()
+    assert "errors" not in data
+    pull_request = data["data"]["createPullRequest"]["pullRequest"]
+    assert pull_request["title"] == "GraphQL role MR"
+    assert pull_request["headRefName"] == "feature"
+    assert pull_request["baseRefName"] == "main"
 
 
 @pytest.mark.asyncio
