@@ -334,7 +334,7 @@ Done when:
   the broader schema remains an incremental parity area.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
-  variable/secret, pipeline-variable, repository write, git ref write, and
+  variable/secret, pipeline-variable, repository write, Git object/ref write,
   GitLab repository file write gates, and protected-branch management gates now
   use GitLab-shaped access levels.
   Project member/collaborator writes require Maintainer or higher, and group

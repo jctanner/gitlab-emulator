@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["git-trees"])
 
@@ -81,6 +82,7 @@ async def create_tree(
 ):
     """Create a Git tree."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, DEVELOPER)
     if not repository.disk_path or not os.path.isdir(repository.disk_path):
         raise HTTPException(status_code=404, detail="Repository not found on disk")
 
