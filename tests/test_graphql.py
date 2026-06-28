@@ -1,7 +1,9 @@
 """Tests for the GraphQL API endpoint."""
 
 import pytest
+from sqlalchemy import select
 
+from app.models.repository import Repository as RepoModel
 from tests.conftest import auth_headers
 from tests.test_projects_api import _create_user_and_token
 
@@ -185,6 +187,67 @@ async def test_graphql_repository_refs_filter_branches_and_tags(
         ],
     }
     assert repo["unsupportedRefs"] == {"totalCount": 0, "nodes": []}
+
+
+@pytest.mark.asyncio
+async def test_graphql_repository_languages_and_topics(
+    client, db_session, test_user, test_token
+):
+    """Repository languages and topics resolve from stored project metadata."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-repo-metadata", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    result = await db_session.execute(
+        select(RepoModel).where(RepoModel.id == project["id"])
+    )
+    repo_model = result.scalar_one()
+    repo_model.language = "Python"
+    repo_model.topics = ["ci", "emulator"]
+    await db_session.commit()
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-repo-metadata") {
+                    languages {
+                      totalCount
+                      nodes { name }
+                    }
+                    repositoryTopics {
+                      totalCount
+                      nodes { topicName url }
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["languages"] == {
+        "totalCount": 1,
+        "nodes": [{"name": "Python"}],
+    }
+    assert repo["repositoryTopics"]["totalCount"] == 2
+    assert [node["topicName"] for node in repo["repositoryTopics"]["nodes"]] == [
+        "ci",
+        "emulator",
+    ]
+    assert all(
+        node["url"].endswith(f"/-/topics/{node['topicName']}")
+        for node in repo["repositoryTopics"]["nodes"]
+    )
 
 
 @pytest.mark.asyncio

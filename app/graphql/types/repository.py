@@ -170,6 +170,7 @@ class Repository:
     _has_discussions: strawberry.Private[bool] = False
     _is_in_organization: strawberry.Private[bool] = False
     _disk_path: strawberry.Private[Optional[str]] = None
+    _topics: strawberry.Private[Optional[list[str]]] = None
 
     @strawberry.field
     def id(self) -> strawberry.ID:
@@ -308,11 +309,16 @@ class Repository:
 
     @strawberry.field
     def repository_topics(self) -> Connection[RepositoryTopic]:
-        return empty_connection()
+        topics = [
+            RepositoryTopic(topic_name=topic, url=f"{self.url}/-/topics/{topic}")
+            for topic in (self._topics or [])
+        ]
+        return build_connection(topics, lambda topic: topic, len(topics))
 
     @strawberry.field
     def languages(self) -> Connection[Language]:
-        return empty_connection()
+        languages = [Language(name=self._language)] if self._language else []
+        return build_connection(languages, lambda language: language, len(languages))
 
     @strawberry.field
     def watchers(self) -> Connection[GitLabUser]:
@@ -812,4 +818,5 @@ def repository_from_model(repo) -> Repository:
         _has_discussions=getattr(repo, 'has_discussions', False),
         _is_in_organization=getattr(repo, 'owner_type', 'User') == 'Organization',
         _disk_path=repo.disk_path,
+        _topics=list(repo.topics or []),
     )
