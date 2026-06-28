@@ -31,7 +31,13 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import _fmt_dt
 from app.services.ci_security import normalize_ci_security_settings
-from app.services.permissions import DEVELOPER, MAINTAINER, OWNER, require_project_access
+from app.services.permissions import (
+    DEVELOPER,
+    MAINTAINER,
+    OWNER,
+    access_level_for_role,
+    require_project_access,
+)
 
 router = APIRouter(tags=["projects"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -101,7 +107,12 @@ def _decode_gitlab_ref(value: str) -> str:
 async def _init_bare_repo(disk_path: str, default_branch: str = "main") -> None:
     os.makedirs(disk_path, exist_ok=True)
     proc = await asyncio.create_subprocess_exec(
-        "git", "init", "--bare", "--initial-branch", default_branch, disk_path,
+        "git",
+        "init",
+        "--bare",
+        "--initial-branch",
+        default_branch,
+        disk_path,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -111,7 +122,8 @@ async def _init_bare_repo(disk_path: str, default_branch: str = "main") -> None:
 async def _git_lines(repo_path: str, *args: str) -> list[str]:
     env = {**os.environ, "GIT_DIR": repo_path}
     proc = await asyncio.create_subprocess_exec(
-        "git", *args,
+        "git",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=env,
@@ -125,7 +137,8 @@ async def _git_lines(repo_path: str, *args: str) -> list[str]:
 async def _git_text(repo_path: str, *args: str) -> str:
     env = {**os.environ, "GIT_DIR": repo_path}
     proc = await asyncio.create_subprocess_exec(
-        "git", *args,
+        "git",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=env,
@@ -164,11 +177,15 @@ def _require_project_owner(project: Project, user: User) -> None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
-async def _require_project_maintainer(project: Project, user: User, db: DbSession) -> None:
+async def _require_project_maintainer(
+    project: Project, user: User, db: DbSession
+) -> None:
     await require_project_access(project, user, db, MAINTAINER)
 
 
-async def _require_project_developer(project: Project, user: User, db: DbSession) -> None:
+async def _require_project_developer(
+    project: Project, user: User, db: DbSession
+) -> None:
     await require_project_access(project, user, db, DEVELOPER)
 
 
@@ -247,7 +264,8 @@ async def _get_project_secret_or_404(
         CiSecret.name == _validate_secret_name(name),
     )
     query = query.where(
-        CiSecret.environment_scope == (environment_scope if environment_scope is not None else "*"),
+        CiSecret.environment_scope
+        == (environment_scope if environment_scope is not None else "*"),
         CiSecret.branch_scope == (branch_scope if branch_scope is not None else "*"),
     )
     secret = (await db.execute(query)).scalar_one_or_none()
@@ -295,9 +313,7 @@ async def _project_json(project: Project, base_url: str, db: DbSession) -> dict:
     namespace_parent_id = None
 
     if project.owner_type == "Organization":
-        result = await db.execute(
-            select(Group).where(Group.login == namespace_path)
-        )
+        result = await db.execute(select(Group).where(Group.login == namespace_path))
         organization = result.scalar_one_or_none()
         if organization is not None:
             namespace_id = organization.id
@@ -419,7 +435,9 @@ async def _project_json(project: Project, base_url: str, db: DbSession) -> dict:
             "state": "active",
             "avatar_url": owner.avatar_url,
             "web_url": f"{base_url}/{owner.login}",
-        } if owner else None,
+        }
+        if owner
+        else None,
         "_links": {
             "self": f"{api}/projects/{project.id}",
             "issues": f"{api}/projects/{project.id}/issues",
@@ -461,7 +479,9 @@ async def _resolve_project_namespace(
             try:
                 namespace_id_int = int(namespace_id)
             except (TypeError, ValueError) as exc:
-                raise HTTPException(status_code=400, detail="Invalid namespace_id") from exc
+                raise HTTPException(
+                    status_code=400, detail="Invalid namespace_id"
+                ) from exc
             if namespace_id_int == user.id:
                 return user.login, "User"
         raise HTTPException(status_code=404, detail="Namespace Not Found")
@@ -476,6 +496,12 @@ async def _resolve_project_namespace(
         )
     ).scalar_one_or_none()
     if membership is None and not user.site_admin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if (
+        membership is not None
+        and not user.site_admin
+        and access_level_for_role(membership.role) < DEVELOPER
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     return organization.login, "Organization"
@@ -557,7 +583,9 @@ async def _get_branch_json(
     if db is not None:
         record = await _get_branch_record(project, decoded_name, db)
         protected = bool(record and record.protected)
-    return _branch_json(project, {"name": decoded_name, "sha": sha}, base_url, protected)
+    return _branch_json(
+        project, {"name": decoded_name, "sha": sha}, base_url, protected
+    )
 
 
 def _access_level_entry(access_level: int, entry_id: int | None = None) -> dict:
@@ -604,8 +632,12 @@ def _protected_branch_json(
     restrictions = restrictions or {}
     push_levels = restrictions.get("push_access_levels") or [_access_level_entry(40)]
     merge_levels = restrictions.get("merge_access_levels") or [_access_level_entry(40)]
-    unprotect_levels = restrictions.get("unprotect_access_levels") or [_access_level_entry(40)]
-    project_path = project.full_name if project is not None else branch.repository.full_name
+    unprotect_levels = restrictions.get("unprotect_access_levels") or [
+        _access_level_entry(40)
+    ]
+    project_path = (
+        project.full_name if project is not None else branch.repository.full_name
+    )
     return {
         "id": branch.protection.id if branch.protection else branch.id,
         "name": branch.name,
@@ -640,7 +672,9 @@ async def _resolve_commit_ref(project: Project, ref: str) -> str:
         raise HTTPException(status_code=404, detail="404 Project Not Found")
     try:
         return (
-            await _git_text(project.disk_path, "rev-parse", f"{unquote(ref)}^{{commit}}")
+            await _git_text(
+                project.disk_path, "rev-parse", f"{unquote(ref)}^{{commit}}"
+            )
         ).strip()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail="Invalid reference name") from exc
@@ -739,9 +773,7 @@ async def create_project(body: dict, user: AuthUser, db: DbSession):
 
     namespace_path, owner_type = await _resolve_project_namespace(body, user, db)
     full_name = f"{namespace_path}/{path}"
-    existing = await db.execute(
-        select(Project).where(Project.full_name == full_name)
-    )
+    existing = await db.execute(select(Project).where(Project.full_name == full_name))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=400, detail="Project already exists")
 
@@ -844,7 +876,9 @@ async def create_project_branch(
 
     sha = await _resolve_commit_ref(project, source_ref)
     try:
-        await _git_text(project.disk_path, "update-ref", f"refs/heads/{branch_name}", sha)
+        await _git_text(
+            project.disk_path, "update-ref", f"refs/heads/{branch_name}", sha
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail="Could not create branch") from exc
     return await _get_branch_json(project, branch_name, settings.BASE_URL)
@@ -877,7 +911,9 @@ async def delete_project_branch(
         raise HTTPException(status_code=400, detail="Cannot delete default branch")
     await _get_branch_json(project, decoded_name, settings.BASE_URL)
     try:
-        await _git_text(project.disk_path, "update-ref", "-d", f"refs/heads/{decoded_name}")
+        await _git_text(
+            project.disk_path, "update-ref", "-d", f"refs/heads/{decoded_name}"
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail="Could not delete branch") from exc
     return {"branch_name": decoded_name}
@@ -962,7 +998,9 @@ async def delete_project_tag(
     decoded_name = unquote(tag_name)
     await _get_tag_json(project, decoded_name, settings.BASE_URL)
     try:
-        await _git_text(project.disk_path, "update-ref", "-d", f"refs/tags/{decoded_name}")
+        await _git_text(
+            project.disk_path, "update-ref", "-d", f"refs/tags/{decoded_name}"
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail="Could not delete tag") from exc
     return {"tag_name": decoded_name}
@@ -1309,7 +1347,9 @@ async def list_project_secrets(
         query = query.where(CiSecret.environment_scope == environment_scope)
     if branch_scope is not None:
         query = query.where(CiSecret.branch_scope == branch_scope)
-    query = query.order_by(CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope)
+    query = query.order_by(
+        CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope
+    )
     secrets = (await db.execute(query)).scalars().all()
     return [_secret_json(secret) for secret in secrets]
 

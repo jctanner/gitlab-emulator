@@ -501,7 +501,10 @@ async def test_project_secrets_crud_scope_and_hidden_value(
         headers=auth_headers(test_token),
     )
     assert listed.status_code == 200
-    assert [(item["name"], item["environment_scope"], item["branch_scope"]) for item in listed.json()] == [
+    assert [
+        (item["name"], item["environment_scope"], item["branch_scope"])
+        for item in listed.json()
+    ] == [
         ("DATABASE_PASSWORD", "*", "*"),
         ("DATABASE_PASSWORD", "production", "main"),
     ]
@@ -644,6 +647,53 @@ async def test_create_project_in_group_namespace_by_id(client, test_user, test_t
 
 
 @pytest.mark.asyncio
+async def test_create_project_in_group_namespace_requires_developer_access(
+    client, db_session, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "namespace-project-reporter"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "namespace-project-developer"
+    )
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "namespace-project-gate", "name": "Namespace Project Gate"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+
+    for user, level in ((reporter, 20), (developer, 30)):
+        member = await client.post(
+            f"{API}/groups/{group_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied = await client.post(
+        f"{API}/projects",
+        json={"name": "reporter-project", "namespace_id": group_id},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "developer-project",
+            "namespace_path": "namespace-project-gate",
+        },
+        headers=auth_headers(developer_token),
+    )
+    assert allowed.status_code == 201
+    data = allowed.json()
+    assert data["path_with_namespace"] == "namespace-project-gate/developer-project"
+    assert data["namespace"]["id"] == group_id
+
+
+@pytest.mark.asyncio
 async def test_create_project_in_group_namespace_by_path(client, test_user, test_token):
     org_resp = await client.post(
         f"{API}/orgs",
@@ -731,9 +781,7 @@ async def test_project_branches_list_from_bare_repo(client, test_user, test_toke
 
 
 @pytest.mark.asyncio
-async def test_project_branches_list_by_url_encoded_path(
-    client, test_user, test_token
-):
+async def test_project_branches_list_by_url_encoded_path(client, test_user, test_token):
     create_resp = await client.post(
         f"{API}/projects",
         json={"name": "branch-path-project", "initialize_with_readme": True},
@@ -847,7 +895,9 @@ async def test_project_branch_create_rejects_duplicate(client, test_user, test_t
 
 
 @pytest.mark.asyncio
-async def test_project_branch_delete_rejects_default_branch(client, test_user, test_token):
+async def test_project_branch_delete_rejects_default_branch(
+    client, test_user, test_token
+):
     create_resp = await client.post(
         f"{API}/projects",
         json={"name": "branch-default-delete-project", "initialize_with_readme": True},
@@ -1123,6 +1173,7 @@ async def test_project_path_route_does_not_shadow_pipeline_routes(
                 "script": ["echo route-check"],
             },
         },
+        headers=auth_headers(test_token),
     )
 
     assert resp.status_code == 201

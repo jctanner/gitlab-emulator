@@ -339,7 +339,8 @@ Done when:
   use GitLab-shaped access levels.
   Project member/collaborator writes require Maintainer or higher, while group
   member, org repository, organization-targeted fork, and team management writes require Owner. Subgroup
-  creation requires Maintainer or higher on the parent group. Project/repository
+  creation requires Maintainer or higher on the parent group. Group namespace
+  project creation requires Developer or higher. Project/repository
   destructive settings and org settings require Owner. Project/repository webhook and deploy-key writes
   require Maintainer or higher, repository Actions secret/variable management
   requires Maintainer or higher, and group webhook writes require Owner. Label
