@@ -2,10 +2,12 @@
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.models.event import Event
+from app.models.repository import Repository
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt
 
@@ -16,14 +18,16 @@ BASE = settings.BASE_URL
 
 def _event_json(event: Event, base_url: str) -> dict:
     actor = SimpleUser.from_db(event.actor, base_url).model_dump() if event.actor else None
+    repo = event.repository
+    repo_name = repo.full_name if repo else ""
     return {
         "id": str(event.id),
         "type": event.type,
         "actor": actor,
         "repo": {
             "id": event.repo_id,
-            "name": "",
-            "url": "",
+            "name": repo_name,
+            "url": f"{base_url}/api/v4/repos/{repo_name}" if repo_name else "",
         },
         "payload": event.payload or {},
         "public": event.public,
@@ -41,6 +45,7 @@ async def list_public_events(
     """List public events."""
     query = (
         select(Event)
+        .options(selectinload(Event.actor), selectinload(Event.repository))
         .where(Event.public == True)
         .order_by(Event.created_at.desc())
         .offset((page - 1) * per_page)
@@ -60,6 +65,7 @@ async def list_repo_events(
     repository = await get_repo_or_404(owner, repo, db)
     query = (
         select(Event)
+        .options(selectinload(Event.actor), selectinload(Event.repository))
         .where(Event.repo_id == repository.id)
         .order_by(Event.created_at.desc())
         .offset((page - 1) * per_page)
@@ -83,6 +89,7 @@ async def list_user_events(
 
     query = (
         select(Event)
+        .options(selectinload(Event.actor), selectinload(Event.repository))
         .where(Event.actor_id == user.id)
         .order_by(Event.created_at.desc())
         .offset((page - 1) * per_page)
@@ -98,5 +105,24 @@ async def list_user_received_events(
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
-    """List events received by a user (stub)."""
-    return []
+    """List public events received by a user through owned repositories."""
+    result = await db.execute(select(User).where(User.login == username))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    owned_repo_ids = select(Repository.id).where(Repository.owner_id == user.id)
+    query = (
+        select(Event)
+        .options(selectinload(Event.actor), selectinload(Event.repository))
+        .where(
+            Event.public == True,
+            Event.repo_id.in_(owned_repo_ids),
+            Event.actor_id != user.id,
+        )
+        .order_by(Event.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
+    events = (await db.execute(query)).scalars().all()
+    return [_event_json(e, BASE) for e in events]

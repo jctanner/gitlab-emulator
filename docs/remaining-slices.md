@@ -350,6 +350,9 @@ Done when:
 - Inherited GitHub-compatible contents delete now creates a real git commit,
   updates the target branch, and rejects stale blob SHAs instead of returning a
   placeholder zero SHA.
+- Inherited GitHub-compatible event feeds now include repository metadata, and
+  `/users/:username/received_events` returns public events on repositories owned
+  by the target user instead of an empty stub.
 - The backing database tables and inherited GitHub-compatible repos/orgs/
   `/pulls`, review, review-comment, GraphQL, and admin/web scaffolding still
   use legacy naming intentionally for compatibility.

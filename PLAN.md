@@ -281,7 +281,9 @@ Done when:
   `/pulls/:number/files` compatibility endpoints now return real git-backed
   data rather than placeholder responses, and inherited repository compare
   compatibility returns real commit and changed-file data. Inherited contents
-  delete now creates a real git commit and validates stale blob SHAs.
+  delete now creates a real git commit and validates stale blob SHAs. Inherited
+  event feeds include repository metadata, and received events now list public
+  events on repositories owned by the target user.
 
 ### 5. Validation and Operations
 

@@ -30,3 +30,4 @@ class Event(Base):
 
     # Relationships
     actor = relationship("User", lazy="selectin")
+    repository = relationship("Repository", lazy="selectin")
