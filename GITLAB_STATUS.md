@@ -53,10 +53,11 @@ harness architecture.
   declared needs order, and pipeline creation applies `rules`, `only`, and
   `except` filters. Current
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
-  boolean expressions, null and empty-string variable comparisons, regex
-  match/non-match operators, `exists`, commit-local `changes`, `when: never`,
-  `when: always`, `when: on_failure`, persisted non-runnable `manual` jobs, and
-  matched workflow-level variables. Legacy `only`/`except` filters are
+  boolean expressions, unary negation, null and empty-string variable
+  comparisons, regex match/non-match operators, `exists`, commit-local
+  `changes`, `when: never`, `when: always`, `when: on_failure`, persisted
+  non-runnable `manual` jobs, and matched workflow-level variables. Legacy
+  `only`/`except` filters are
   branch/tag/source-aware, and tag-ref pipelines expose `CI_COMMIT_TAG` while
   branch-ref pipelines expose `CI_COMMIT_BRANCH`.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a

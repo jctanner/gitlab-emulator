@@ -35,10 +35,11 @@ Already working:
   from named dependencies, `needs: []` can run immediately, invalid needs are
   rejected early, `needs:artifacts` dependencies follow declared needs order,
   and pipeline creation applies `rules`, `only`, and `except` filters. Current
-  `rules` support covers common `if` expressions, null and empty-string
-  variable comparisons, regex match/non-match, simple boolean operators with
-  grouped parentheses, `exists`, commit-local `changes`, `exists`/`changes`
-  path-object forms, variable-expanded rule path patterns, `when: never`,
+  `rules` support covers common `if` expressions, unary negation, null and
+  empty-string variable comparisons, regex match/non-match, simple boolean
+  operators with grouped parentheses, `exists`, commit-local `changes`,
+  `exists`/`changes` path-object forms, variable-expanded rule path patterns,
+  `when: never`,
   `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
@@ -383,8 +384,8 @@ Implemented:
   payloads for official runner downloads
 - preserve declared needs order in official runner dependency payloads
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
-  including MVP `if`, `exists`, `changes`, `never`, `manual`, branch/tag, and
-  pipeline-source legacy filter behavior
+  including MVP `if` with unary negation, `exists`, `changes`, `never`,
+  `manual`, branch/tag, and pipeline-source legacy filter behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in

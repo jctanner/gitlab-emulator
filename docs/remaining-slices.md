@@ -6,8 +6,9 @@ execution, artifact metadata and expiry, cache fallback behavior, variable
 precedence and metadata, richer `rules` with rule variables and
 workflow variables, `allow_failure`, `when: always` and `when: on_failure`
 cleanup scheduling, grouped boolean `rules:if` expressions, regex non-match
-operators, null/empty variable comparisons, `exists`/`changes` path-object
-rules, variable-expanded rule path patterns, mapping-form `only`/`except`,
+operators, unary negation, null/empty variable comparisons,
+`exists`/`changes` path-object rules, variable-expanded rule path patterns,
+mapping-form `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters, cache
 list/file-derived keys, cache path/key/when variable expansion, richer `needs`,
 including clear rejection of unsupported `needs:parallel:matrix`, deeper

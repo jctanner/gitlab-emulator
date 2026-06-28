@@ -4274,6 +4274,12 @@ rules_if:
   rules:
     - if: '$DEPLOY_TARGET == "prod" && $CI_COMMIT_REF_NAME =~ /^main$/'
 
+rules_not:
+  script:
+    - echo not
+  rules:
+    - if: '!$SKIP_DEPLOY'
+
 rules_exists:
   script:
     - echo exists
@@ -4350,6 +4356,7 @@ never_job:
         "rules_changes",
         "rules_exists",
         "rules_if",
+        "rules_not",
     ]
     assert by_name["manual_review"]["status"] == "manual"
     assert by_name["rules_if"]["status"] == "pending"

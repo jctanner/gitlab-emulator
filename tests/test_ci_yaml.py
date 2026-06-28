@@ -505,6 +505,21 @@ regex_not_match_skip:
   rules:
     - if: '$CI_COMMIT_REF_NAME !~ /^release-/'
 
+negated_missing:
+  script: echo negated missing
+  rules:
+    - if: '!$OPTIONAL'
+
+negated_grouped:
+  script: echo negated grouped
+  rules:
+    - if: '!($NEVER || $OPTIONAL)'
+
+negated_skip:
+  script: echo negated skip
+  rules:
+    - if: '!$RUN_TRUTHY'
+
 and_or:
   script: echo and or
   rules:
@@ -540,6 +555,8 @@ skipped:
         "empty_match",
         "equals",
         "grouped",
+        "negated_grouped",
+        "negated_missing",
         "nested_grouped",
         "not_equals",
         "null_match",

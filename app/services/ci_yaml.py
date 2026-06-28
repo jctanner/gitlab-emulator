@@ -392,6 +392,8 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
     expression = expression.strip()
     if not expression:
         return False
+    if expression.startswith("!"):
+        return not _if_expression_matches(expression[1:].strip(), variables)
 
     match = re.fullmatch(
         r"(\$[A-Za-z_][A-Za-z0-9_]*)\s*(==|!=|=~|!~)\s*(.+)", expression

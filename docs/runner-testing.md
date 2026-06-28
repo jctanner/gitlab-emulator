@@ -464,8 +464,9 @@ successfully. Later normal pending jobs are skipped after an earlier required
 failure. Minimal `needs`, optional missing needs, missing required needs
 validation, `needs:artifacts`, common ref filters, rule-level variables,
 workflow variables, grouped `rules:if` boolean expressions, regex non-match
-operators, null/empty variable comparisons, `exists`/`changes` path-object rule
-parsing, variable-expanded rule path patterns, mapping-form `only`/`except`,
+operators, unary negation, null/empty variable comparisons,
+`exists`/`changes` path-object rule parsing, variable-expanded rule path
+patterns, mapping-form `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` filters, and `allow_failure`
 scheduling/status behavior are covered by local tests.
 Runner tag matching is also covered by local API tests. The smoke queue is

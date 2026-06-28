@@ -60,7 +60,7 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   after_script, artifacts, stage gating, needs, needs:artifacts, needs
   validation edge cases including clear rejection of unsupported
   `needs:parallel:matrix`, common ref filters, richer `rules` job selection with
-  grouped boolean `if` expressions, null/empty checks, and regex
+  grouped boolean `if` expressions, unary negation, null/empty checks, and regex
   match/non-match operators, `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, branch/tag/source-aware
   `only`/`except` filters including mapping forms, workflow/rule-level
