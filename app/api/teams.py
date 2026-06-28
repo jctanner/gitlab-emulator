@@ -9,6 +9,7 @@ from app.models.organization import Organization
 from app.models.team import Team, TeamMembership
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import OWNER, require_group_access
 
 router = APIRouter(tags=["teams"])
 
@@ -71,6 +72,7 @@ async def create_team(org: str, body: dict, user: AuthUser, db: DbSession):
     organisation = result.scalar_one_or_none()
     if organisation is None:
         raise HTTPException(status_code=404, detail="Not Found")
+    await require_group_access(organisation, user, db, OWNER)
 
     name = body.get("name")
     if not name:
@@ -126,6 +128,7 @@ async def update_team(team_id: int, body: dict, user: AuthUser, db: DbSession):
     team = result.scalar_one_or_none()
     if team is None:
         raise HTTPException(status_code=404, detail="Not Found")
+    await require_group_access(team.organization, user, db, OWNER)
 
     for key in ("name", "description", "privacy", "permission"):
         if key in body:
@@ -145,6 +148,7 @@ async def delete_team(team_id: int, user: AuthUser, db: DbSession):
     team = result.scalar_one_or_none()
     if team is None:
         raise HTTPException(status_code=404, detail="Not Found")
+    await require_group_access(team.organization, user, db, OWNER)
     await db.delete(team)
     await db.commit()
 

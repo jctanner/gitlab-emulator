@@ -97,6 +97,83 @@ async def test_update_org_requires_owner(client, db_session, test_user, test_tok
 
 
 @pytest.mark.asyncio
+async def test_org_repo_and_team_management_requires_owner(
+    client, db_session, test_user, test_token
+):
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "org-team-maintainer"
+    )
+    org = await client.post(
+        f"{API}/orgs",
+        json={"login": "org-team-gate"},
+        headers=auth_headers(test_token),
+    )
+    assert org.status_code == 201
+    member = await client.post(
+        f"{API}/groups/{org.json()['id']}/members",
+        json={"user_id": maintainer.id, "access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied_repo = await client.post(
+        f"{API}/orgs/org-team-gate/repos",
+        json={"name": "maintainer-denied"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied_repo.status_code == 403
+
+    repo = await client.post(
+        f"{API}/orgs/org-team-gate/repos",
+        json={"name": "owner-allowed"},
+        headers=auth_headers(test_token),
+    )
+    assert repo.status_code == 201
+
+    denied_team = await client.post(
+        f"{API}/orgs/org-team-gate/teams",
+        json={"name": "Maintainer Team"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied_team.status_code == 403
+
+    team = await client.post(
+        f"{API}/orgs/org-team-gate/teams",
+        json={"name": "Owner Team"},
+        headers=auth_headers(test_token),
+    )
+    assert team.status_code == 201
+    team_id = team.json()["id"]
+
+    denied_update = await client.patch(
+        f"{API}/teams/{team_id}",
+        json={"description": "denied"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied_update.status_code == 403
+
+    updated = await client.patch(
+        f"{API}/teams/{team_id}",
+        json={"description": "allowed"},
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["description"] == "allowed"
+
+    denied_delete = await client.delete(
+        f"{API}/teams/{team_id}",
+        headers=auth_headers(maintainer_token),
+    )
+    assert denied_delete.status_code == 403
+
+    deleted = await client.delete(
+        f"{API}/teams/{team_id}",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
 async def test_duplicate_org(client, test_user, test_token):
     """Creating duplicate org returns 422."""
     await client.post(

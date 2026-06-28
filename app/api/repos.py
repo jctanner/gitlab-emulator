@@ -14,7 +14,7 @@ from app.models.repository import Repository
 from app.models.user import User
 from app.models.organization import Organization
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
-from app.services.permissions import OWNER, require_project_access
+from app.services.permissions import OWNER, require_group_access, require_project_access
 
 router = APIRouter(tags=["repos"])
 
@@ -405,6 +405,7 @@ async def create_org_repo(
     organisation = result.scalar_one_or_none()
     if organisation is None:
         raise HTTPException(status_code=404, detail="Organization not found")
+    await require_group_access(organisation, user, db, OWNER)
 
     name = body.get("name")
     if not name:
