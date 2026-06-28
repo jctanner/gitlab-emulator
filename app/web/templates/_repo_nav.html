@@ -33,8 +33,11 @@
             {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'members' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/members">Members</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'labels' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/labels">Labels</a>
             {% else %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Members</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Labels</span>
             {% endif %}
         </div>
         <div class="gl-sidebar-group">
@@ -51,7 +54,12 @@
                 {% endif %}
             </a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Issue boards</span>
+            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'milestones' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/milestones">Milestones</a>
+            {% else %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Milestones</span>
+            {% endif %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Wiki</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Requirements</span>
         </div>

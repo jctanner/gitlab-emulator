@@ -39,6 +39,8 @@ from app.git.bare_repo import (
 from app.models.comment import IssueComment
 from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
 from app.models.issue import Issue
+from app.models.label import Label
+from app.models.milestone import Milestone
 from app.models.organization import Organization
 from app.models.pull_request import PullRequest
 from app.models.repository import Collaborator, Repository
@@ -165,6 +167,25 @@ def _normalize_access_level(value: str | int | None) -> int:
     if access_level not in _MEMBER_ACCESS_LEVELS:
         raise ValueError("Access level must be Guest, Reporter, Developer, Maintainer, or Owner.")
     return access_level
+
+
+def _label_color(value: str | None) -> str:
+    raw = (value or "6699cc").strip()
+    if raw.startswith("#"):
+        raw = raw[1:]
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", raw):
+        raise ValueError("Label color must be a six-digit hex color.")
+    return raw.lower()
+
+
+def _parse_date_input(value: str | None) -> datetime | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError("Due date must be YYYY-MM-DD.") from exc
 
 
 async def _managed_repo_or_response(
@@ -1320,6 +1341,343 @@ async def repo_member_delete(
         await db.commit()
     return RedirectResponse(
         url=f"{redirect}?message={urlencode({'x': 'Member removed.'})[2:]}",
+        status_code=302,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repository labels and milestones
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/labels", response_class=HTMLResponse)
+async def repo_labels_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project labels."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    labels = (
+        await db.execute(
+            select(Label).where(Label.repo_id == repo.id).order_by(Label.name.asc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_labels.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            labels=labels,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/labels", response_class=HTMLResponse)
+async def repo_label_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    name: str = Form(...),
+    color: str = Form("6699cc"),
+    description: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project label from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/labels"
+    try:
+        label_name = name.strip()
+        if not label_name:
+            raise ValueError("Label name is required.")
+        label = Label(
+            repo_id=repo.id,
+            name=label_name,
+            color=_label_color(color),
+            description=description.strip() or None,
+        )
+        db.add(label)
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Label already exists." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': message})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Label created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/labels/{label_id}/update", response_class=HTMLResponse)
+async def repo_label_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    label_id: int,
+    name: str = Form(...),
+    color: str = Form("6699cc"),
+    description: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project label from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/labels"
+    label = (
+        await db.execute(
+            select(Label).where(Label.id == label_id, Label.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if label is None:
+        return RedirectResponse(url=f"{redirect}?error=Label%20not%20found.", status_code=302)
+    try:
+        label_name = name.strip()
+        if not label_name:
+            raise ValueError("Label name is required.")
+        label.name = label_name
+        label.color = _label_color(color)
+        label.description = description.strip() or None
+        await db.commit()
+    except (ValueError, IntegrityError) as exc:
+        await db.rollback()
+        message = "Label already exists." if isinstance(exc, IntegrityError) else str(exc)
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': message})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Label updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/labels/{label_id}/delete", response_class=HTMLResponse)
+async def repo_label_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    label_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project label from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    label = (
+        await db.execute(
+            select(Label).where(Label.id == label_id, Label.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if label is not None:
+        await db.delete(label)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/labels?message={urlencode({'x': 'Label deleted.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.get("/{owner}/{repo_name}/-/milestones", response_class=HTMLResponse)
+async def repo_milestones_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project milestones."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    milestones = (
+        await db.execute(
+            select(Milestone)
+            .where(Milestone.repo_id == repo.id)
+            .order_by(Milestone.number.asc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_milestones.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            milestones=milestones,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/milestones", response_class=HTMLResponse)
+async def repo_milestone_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    title: str = Form(...),
+    description: str = Form(""),
+    state: str = Form("open"),
+    due_on: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project milestone from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/milestones"
+    try:
+        milestone_title = title.strip()
+        if not milestone_title:
+            raise ValueError("Milestone title is required.")
+        if state not in {"open", "closed"}:
+            raise ValueError("Milestone state must be open or closed.")
+        next_number = (
+            await db.execute(
+                select(func.coalesce(func.max(Milestone.number), 0)).where(
+                    Milestone.repo_id == repo.id
+                )
+            )
+        ).scalar() + 1
+        closed_at = datetime.now(timezone.utc) if state == "closed" else None
+        milestone = Milestone(
+            repo_id=repo.id,
+            number=next_number,
+            title=milestone_title,
+            description=description.strip() or None,
+            state=state,
+            due_on=_parse_date_input(due_on),
+            closed_at=closed_at,
+        )
+        db.add(milestone)
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Milestone created.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/milestones/{milestone_id}/update", response_class=HTMLResponse)
+async def repo_milestone_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    milestone_id: int,
+    title: str = Form(...),
+    description: str = Form(""),
+    state: str = Form("open"),
+    due_on: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a project milestone from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/milestones"
+    milestone = (
+        await db.execute(
+            select(Milestone).where(
+                Milestone.id == milestone_id,
+                Milestone.repo_id == repo.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if milestone is None:
+        return RedirectResponse(url=f"{redirect}?error=Milestone%20not%20found.", status_code=302)
+    try:
+        milestone_title = title.strip()
+        if not milestone_title:
+            raise ValueError("Milestone title is required.")
+        if state not in {"open", "closed"}:
+            raise ValueError("Milestone state must be open or closed.")
+        old_state = milestone.state
+        milestone.title = milestone_title
+        milestone.description = description.strip() or None
+        milestone.state = state
+        milestone.due_on = _parse_date_input(due_on)
+        if state == "closed" and old_state != "closed":
+            milestone.closed_at = datetime.now(timezone.utc)
+        elif state == "open":
+            milestone.closed_at = None
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Milestone updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/milestones/{milestone_id}/delete", response_class=HTMLResponse)
+async def repo_milestone_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project milestone from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    milestone = (
+        await db.execute(
+            select(Milestone).where(
+                Milestone.id == milestone_id,
+                Milestone.repo_id == repo.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if milestone is not None:
+        await db.delete(milestone)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/milestones?message={urlencode({'x': 'Milestone deleted.'})[2:]}",
         status_code=302,
     )
 

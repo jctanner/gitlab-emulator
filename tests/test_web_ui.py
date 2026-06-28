@@ -457,6 +457,113 @@ async def test_ui_project_members_management(client, db_session, test_user):
 
 
 @pytest.mark.asyncio
+async def test_ui_project_labels_and_milestones_management(client, test_user):
+    """The project UI can create, update, and delete labels and milestones."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-plan-metadata", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    labels_page = await client.get("/ui/testuser/ui-plan-metadata/-/labels")
+    assert labels_page.status_code == 200
+    assert "Labels" in labels_page.text
+    assert "Add label" in labels_page.text
+    assert 'href="/ui/testuser/ui-plan-metadata/-/labels">Labels</a>' in labels_page.text
+
+    create_label = await client.post(
+        "/ui/testuser/ui-plan-metadata/-/labels",
+        data={
+            "name": "bug",
+            "color": "cc0000",
+            "description": "Something is broken",
+        },
+        follow_redirects=False,
+    )
+    assert create_label.status_code in (302, 303)
+    labels_page = await client.get("/ui/testuser/ui-plan-metadata/-/labels")
+    assert "bug" in labels_page.text
+    assert "Something is broken" in labels_page.text
+    assert "cc0000" in labels_page.text
+
+    update_label = await client.post(
+        "/ui/testuser/ui-plan-metadata/-/labels/1/update",
+        data={
+            "name": "defect",
+            "color": "0052cc",
+            "description": "Confirmed defect",
+        },
+        follow_redirects=False,
+    )
+    assert update_label.status_code in (302, 303)
+    labels_page = await client.get("/ui/testuser/ui-plan-metadata/-/labels")
+    assert "defect" in labels_page.text
+    assert "Confirmed defect" in labels_page.text
+    assert "0052cc" in labels_page.text
+    assert "Something is broken" not in labels_page.text
+
+    milestones_page = await client.get("/ui/testuser/ui-plan-metadata/-/milestones")
+    assert milestones_page.status_code == 200
+    assert "Milestones" in milestones_page.text
+    assert "Add milestone" in milestones_page.text
+    assert (
+        'href="/ui/testuser/ui-plan-metadata/-/milestones">Milestones</a>'
+        in milestones_page.text
+    )
+
+    create_milestone = await client.post(
+        "/ui/testuser/ui-plan-metadata/-/milestones",
+        data={
+            "title": "v1.0",
+            "description": "First release",
+            "state": "open",
+            "due_on": "2026-07-31",
+        },
+        follow_redirects=False,
+    )
+    assert create_milestone.status_code in (302, 303)
+    milestones_page = await client.get("/ui/testuser/ui-plan-metadata/-/milestones")
+    assert "#1 v1.0" in milestones_page.text
+    assert "Due 2026-07-31" in milestones_page.text
+    assert "First release" in milestones_page.text
+
+    update_milestone = await client.post(
+        "/ui/testuser/ui-plan-metadata/-/milestones/1/update",
+        data={
+            "title": "v1.0 shipped",
+            "description": "Released",
+            "state": "closed",
+            "due_on": "2026-08-01",
+        },
+        follow_redirects=False,
+    )
+    assert update_milestone.status_code in (302, 303)
+    milestones_page = await client.get("/ui/testuser/ui-plan-metadata/-/milestones")
+    assert "v1.0 shipped" in milestones_page.text
+    assert "Closed" in milestones_page.text
+    assert "Due 2026-08-01" in milestones_page.text
+
+    delete_label = await client.post(
+        "/ui/testuser/ui-plan-metadata/-/labels/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_label.status_code in (302, 303)
+    labels_page = await client.get("/ui/testuser/ui-plan-metadata/-/labels")
+    assert "No labels yet." in labels_page.text
+
+    delete_milestone = await client.post(
+        "/ui/testuser/ui-plan-metadata/-/milestones/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_milestone.status_code in (302, 303)
+    milestones_page = await client.get("/ui/testuser/ui-plan-metadata/-/milestones")
+    assert "No milestones yet." in milestones_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_repo_pipeline_and_job_interface(client, test_user):
     """The web UI can create repository pipelines and inspect job runs."""
     _ui_session(client, test_user.login)

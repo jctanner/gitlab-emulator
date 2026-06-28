@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Milestones - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "milestones" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Milestones</div>
+    <div class="Subhead-description">Plan work across issues and merge requests.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Add milestone</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/milestones">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Title<br><input class="form-control" name="title" required></label>
+                <label>Due date<br><input class="form-control" type="date" name="due_on"></label>
+                <label>State<br>
+                    <select class="form-select" name="state">
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </label>
+                <label>Description<br><input class="form-control" name="description"></label>
+                <button class="btn btn-primary" type="submit">Add milestone</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project milestones</h3></div>
+    {% if milestones %}
+    {% for milestone in milestones %}
+    <div class="Box-row">
+        <div class="d-flex flex-justify-between flex-wrap" style="gap:12px;">
+            <div>
+                <div class="text-bold">#{{ milestone.number }} {{ milestone.title }}</div>
+                <div class="color-fg-muted">
+                    {{ milestone.state|capitalize }}
+                    {% if milestone.due_on %} · Due {{ milestone.due_on.date().isoformat() }}{% endif %}
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/milestones/{{ milestone.id }}/update" class="mt-2">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Title<br><input class="form-control" name="title" value="{{ milestone.title }}" required></label>
+                <label>Due date<br><input class="form-control" type="date" name="due_on" value="{{ milestone.due_on.date().isoformat() if milestone.due_on else '' }}"></label>
+                <label>State<br>
+                    <select class="form-select" name="state">
+                        <option value="open" {% if milestone.state == "open" %}selected{% endif %}>Open</option>
+                        <option value="closed" {% if milestone.state == "closed" %}selected{% endif %}>Closed</option>
+                    </select>
+                </label>
+                <label>Description<br><input class="form-control" name="description" value="{{ milestone.description or '' }}"></label>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+        </form>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/milestones/{{ milestone.id }}/delete" class="mt-2"
+              onsubmit="return confirm('Delete milestone {{ milestone.title }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No milestones yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Labels - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "labels" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Labels</div>
+    <div class="Subhead-description">Create labels for issues and merge requests.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Add label</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/labels">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Name<br><input class="form-control" name="name" required></label>
+                <label>Color<br><input class="form-control" name="color" value="6699cc" pattern="#?[0-9A-Fa-f]{6}"></label>
+                <label>Description<br><input class="form-control" name="description"></label>
+                <button class="btn btn-primary" type="submit">Add label</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project labels</h3></div>
+    {% if labels %}
+    {% for label in labels %}
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/labels/{{ label.id }}/update">
+            <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
+                <span class="Label" style="background:#{{ label.color }}; color:#fff;">{{ label.name }}</span>
+                <label>Name<br><input class="form-control" name="name" value="{{ label.name }}" required></label>
+                <label>Color<br><input class="form-control" name="color" value="{{ label.color }}" pattern="#?[0-9A-Fa-f]{6}"></label>
+                <label>Description<br><input class="form-control" name="description" value="{{ label.description or '' }}"></label>
+                <button class="btn btn-sm" type="submit">Update</button>
+            </div>
+        </form>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/labels/{{ label.id }}/delete" class="mt-2"
+              onsubmit="return confirm('Delete label {{ label.name }}?');">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No labels yet.</div>
+    {% endif %}
+</div>
+{% endblock %}
