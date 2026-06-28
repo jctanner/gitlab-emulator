@@ -235,6 +235,25 @@ def _parse_schedule_variables(value: str | None) -> list[dict[str, str]]:
     return variables
 
 
+def _schedule_variables_from_form(
+    variables_text: str | None,
+    variable_key: str | None = None,
+    variable_value: str | None = None,
+    variable_type: str | None = None,
+) -> list[dict[str, str]]:
+    variables = _parse_schedule_variables(variables_text)
+    key = (variable_key or "").strip()
+    if key:
+        item = {
+            "key": _validate_ci_key(key, "Variable key"),
+            "value": variable_value or "",
+        }
+        if variable_type and variable_type != "variable":
+            item["variable_type"] = variable_type
+        variables.append(item)
+    return variables
+
+
 def _schedule_variables_text(variables: list | None) -> str:
     lines = []
     for variable in variables or []:
@@ -2238,6 +2257,9 @@ async def repo_pipeline_schedule_create(
     cron_timezone: str = Form("UTC"),
     active: str = Form(""),
     variables_text: str = Form(""),
+    variable_type: str = Form("variable"),
+    variable_key: str = Form(""),
+    variable_value: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a project pipeline schedule."""
@@ -2255,7 +2277,9 @@ async def repo_pipeline_schedule_create(
             cron=cron.strip() or "0 0 * * *",
             cron_timezone=cron_timezone.strip() or "UTC",
             active=_bool_form(active),
-            variables=_parse_schedule_variables(variables_text),
+            variables=_schedule_variables_from_form(
+                variables_text, variable_key, variable_value, variable_type
+            ),
             owner_id=current_user.id if current_user else repo.owner_id,
         )
         db.add(schedule)
@@ -2284,6 +2308,9 @@ async def repo_pipeline_schedule_update(
     cron_timezone: str = Form("UTC"),
     active: str = Form(""),
     variables_text: str = Form(""),
+    variable_type: str = Form("variable"),
+    variable_key: str = Form(""),
+    variable_value: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a project pipeline schedule."""
@@ -2309,7 +2336,9 @@ async def repo_pipeline_schedule_update(
         schedule.cron = cron.strip() or "0 0 * * *"
         schedule.cron_timezone = cron_timezone.strip() or "UTC"
         schedule.active = _bool_form(active)
-        schedule.variables = _parse_schedule_variables(variables_text)
+        schedule.variables = _schedule_variables_from_form(
+            variables_text, variable_key, variable_value, variable_type
+        )
         await db.commit()
     except ValueError as exc:
         await db.rollback()

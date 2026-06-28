@@ -922,8 +922,14 @@ api_probe:
 
     schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
     assert schedules_page.status_code == 200
-    assert "Pipeline schedules" in schedules_page.text
-    assert "Create schedule" in schedules_page.text
+    assert "Schedule a new pipeline" in schedules_page.text
+    assert "Cron timezone" in schedules_page.text
+    assert "Interval Pattern" in schedules_page.text
+    assert "Every day (at 7:57am)" in schedules_page.text
+    assert "Select target branch or tag" in schedules_page.text
+    assert "Inputs" in schedules_page.text
+    assert "Variable type" in schedules_page.text
+    assert "Create pipeline schedule" in schedules_page.text
     assert (
         'href="/ui/testuser/ui-schedules/-/pipeline_schedules">Pipeline schedules</a>'
         in schedules_page.text
@@ -937,7 +943,9 @@ api_probe:
             "cron": "0 3 * * *",
             "cron_timezone": "UTC",
             "active": "1",
-            "variables_text": "SCHEDULE_VAR=from-ui\n",
+            "variable_type": "variable",
+            "variable_key": "SCHEDULE_VAR",
+            "variable_value": "from-ui",
         },
         follow_redirects=False,
     )
@@ -961,6 +969,7 @@ api_probe:
             "cron": "30 4 * * 1",
             "cron_timezone": "America/New_York",
             "variables_text": "SCHEDULE_VAR=rotated\n",
+            "variable_type": "variable",
         },
         follow_redirects=False,
     )

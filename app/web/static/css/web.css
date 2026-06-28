@@ -858,6 +858,61 @@ td.blob-code {
     margin-left: auto;
 }
 
+/* ---- Pipeline schedules ---- */
+.gl-breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--gl-text-muted);
+    font-size: 13px;
+}
+.gl-breadcrumbs a {
+    color: var(--gl-text-muted);
+}
+.pipeline-schedule-form {
+    max-width: 1020px;
+}
+.pipeline-schedule-form .input-block {
+    width: 100%;
+    max-width: 720px;
+}
+.schedule-inputs-placeholder {
+    max-width: 1020px;
+    padding: 12px;
+    background: #ececef;
+    border-radius: 6px;
+}
+.schedule-inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px 22px;
+    padding: 8px;
+    background: #ffffff;
+    border-radius: 6px;
+}
+.schedule-inputs-grid span {
+    display: block;
+    height: 16px;
+    border-radius: 4px;
+    background: #d8d8dc;
+}
+.schedule-variable-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 255px) minmax(220px, 1fr) minmax(260px, 1.9fr);
+    gap: 10px;
+    max-width: 1020px;
+    align-items: end;
+}
+.schedule-variable-row .input-block {
+    max-width: none;
+}
+@media (max-width: 760px) {
+    .schedule-inputs-grid,
+    .schedule-variable-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ---- Work items split view ---- */
 .work-items-shell {
     display: grid;
