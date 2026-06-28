@@ -41,6 +41,8 @@ Already working:
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
   `when: never`,
   `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
+  Unsupported delayed jobs using `when: delayed` or `start_in` are rejected
+  clearly because delayed scheduling is not modeled.
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
   variables. Boolean `allow_failure` is supported for jobs and rules, while
@@ -386,8 +388,9 @@ Implemented:
 - preserve declared needs order in official runner dependency payloads
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
   including MVP `if` with unary negation, `exists`, `changes`, `never`,
-  `manual`, boolean `allow_failure`, branch/tag, and pipeline-source legacy
-  filter behavior
+  `manual`, `when: always`, `when: on_failure`, boolean `allow_failure`,
+  clear delayed-job rejection, branch/tag, and pipeline-source legacy filter
+  behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in

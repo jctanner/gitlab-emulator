@@ -38,6 +38,7 @@ MAX_EXTENDS_DEPTH = 11
 UNSUPPORTED_JOB_KEYS = {
     "parallel": "parallel job expansion is not supported",
     "services": "service containers are not supported",
+    "start_in": "delayed jobs are not supported",
     "trigger": "bridge/downstream pipeline trigger jobs are not supported",
 }
 
@@ -372,6 +373,13 @@ def _allow_failure_setting(value: Any) -> bool:
     return bool(value)
 
 
+def _when_setting(value: Any) -> str:
+    when = str(value or "on_success")
+    if when == "delayed":
+        raise ValueError("when delayed is not supported")
+    return when
+
+
 def _unquote(value: str) -> str:
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
@@ -586,7 +594,7 @@ def _job_rule_decision(
                 rule.get("changes"), changed_paths, variables
             ):
                 continue
-            when = str(rule.get("when") or "on_success")
+            when = _when_setting(rule.get("when"))
             rule_variables = _variable_entries(rule.get("variables"))
             allow_failure = rule.get("allow_failure")
             return _RuleDecision(
@@ -611,7 +619,7 @@ def _job_rule_decision(
     ):
         return _RuleDecision(included=False)
 
-    when = str(config.get("when") or "on_success")
+    when = _when_setting(config.get("when"))
     return _RuleDecision(included=when != "never", when=when)
 
 

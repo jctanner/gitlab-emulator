@@ -747,6 +747,34 @@ manual_job:
     assert jobs[0].allow_failure is True
 
 
+def test_parse_gitlab_ci_rejects_delayed_jobs():
+    for content in [
+        """
+delayed_job:
+  script: echo delayed
+  when: delayed
+""",
+        """
+delayed_job:
+  script: echo delayed
+  rules:
+    - when: delayed
+""",
+        """
+delayed_job:
+  script: echo delayed
+  start_in: 10 minutes
+""",
+    ]:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            message = str(exc)
+            assert "delayed" in message or "start_in" in message
+        else:
+            raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_applies_rule_variables_and_allow_failure():
     jobs = parse_gitlab_ci(
         """

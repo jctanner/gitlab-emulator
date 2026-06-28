@@ -67,7 +67,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   variables, boolean `allow_failure` scheduling/status behavior with clear
   rejection of unsupported `allow_failure:exit_codes`,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
-  metadata with list and file-derived keys, variable-expanded paths, keys,
+  metadata with clear rejection of unsupported delayed jobs, list and
+  file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, deeper `extends` semantics, nested local
   `include`, `include:project`, list-valued controlled `include:remote`, and
   list-valued built-in template includes.
@@ -184,8 +185,8 @@ Target areas:
 
 - deeper `rules` behavior beyond the current MVP expression grouping, exists,
   changes, exists/changes path-object, variable-expanded rule paths,
-  mapping-form `only`/`except`, never, manual, rule-variable, and
-  remaining `allow_failure` edge cases
+  mapping-form `only`/`except`, rule-variable, and remaining delayed/manual
+  scheduling edge cases
 - remaining richer cache policy/options beyond list and file-derived keys,
   variable-expanded paths, keys, policies, `when`, and fallback keys
 

@@ -6,8 +6,9 @@ execution, artifact metadata and expiry, cache fallback behavior, variable
 precedence and metadata, richer `rules` with rule variables and
 workflow variables, boolean `allow_failure` plus clear unsupported
 `allow_failure:exit_codes` rejection, `when: always` and `when: on_failure`
-cleanup scheduling, grouped boolean `rules:if` expressions, regex non-match
-operators, unary negation, null/empty variable comparisons,
+cleanup scheduling, clear unsupported delayed-job rejection, grouped boolean
+`rules:if` expressions, regex non-match operators, unary negation,
+null/empty variable comparisons,
 `exists`/`changes` path-object rules, variable-expanded rule path patterns,
 mapping-form `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters, cache

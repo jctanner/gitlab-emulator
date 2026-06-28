@@ -58,8 +58,9 @@ harness architecture.
   `changes`, `when: never`, `when: always`, `when: on_failure`, persisted
   non-runnable `manual` jobs, boolean `allow_failure`, and matched
   workflow-level variables. Unsupported `allow_failure:exit_codes` is rejected
-  clearly instead of being treated as unconditional allow-failure. Legacy
-  `only`/`except` filters are
+  clearly instead of being treated as unconditional allow-failure, and
+  unsupported delayed jobs are rejected clearly instead of running
+  immediately. Legacy `only`/`except` filters are
   branch/tag/source-aware, and tag-ref pipelines expose `CI_COMMIT_TAG` while
   branch-ref pipelines expose `CI_COMMIT_BRANCH`.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a
