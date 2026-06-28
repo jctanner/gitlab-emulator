@@ -526,6 +526,93 @@ async def test_graphql_pull_request_diff_stats(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_pull_request_commits(client, test_user, test_token):
+    """Pull request commits connection reflects commits between base and head."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-pr-commits", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    first_file = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/feature.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "add feature file",
+            "content": "one\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert first_file.status_code == 201
+
+    second_file = await client.put(
+        f"{API}/projects/{project['id']}/repository/files/feature.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "update feature file",
+            "content": "one\ntwo\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert second_file.status_code == 200
+
+    mr_resp = await client.post(
+        f"{API}/projects/{project['id']}/merge_requests",
+        json={
+            "title": "Commit list MR",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert mr_resp.status_code == 201
+    iid = mr_resp.json()["iid"]
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                query($number: Int!) {
+                  repository(owner: "testuser", name: "gql-pr-commits") {
+                    pullRequest(number: $number) {
+                      commits(first: 10) {
+                        totalCount
+                        nodes {
+                          oid
+                          message
+                        }
+                      }
+                    }
+                  }
+                }
+            """,
+            "variables": {"number": iid},
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    commits = data["data"]["repository"]["pullRequest"]["commits"]
+    assert commits["totalCount"] == 2
+    assert [node["message"] for node in commits["nodes"]] == [
+        "add feature file",
+        "update feature file",
+    ]
+    assert all(len(node["oid"]) == 40 for node in commits["nodes"])
+
+
+@pytest.mark.asyncio
 async def test_graphql_pull_request_review_decision(client, test_user, test_token):
     """Pull request reviewDecision is derived from active submitted reviews."""
     project_resp = await client.post(

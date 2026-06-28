@@ -131,6 +131,35 @@ async def _pull_request_diff_stats(
     return additions, deletions, changed_files
 
 
+async def _pull_request_commits(
+    info: Info, repo_id: int, base_sha: str, head_sha: str
+) -> list[Commit]:
+    if not repo_id or not base_sha or not head_sha:
+        return []
+
+    from app.models.repository import Repository as RepoModel
+
+    db = info.context["db"]
+    result = await db.execute(select(RepoModel).where(RepoModel.id == repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo or not repo.disk_path or not os.path.isdir(repo.disk_path):
+        return []
+
+    lines = await _git_lines(
+        repo.disk_path,
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        f"{base_sha}..{head_sha}",
+    )
+    commits: list[Commit] = []
+    for line in lines:
+        oid, _, message = line.partition("\x00")
+        if oid:
+            commits.append(Commit(oid=oid, message=message))
+    return commits
+
+
 @strawberry.type
 class PullRequest:
     """A GitLab pull request."""
@@ -432,18 +461,10 @@ class PullRequest:
         last: Optional[int] = None,
         before: Optional[str] = None,
     ) -> Connection[Commit]:
-        """Return a connection of commits. Currently returns the head SHA as a
-        single commit since the emulator does not track individual commits in
-        the database."""
-        from app.models.pull_request import PullRequest as PRModel
-        db = info.context["db"]
-        result = await db.execute(
-            select(PRModel).where(PRModel.id == self._pr_id)
+        """Return commits introduced by the pull request branch."""
+        commits = await _pull_request_commits(
+            info, self._repo_id, self._base_sha, self._head_sha
         )
-        pr = result.scalar_one_or_none()
-        commits = []
-        if pr:
-            commits = [Commit(oid=pr.head_sha, message="")]
         return build_connection(
             commits, lambda c: c, len(commits),
             first=first, after=after, last=last, before=before,

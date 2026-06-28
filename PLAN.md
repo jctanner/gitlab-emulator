@@ -311,8 +311,9 @@ Done when:
   Repository `latestRelease` resolves real release metadata, and repository
   issue connections support `filterBy.mentioned` for issue bodies and comments,
   while pull request `reviewDecision` reflects active approvals and change
-  requests and pull request diff stat fields resolve from git diffs. The broader
-  schema remains an incremental parity area.
+  requests, pull request diff stat fields resolve from git diffs, and pull
+  request commit connections list the actual commits between base and head. The
+  broader schema remains an incremental parity area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI
