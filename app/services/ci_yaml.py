@@ -374,6 +374,62 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
     return False
 
 
+def _split_top_level_expression(expression: str, operator: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    index = 0
+    while index < len(expression):
+        char = expression[index]
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth > 0:
+            depth -= 1
+        elif depth == 0 and expression.startswith(operator, index):
+            parts.append(expression[start:index].strip())
+            index += len(operator)
+            start = index
+            continue
+        index += 1
+    parts.append(expression[start:].strip())
+    return parts
+
+
+def _strip_wrapping_parentheses(expression: str) -> str:
+    expression = expression.strip()
+    while expression.startswith("(") and expression.endswith(")"):
+        depth = 0
+        wraps_entire_expression = True
+        for index, char in enumerate(expression):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0 and index != len(expression) - 1:
+                    wraps_entire_expression = False
+                    break
+        if not wraps_entire_expression:
+            break
+        expression = expression[1:-1].strip()
+    return expression
+
+
+def _if_expression_matches(expression: str, variables: dict[str, str]) -> bool:
+    expression = _strip_wrapping_parentheses(expression)
+    if not expression:
+        return False
+
+    or_terms = _split_top_level_expression(expression, "||")
+    if len(or_terms) > 1:
+        return any(_if_expression_matches(term, variables) for term in or_terms)
+
+    and_terms = _split_top_level_expression(expression, "&&")
+    if len(and_terms) > 1:
+        return all(_if_expression_matches(term, variables) for term in and_terms)
+
+    return _if_atom_matches(expression, variables)
+
+
 def _if_matches(expression: Any, ref: str, variables: dict[str, str]) -> bool:
     if not isinstance(expression, str):
         return True
@@ -382,14 +438,7 @@ def _if_matches(expression: Any, ref: str, variables: dict[str, str]) -> bool:
         "CI_COMMIT_REF_NAME": ref,
         **variables,
     }
-    or_terms = re.split(r"\s+\|\|\s+", expression.strip())
-    return any(
-        all(
-            _if_atom_matches(and_term, context)
-            for and_term in re.split(r"\s+&&\s+", or_term.strip())
-        )
-        for or_term in or_terms
-    )
+    return _if_expression_matches(expression, context)
 
 
 def _path_matches(pattern: str, paths: set[str]) -> bool:

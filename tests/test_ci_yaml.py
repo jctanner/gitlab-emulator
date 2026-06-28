@@ -411,6 +411,21 @@ and_or:
   rules:
     - if: '$TARGET == "prod" && $RUN_TRUTHY || $NEVER'
 
+grouped:
+  script: echo grouped
+  rules:
+    - if: '($TARGET == "prod" || $TARGET == "stage") && $RUN_TRUTHY'
+
+nested_grouped:
+  script: echo nested grouped
+  rules:
+    - if: '$RUN_TRUTHY && ($TARGET == "prod" || ($TARGET == "stage" && $NEVER))'
+
+grouped_skip:
+  script: echo grouped skip
+  rules:
+    - if: '($TARGET == "dev" || $NEVER) && $RUN_TRUTHY'
+
 skipped:
   script: echo skipped
   rules:
@@ -424,6 +439,8 @@ skipped:
     assert [job.name for job in jobs] == [
         "and_or",
         "equals",
+        "grouped",
+        "nested_grouped",
         "not_equals",
         "regex",
         "truthy",

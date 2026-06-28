@@ -58,10 +58,11 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   using CI job tokens.
 - Minimal CI support exists for stages, image, variables, before_script, script,
   after_script, artifacts, stage gating, needs, needs:artifacts, needs
-  validation edge cases, common ref filters, richer `rules` job selection,
-  `exists`/`changes` path-object rules, variable-expanded rule path patterns,
-  mapping-form `only`/`except` filters, rule-level variables, `allow_failure`
-  scheduling/status behavior, runner tags, cache metadata with
+  validation edge cases, common ref filters, richer `rules` job selection with
+  grouped boolean `if` expressions, `exists`/`changes` path-object rules,
+  variable-expanded rule path patterns, mapping-form `only`/`except` filters,
+  rule-level variables, `allow_failure` scheduling/status behavior, runner
+  tags, cache metadata with
   variable-expanded keys/policies/fallback keys, deeper `extends` semantics,
   nested local `include`, `include:project`, controlled `include:remote`, and a
   small set of built-in template includes.
@@ -178,9 +179,10 @@ behavior.
 
 Target areas:
 
-- deeper `rules` behavior beyond the current MVP expression, exists, changes,
-  exists/changes path-object, variable-expanded rule paths, mapping-form
-  `only`/`except`, never, manual, rule-variable, and `allow_failure` support
+- deeper `rules` behavior beyond the current MVP expression grouping, exists,
+  changes, exists/changes path-object, variable-expanded rule paths,
+  mapping-form `only`/`except`, never, manual, rule-variable, and
+  `allow_failure` support
 - remaining richer cache policy/options beyond variable-expanded keys,
   policies, and fallback keys
 

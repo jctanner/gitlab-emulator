@@ -33,9 +33,10 @@ Already working:
   rejected early, `needs:artifacts` dependencies follow declared needs order,
   and pipeline creation applies `rules`, `only`, and `except` filters. Current
   `rules` support covers common `if` expressions, regex, simple boolean
-  operators, `exists`, commit-local `changes`, `exists`/`changes` path-object
-  forms, variable-expanded rule path patterns, `when: never`, and persisted
-  non-runnable `manual` jobs. Current `only`/`except` support covers
+  operators with grouped parentheses, `exists`, commit-local `changes`,
+  `exists`/`changes` path-object forms, variable-expanded rule path patterns,
+  `when: never`, and persisted non-runnable `manual` jobs. Current
+  `only`/`except` support covers
   scalar/list refs plus mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
   matching runner tags, and untagged jobs honor the runner's `run_untagged`
