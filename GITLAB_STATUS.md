@@ -263,8 +263,8 @@ harness architecture.
 
 ## Suggested First Vertical Slice
 
-1. Add deeper project compatibility, including richer group/subgroup namespace
-   semantics beyond the current organization-backed group namespace adapter.
+1. Add deeper project and `glab` compatibility beyond the current implemented
+   GitLab-shaped REST surfaces.
 2. Add richer `.gitlab-ci.yml` semantics and deeper pipeline event behavior.
 3. Add integration tests that exercise the above through raw HTTP, `git`, and
    an official `gitlab-runner` smoke test.

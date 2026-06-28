@@ -173,8 +173,6 @@ Implemented:
 Still needed:
 
 - deeper `glab` compatibility checks
-- richer group/subgroup namespace semantics beyond the current single-level
-  organization-backed group namespace
 
 ### 2. CI Semantics Hardening
 
@@ -234,8 +232,8 @@ and tests with GitLab behavior.
 Target resource areas:
 
 - users
-- groups: MVP create/list/get/list-projects and nested namespace paths
-  implemented
+- groups: MVP create/list/get/list-projects, list-subgroups,
+  list-descendant-groups, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/
   list-user-projects implemented
 - issues: MVP project list/create/get/update implemented; response tests assert

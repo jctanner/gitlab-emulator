@@ -152,8 +152,9 @@ Status: implemented.
 - Group list supports common filters and sorting such as `top_level_only`,
   `skip_groups`, `owned`, `min_access_level`, `all_available`, `order_by`, and
   `sort`.
-- Nested groups preserve parent metadata, resolve URL-encoded full paths, and
-  support project ownership/listing under nested namespaces.
+- Nested groups preserve parent metadata, resolve URL-encoded full paths,
+  support project ownership/listing under nested namespaces, and expose
+  GitLab-shaped direct subgroup and descendant group listing endpoints.
 - Group members support `/members/all`, query/pagination edge cases, and
   duplicate-member conflict handling.
 - Focused tests cover numeric IDs, full paths, nested paths, member queries,

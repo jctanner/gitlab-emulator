@@ -314,6 +314,47 @@ def _ordered_groups_query(query: Select, order_by: str, sort: str) -> Select:
     return query.order_by(direction, Group.id.asc())
 
 
+def _sort_group_rows(groups: list[Group], order_by: str, sort: str) -> list[Group]:
+    key_functions = {
+        "id": lambda group: group.id,
+        "name": lambda group: group.name or group.login,
+        "path": lambda group: group.login,
+        "created_at": lambda group: group.created_at,
+        "updated_at": lambda group: group.updated_at,
+    }
+    key_function = key_functions.get(order_by, key_functions["path"])
+    return sorted(groups, key=key_function, reverse=sort == "desc")
+
+
+async def _list_related_groups(
+    group: Group,
+    db: DbSession,
+    *,
+    direct_only: bool,
+    search: str | None,
+    skip_groups: list[int] | None,
+    order_by: str,
+    sort: str,
+) -> list[Group]:
+    prefix = f"{group.login}/"
+    result = await db.execute(select(Group).where(Group.login.like(f"{prefix}%")))
+    groups = []
+    for candidate in result.scalars().all():
+        relative_path = candidate.login[len(prefix) :]
+        if direct_only and "/" in relative_path:
+            continue
+        if search:
+            normalized_search = search.lower()
+            name = (candidate.name or "").lower()
+            path = candidate.login.lower()
+            if normalized_search not in path and normalized_search not in name:
+                continue
+        if skip_groups and candidate.id in skip_groups:
+            continue
+        groups.append(candidate)
+    return _sort_group_rows(groups, order_by, sort)
+
+
 def _group_access_level(role: str) -> int:
     return access_level_for_role(role)
 
@@ -456,6 +497,88 @@ async def list_groups(
         [
             _group_json_with_parent(group, settings.BASE_URL, parent_ids)
             for group in groups
+        ],
+        request,
+        page,
+        per_page,
+        total,
+    )
+
+
+@router.get("/groups/{group_ref:path}/subgroups")
+async def list_group_subgroups(
+    group_ref: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    search: str | None = Query(None),
+    skip_groups: list[int] | None = Query(None),
+    order_by: str = Query("path"),
+    sort: str = Query("asc", pattern="^(asc|desc)$"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
+    """List direct subgroups for a GitLab group."""
+    group = await _get_group_or_404(group_ref, db)
+    _ = current_user
+    groups = await _list_related_groups(
+        group,
+        db,
+        direct_only=True,
+        search=search,
+        skip_groups=skip_groups,
+        order_by=order_by,
+        sort=sort,
+    )
+    total = len(groups)
+    start = (page - 1) * per_page
+    page_groups = groups[start : start + per_page]
+    parent_ids = await _parent_ids_for_groups(page_groups, db)
+    return paginated_json(
+        [
+            _group_json_with_parent(child_group, settings.BASE_URL, parent_ids)
+            for child_group in page_groups
+        ],
+        request,
+        page,
+        per_page,
+        total,
+    )
+
+
+@router.get("/groups/{group_ref:path}/descendant_groups")
+async def list_group_descendant_groups(
+    group_ref: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    search: str | None = Query(None),
+    skip_groups: list[int] | None = Query(None),
+    order_by: str = Query("path"),
+    sort: str = Query("asc", pattern="^(asc|desc)$"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
+    """List all descendant groups for a GitLab group."""
+    group = await _get_group_or_404(group_ref, db)
+    _ = current_user
+    groups = await _list_related_groups(
+        group,
+        db,
+        direct_only=False,
+        search=search,
+        skip_groups=skip_groups,
+        order_by=order_by,
+        sort=sort,
+    )
+    total = len(groups)
+    start = (page - 1) * per_page
+    page_groups = groups[start : start + per_page]
+    parent_ids = await _parent_ids_for_groups(page_groups, db)
+    return paginated_json(
+        [
+            _group_json_with_parent(child_group, settings.BASE_URL, parent_ids)
+            for child_group in page_groups
         ],
         request,
         page,

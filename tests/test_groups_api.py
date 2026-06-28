@@ -351,6 +351,84 @@ async def test_nested_group_namespace_project_creation(client, test_token):
 
 
 @pytest.mark.asyncio
+async def test_group_subgroups_and_descendants_routes(client, test_token):
+    parent = await client.post(
+        f"{API}/groups",
+        json={"path": "tree-parent", "name": "Tree Parent"},
+        headers=auth_headers(test_token),
+    )
+    assert parent.status_code == 201
+    parent_id = parent.json()["id"]
+
+    child = await client.post(
+        f"{API}/groups",
+        json={"path": "backend", "name": "Backend", "parent_id": parent_id},
+        headers=auth_headers(test_token),
+    )
+    assert child.status_code == 201
+    child_id = child.json()["id"]
+
+    grandchild = await client.post(
+        f"{API}/groups",
+        json={"path": "api", "name": "API", "parent_id": child_id},
+        headers=auth_headers(test_token),
+    )
+    assert grandchild.status_code == 201
+
+    frontend = await client.post(
+        f"{API}/groups",
+        json={"path": "frontend", "name": "Frontend", "parent_id": parent_id},
+        headers=auth_headers(test_token),
+    )
+    assert frontend.status_code == 201
+    frontend_id = frontend.json()["id"]
+
+    subgroups = await client.get(
+        f"{API}/groups/{parent_id}/subgroups",
+        params={"page": 1, "per_page": 1},
+        headers=auth_headers(test_token),
+    )
+    assert subgroups.status_code == 200
+    assert subgroups.headers["X-Total"] == "2"
+    assert subgroups.headers["X-Total-Pages"] == "2"
+    assert [group["full_path"] for group in subgroups.json()] == [
+        "tree-parent/backend"
+    ]
+    assert subgroups.json()[0]["parent_id"] == parent_id
+
+    descendants = await client.get(
+        f"{API}/groups/tree-parent/descendant_groups",
+        headers=auth_headers(test_token),
+    )
+    assert descendants.status_code == 200
+    assert [group["full_path"] for group in descendants.json()] == [
+        "tree-parent/backend",
+        "tree-parent/backend/api",
+        "tree-parent/frontend",
+    ]
+
+    nested_subgroups = await client.get(
+        f"{API}/groups/tree-parent%2Fbackend/subgroups",
+        headers=auth_headers(test_token),
+    )
+    assert nested_subgroups.status_code == 200
+    assert [group["full_path"] for group in nested_subgroups.json()] == [
+        "tree-parent/backend/api"
+    ]
+
+    filtered = await client.get(
+        f"{API}/groups/{parent_id}/descendant_groups",
+        params=[
+            ("search", "front"),
+            ("skip_groups", str(frontend_id)),
+        ],
+        headers=auth_headers(test_token),
+    )
+    assert filtered.status_code == 200
+    assert filtered.json() == []
+
+
+@pytest.mark.asyncio
 async def test_subgroup_creation_requires_parent_maintainer_access(
     client, db_session, test_token
 ):
