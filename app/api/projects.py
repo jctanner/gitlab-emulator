@@ -174,6 +174,29 @@ async def _get_project_or_404(
     return project
 
 
+async def _can_read_project(
+    project: Project, current_user: User | None, db: DbSession
+) -> bool:
+    if not project.private:
+        return True
+    return (
+        current_user is not None
+        and await project_access_level(project, current_user, db) >= REPORTER
+    )
+
+
+async def _filter_readable_projects(
+    projects: list[Project],
+    current_user: User | None,
+    db: DbSession,
+) -> list[Project]:
+    readable = []
+    for project in projects:
+        if await _can_read_project(project, current_user, db):
+            readable.append(project)
+    return readable
+
+
 def _require_project_owner(project: Project, user: User) -> None:
     if not user.site_admin and project.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -1493,18 +1516,16 @@ async def list_user_projects(
         raise HTTPException(status_code=404, detail="404 User Not Found")
 
     query = select(Project).where(Project.owner_id == owner.id)
-    if current_user is None or (
-        current_user.id != owner.id and not current_user.site_admin
-    ):
-        query = query.where(Project.private == False)
     query = query.order_by(Project.id)
-    total = (
-        await db.execute(select(sa_func.count()).select_from(query.subquery()))
-    ).scalar() or 0
-    query = query.offset((page - 1) * per_page).limit(per_page)
     projects = (await db.execute(query)).scalars().all()
+    projects = await _filter_readable_projects(projects, current_user, db)
+    total = len(projects)
+    start = (page - 1) * per_page
     return paginated_json(
-        [await _project_json(project, settings.BASE_URL, db) for project in projects],
+        [
+            await _project_json(project, settings.BASE_URL, db)
+            for project in projects[start : start + per_page]
+        ],
         request,
         page,
         per_page,
@@ -1533,9 +1554,11 @@ async def list_projects(
 ):
     """List GitLab projects visible to the current user."""
     query = select(Project)
-    if current_user is None:
-        query = query.where(Project.private == False)
-    elif (membership or owned) and not current_user.site_admin:
+    if (
+        (membership or owned)
+        and current_user is not None
+        and not current_user.site_admin
+    ):
         query = query.where(Project.owner_id == current_user.id)
     elif owned and current_user is not None:
         query = query.where(Project.owner_id == current_user.id)
@@ -1555,13 +1578,15 @@ async def list_projects(
         query = query.where(Project.has_issues == with_issues_enabled)
     order_col = _project_order_column(order_by)
     query = query.order_by(order_col.desc() if sort == "desc" else order_col.asc())
-    total = (
-        await db.execute(select(sa_func.count()).select_from(query.subquery()))
-    ).scalar() or 0
-    query = query.offset((page - 1) * per_page).limit(per_page)
     projects = (await db.execute(query)).scalars().all()
+    projects = await _filter_readable_projects(projects, current_user, db)
+    total = len(projects)
+    start = (page - 1) * per_page
     return paginated_json(
-        [await _project_json(project, settings.BASE_URL, db) for project in projects],
+        [
+            await _project_json(project, settings.BASE_URL, db)
+            for project in projects[start : start + per_page]
+        ],
         request,
         page,
         per_page,

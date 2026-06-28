@@ -186,6 +186,68 @@ async def test_private_group_project_read_allows_group_reporter_access(
 
 
 @pytest.mark.asyncio
+async def test_private_project_lists_require_reporter_access(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "private-list-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "private-list-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "private-list-project", "visibility": "private"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    outsider_projects = await client.get(
+        f"{API}/projects",
+        params={"search": "private-list-project"},
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_projects.status_code == 200
+    assert outsider_projects.json() == []
+
+    outsider_user_projects = await client.get(
+        f"{API}/users/{test_user.id}/projects",
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_user_projects.status_code == 200
+    assert all(
+        item["path_with_namespace"] != "testuser/private-list-project"
+        for item in outsider_user_projects.json()
+    )
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    allowed_projects = await client.get(
+        f"{API}/projects",
+        params={"search": "private-list-project"},
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_projects.status_code == 200
+    assert [item["id"] for item in allowed_projects.json()] == [project_id]
+
+    allowed_user_projects = await client.get(
+        f"{API}/users/{test_user.id}/projects",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_user_projects.status_code == 200
+    assert any(
+        item["path_with_namespace"] == "testuser/private-list-project"
+        for item in allowed_user_projects.json()
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_project_normalizes_blank_default_branch(
     client, test_user, test_token
 ):

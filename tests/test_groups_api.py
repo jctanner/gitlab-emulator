@@ -215,6 +215,59 @@ async def test_group_projects_lists_group_namespace_projects(client, test_token)
 
 
 @pytest.mark.asyncio
+async def test_group_projects_hide_private_projects_from_non_members(
+    client, db_session, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "group-project-list-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "group-project-list-outsider"
+    )
+    group = await client.post(
+        f"{API}/groups",
+        json={"path": "private-project-list-group", "name": "Private Project List"},
+        headers=auth_headers(test_token),
+    )
+    assert group.status_code == 201
+    group_id = group.json()["id"]
+
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "private-list-project",
+            "namespace_id": group_id,
+            "visibility": "private",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+
+    denied = await client.get(
+        f"{API}/groups/{group_id}/projects",
+        headers=auth_headers(outsider_token),
+    )
+    assert denied.status_code == 200
+    assert denied.json() == []
+
+    member = await client.post(
+        f"{API}/groups/{group_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    allowed = await client.get(
+        f"{API}/groups/{group_id}/projects",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed.status_code == 200
+    assert [item["path_with_namespace"] for item in allowed.json()] == [
+        "private-project-list-group/private-list-project"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_group_projects_route_accepts_group_path(client, test_token):
     group = await client.post(
         f"{API}/groups",
@@ -638,7 +691,9 @@ async def test_group_variables_crud_and_environment_scope(
         headers=auth_headers(test_token),
     )
     assert listed_prod.status_code == 200
-    assert [(item["key"], item["environment_scope"]) for item in listed_prod.json()] == [
+    assert [
+        (item["key"], item["environment_scope"]) for item in listed_prod.json()
+    ] == [
         ("DEPLOY_TOKEN", "production"),
     ]
 
@@ -839,9 +894,7 @@ async def test_site_admin_can_manage_group_variables(
 
 
 @pytest.mark.asyncio
-async def test_group_secrets_crud_scope_and_hidden_value(
-    client, test_user, test_token
-):
+async def test_group_secrets_crud_scope_and_hidden_value(client, test_user, test_token):
     group = await client.post(
         f"{API}/groups",
         json={"path": "secret-group", "name": "Secret Group"},
@@ -895,7 +948,10 @@ async def test_group_secrets_crud_scope_and_hidden_value(
         headers=auth_headers(test_token),
     )
     assert listed.status_code == 200
-    assert [(item["name"], item["environment_scope"], item["branch_scope"]) for item in listed.json()] == [
+    assert [
+        (item["name"], item["environment_scope"], item["branch_scope"])
+        for item in listed.json()
+    ] == [
         ("DATABASE_PASSWORD", "*", "*"),
         ("DATABASE_PASSWORD", "production", "main"),
     ]

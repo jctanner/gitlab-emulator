@@ -23,8 +23,10 @@ from app.schemas.user import _fmt_dt
 from app.services.permissions import (
     MAINTAINER,
     OWNER,
+    REPORTER,
     access_level_for_role,
     group_role_for_access_level,
+    project_access_level,
     require_group_access,
 )
 
@@ -171,7 +173,8 @@ async def _get_group_secret_or_404(
         CiSecret.scope_type == "group",
         CiSecret.scope_id == group.id,
         CiSecret.name == _validate_secret_name(name),
-        CiSecret.environment_scope == (environment_scope if environment_scope is not None else "*"),
+        CiSecret.environment_scope
+        == (environment_scope if environment_scope is not None else "*"),
         CiSecret.branch_scope == (branch_scope if branch_scope is not None else "*"),
     )
     secret = (await db.execute(query)).scalar_one_or_none()
@@ -266,14 +269,23 @@ def _group_json(
 
 async def _parent_ids_for_groups(groups: list[Group], db: DbSession) -> dict[str, int]:
     parent_paths = {
-        group.login.rsplit("/", 1)[0]
-        for group in groups
-        if "/" in group.login
+        group.login.rsplit("/", 1)[0] for group in groups if "/" in group.login
     }
     if not parent_paths:
         return {}
     result = await db.execute(select(Group).where(Group.login.in_(parent_paths)))
     return {parent.login: parent.id for parent in result.scalars().all()}
+
+
+async def _can_read_project(
+    project: Project, current_user: User | None, db: DbSession
+) -> bool:
+    if not project.private:
+        return True
+    return (
+        current_user is not None
+        and await project_access_level(project, current_user, db) >= REPORTER
+    )
 
 
 def _group_json_with_parent(
@@ -399,8 +411,7 @@ async def list_groups(
     query = select(Group)
     if search:
         query = query.where(
-            Group.login.ilike(f"%{search}%")
-            | Group.name.ilike(f"%{search}%")
+            Group.login.ilike(f"%{search}%") | Group.name.ilike(f"%{search}%")
         )
     if top_level_only:
         query = query.where(~Group.login.contains("/"))
@@ -472,16 +483,21 @@ async def list_group_projects(
         )
         .order_by(Project.id)
     )
-    total = (
-        await db.execute(select(sa_func.count()).select_from(query.subquery()))
-    ).scalar() or 0
-    query = query.offset((page - 1) * per_page).limit(per_page)
     projects = (await db.execute(query)).scalars().all()
+    readable_projects = []
+    for project in projects:
+        if await _can_read_project(project, current_user, db):
+            readable_projects.append(project)
+    total = len(readable_projects)
+    start = (page - 1) * per_page
 
     from app.api.projects import _project_json
 
     return paginated_json(
-        [await _project_json(project, settings.BASE_URL, db) for project in projects],
+        [
+            await _project_json(project, settings.BASE_URL, db)
+            for project in readable_projects[start : start + per_page]
+        ],
         request,
         page,
         per_page,
@@ -521,12 +537,13 @@ async def list_group_members(
         members = [
             member
             for member in members
-            if lowered in member["username"].lower() or lowered in member["name"].lower()
+            if lowered in member["username"].lower()
+            or lowered in member["name"].lower()
         ]
     total = len(members)
     start = (page - 1) * per_page
     return paginated_json(
-        members[start:start + per_page],
+        members[start : start + per_page],
         request,
         page,
         per_page,
@@ -799,7 +816,9 @@ async def list_group_secrets(
         query = query.where(CiSecret.environment_scope == environment_scope)
     if branch_scope is not None:
         query = query.where(CiSecret.branch_scope == branch_scope)
-    query = query.order_by(CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope)
+    query = query.order_by(
+        CiSecret.name, CiSecret.environment_scope, CiSecret.branch_scope
+    )
     secrets = (await db.execute(query)).scalars().all()
     return [_secret_json(secret) for secret in secrets]
 

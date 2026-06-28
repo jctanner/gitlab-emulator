@@ -309,7 +309,7 @@ Done when:
   merge request create/update/merge requires Developer or higher. Project
   member access levels now preserve GitLab Guest separately from Reporter while
   keeping GitHub-compatible collaborator permissions for inherited routes.
-  GitLab project, project issue, project member, pipeline/job, and search API
+  GitLab project, project list, project issue, project member, pipeline/job, and search API
   read access for private projects honors direct and group Reporter-or-higher access. Git Smart HTTP read access for
   private projects requires Reporter or higher, while push advertisement and
   receive-pack require Developer or higher. Implemented
