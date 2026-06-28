@@ -23,6 +23,21 @@ async def test_graphql_viewer(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_current_user_alias(client, test_user, test_token):
+    """GitLab-shaped currentUser returns the authenticated user."""
+    for endpoint in ("/graphql", "/api/graphql"):
+        resp = await client.post(
+            endpoint,
+            json={"query": "{ currentUser { login name } }"},
+            headers=auth_headers(test_token),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "errors" not in data
+        assert data["data"]["currentUser"]["login"] == "testuser"
+
+
+@pytest.mark.asyncio
 async def test_graphql_repository(client, test_user, test_token):
     """Query repository returns repo details."""
     await client.post(

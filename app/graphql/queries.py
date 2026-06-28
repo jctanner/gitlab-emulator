@@ -235,6 +235,14 @@ class Query:
         return user_from_model(current_user)
 
     @strawberry.field
+    async def current_user(self, info: Info) -> GitLabUser:
+        """Return the currently authenticated user using GitLab's field name."""
+        current_user = info.context.get("user")
+        if current_user is None:
+            raise PermissionError("Authentication required")
+        return user_from_model(current_user)
+
+    @strawberry.field
     async def organization(
         self, info: Info, login: str
     ) -> Optional[OrganizationType]:
