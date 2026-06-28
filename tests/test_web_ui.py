@@ -168,6 +168,10 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
         'href="/ui/testuser/ui-source-renamed/branches">Branches</a>' in work_item.text
     )
     assert 'href="/ui/testuser/ui-source-renamed/-/jobs">Jobs</a>' in work_item.text
+    assert (
+        'href="/ui/testuser/ui-source-renamed/-/pipeline_schedules">Pipeline schedules</a>'
+        in work_item.text
+    )
 
     edit_file = await client.post(
         "/ui/testuser/ui-source-renamed/edit/main/src/app.py",
