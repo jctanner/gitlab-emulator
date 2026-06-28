@@ -272,6 +272,38 @@ async def _code_of_conduct(
     return None
 
 
+def _detect_license(body: str) -> Optional[LicenseInfo]:
+    from app.api.licenses import _LICENSES
+
+    normalized = " ".join(body.lower().split())
+    checks = (
+        ("mit", ("mit license", "permission is hereby granted, free of charge")),
+        ("apache-2.0", ("apache license", "version 2.0")),
+        ("gpl-3.0", ("gnu general public license", "version 3")),
+        ("bsd-2-clause", ("redistribution and use in source and binary forms",)),
+        ("unlicense", ("this is free and unencumbered software",)),
+    )
+    for key, phrases in checks:
+        if all(phrase in normalized for phrase in phrases):
+            license_data = _LICENSES[key]
+            return LicenseInfo(
+                key=license_data["key"],
+                name=license_data["name"],
+                spdx_id=license_data.get("spdx_id"),
+                url=license_data.get("html_url") or license_data.get("url"),
+            )
+    return None
+
+
+async def _license_info(repo_path: str, ref: str) -> Optional[LicenseInfo]:
+    for path in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"):
+        body = await _git_text(repo_path, "show", f"{ref}:{path}")
+        if body is None:
+            continue
+        return _detect_license(body)
+    return None
+
+
 def _yaml_mapping(body: str) -> dict:
     try:
         parsed = yaml.safe_load(body) or {}
@@ -561,8 +593,8 @@ class Repository:
         return None
 
     @strawberry.field
-    def license_info(self) -> Optional[LicenseInfo]:
-        return None
+    async def license_info(self) -> Optional[LicenseInfo]:
+        return await _license_info(self._disk_path or "", self._default_branch)
 
     @strawberry.field
     def repository_topics(self) -> Connection[RepositoryTopic]:

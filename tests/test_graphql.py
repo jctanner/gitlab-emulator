@@ -401,6 +401,65 @@ async def test_graphql_repository_parent(
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_license_info(client, test_user, test_token):
+    """Repository licenseInfo resolves from a committed license file."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-license-info", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    license_file = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/LICENSE",
+        json={
+            "branch": "main",
+            "commit_message": "add license",
+            "content": (
+                "MIT License\n\n"
+                "Copyright (c) 2026 Example\n\n"
+                "Permission is hereby granted, free of charge, to any person "
+                "obtaining a copy of this software and associated documentation "
+                "files (the \"Software\"), to deal in the Software without "
+                "restriction.\n"
+            ),
+        },
+        headers=auth_headers(test_token),
+    )
+    assert license_file.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-license-info") {
+                    licenseInfo {
+                      key
+                      name
+                      spdxId
+                      url
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    assert data["data"]["repository"]["licenseInfo"] == {
+        "key": "mit",
+        "name": "MIT License",
+        "spdxId": "MIT",
+        "url": "http://choosealicense.com/licenses/mit/",
+    }
+
+
+@pytest.mark.asyncio
 async def test_graphql_repository_templates(client, test_user, test_token):
     """Repository issue and pull request templates resolve from committed files."""
     project_resp = await client.post(
