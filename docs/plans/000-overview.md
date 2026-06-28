@@ -104,8 +104,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 - Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
   tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.
-  Pipeline schedule CRUD and manual Play are implemented; automatic cron
-  materialization of due schedules is not yet implemented.
+  Pipeline schedule CRUD, manual Play, next-run calculation, and automatic
+  cron materialization of due schedules are implemented through the persisted
+  job/runner path.
 - Job scheduling is runner-poll based: persisted `pending` jobs become
   eligible according to stage order, `needs`, manual state, runner tags,
   runner pause/lock state, and `run_untagged`. Delayed/timer jobs are not
@@ -223,8 +224,8 @@ Target areas:
 - persist runner registrations and diagnostics for admin/operator inspection
 - expose pipeline/job state through GitLab-shaped APIs
 - expose minimal runner and scheduler diagnostics for operator inspection
-- keep pipeline scheduling explicit: CRUD and manual Play are supported, while
-  automatic cron due-run execution needs a deliberate scheduler loop/worker
+- keep pipeline scheduling explicit: CRUD, manual Play, next-run calculation,
+  and automatic cron due-run execution are supported by the schedule worker
 - surface stale running jobs in diagnostics and keep recovery explicit through
   CI Lab requeue or GitLab-compatible cancel plus retry
 
@@ -236,8 +237,8 @@ Done when:
 - runner registrations, contact timestamps, tags, and last assigned job survive
   process restarts where persistence is expected
 - runner and pipeline diagnostics explain current scheduler state
-- pipeline schedule CRUD/manual Play and runner-side job eligibility are covered
-  by tests; automatic cron due-run behavior remains outside the current MVP
+- pipeline schedule CRUD/manual Play, automatic cron due-run behavior, and
+  runner-side job eligibility are covered by tests
 - stale running jobs have a documented operator recovery path without automatic
   timeout side effects
 - debug-only runner paths have been removed
@@ -374,9 +375,9 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
-- Automatic background execution for due pipeline schedules and delayed/timer
-  job queues. Current support covers pipeline schedule CRUD/manual Play and
-  runner-side pending-job eligibility, but not a cron scheduler service.
+- Delayed/timer job queues. Current support covers pipeline schedule CRUD,
+  manual Play, automatic cron materialization through the schedule worker, and
+  runner-side pending-job eligibility, but not delayed/timer jobs.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses. Admin bootstrap user/token
   helper endpoints require an authenticated site admin. The emulator is still

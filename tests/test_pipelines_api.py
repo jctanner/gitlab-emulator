@@ -9,12 +9,38 @@ from urllib.parse import quote
 
 from sqlalchemy import select
 
-from app.models.ci import CiSecretAccessEvent, CiVariable, PipelineJob
+from app.models.ci import (
+    CiSecretAccessEvent,
+    CiVariable,
+    Pipeline,
+    PipelineJob,
+    PipelineSchedule,
+)
 from app.models.group import Group
+from app.services.pipeline_schedules import (
+    compute_next_run_at,
+    run_due_pipeline_schedules,
+)
 from tests.conftest import API, auth_headers
 
 
 RUNNER_TOKEN = "glrt-emulator-runner-token"
+
+
+def test_compute_next_run_at_supports_timezone_and_steps():
+    after = datetime(2026, 6, 28, 7, 56, 10, tzinfo=timezone.utc)
+
+    assert compute_next_run_at("*/5 * * * *", "UTC", after=after) == datetime(
+        2026, 6, 28, 8, 0
+    )
+    assert compute_next_run_at("57 7 * * *", "UTC", after=after) == datetime(
+        2026, 6, 28, 7, 57
+    )
+    assert compute_next_run_at(
+        "0 3 * * *",
+        "America/New_York",
+        after=datetime(2026, 6, 28, 0, 0, tzinfo=timezone.utc),
+    ) == datetime(2026, 6, 28, 7, 0)
 
 
 async def _create_project(client, test_token):
@@ -2380,6 +2406,7 @@ api_only:
     schedule = create_resp.json()
     assert schedule["description"] == "nightly"
     assert schedule["variables"][0]["key"] == "SCHEDULE_VAR"
+    assert schedule["next_run_at"] is not None
 
     update_resp = await client.put(
         f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}",
@@ -2389,6 +2416,7 @@ api_only:
     assert update_resp.status_code == 200
     assert update_resp.json()["description"] == "nightly updated"
     assert update_resp.json()["active"] is False
+    assert update_resp.json()["next_run_at"] is None
 
     play_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}/play",
@@ -2432,6 +2460,112 @@ api_only:
         headers=auth_headers(test_token),
     )
     assert delete_resp.status_code == 204
+
+
+async def test_due_pipeline_schedule_materializes_pipeline_once(
+    client,
+    test_token,
+    db_session,
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+scheduled_probe:
+  image: alpine:3.20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  script:
+    - echo scheduled
+api_only:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add schedule ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    active_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline_schedules",
+        json={
+            "description": "due active",
+            "ref": "main",
+            "cron": "*/5 * * * *",
+            "cron_timezone": "UTC",
+            "active": True,
+            "variables": [{"key": "SCHEDULE_VAR", "value": "auto"}],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert active_resp.status_code == 201
+    inactive_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline_schedules",
+        json={
+            "description": "due inactive",
+            "ref": "main",
+            "cron": "*/5 * * * *",
+            "cron_timezone": "UTC",
+            "active": False,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert inactive_resp.status_code == 201
+
+    due_at = datetime(2026, 6, 28, 8, 0)
+    future_at = datetime(2026, 6, 28, 8, 5)
+    active_schedule = (
+        await db_session.execute(
+            select(PipelineSchedule).where(
+                PipelineSchedule.id == active_resp.json()["id"]
+            )
+        )
+    ).scalar_one()
+    inactive_schedule = (
+        await db_session.execute(
+            select(PipelineSchedule).where(
+                PipelineSchedule.id == inactive_resp.json()["id"]
+            )
+        )
+    ).scalar_one()
+    active_schedule.next_run_at = due_at
+    inactive_schedule.next_run_at = due_at
+    await db_session.commit()
+
+    stats = await run_due_pipeline_schedules(
+        db_session,
+        now=datetime(2026, 6, 28, 8, 0, 30, tzinfo=timezone.utc),
+    )
+    assert stats.checked == 1
+    assert stats.created == 1
+    assert stats.failed == 0
+
+    pipelines = (
+        await db_session.execute(
+            select(Pipeline).where(Pipeline.project_id == project["id"])
+        )
+    ).scalars().all()
+    assert len(pipelines) == 1
+    assert pipelines[0].source == "schedule"
+
+    await db_session.refresh(active_schedule)
+    await db_session.refresh(inactive_schedule)
+    assert active_schedule.last_pipeline_id == pipelines[0].id
+    assert active_schedule.next_run_at == future_at
+    assert inactive_schedule.last_pipeline_id is None
+
+    repeat_stats = await run_due_pipeline_schedules(
+        db_session,
+        now=datetime(2026, 6, 28, 8, 1, tzinfo=timezone.utc),
+    )
+    assert repeat_stats.checked == 0
+    assert repeat_stats.created == 0
 
 
 async def test_create_pipeline_from_gitlab_ci_yaml_with_extends(client, test_token):

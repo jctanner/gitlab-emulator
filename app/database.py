@@ -36,12 +36,15 @@ async def init_db():
 
 async def _ensure_sqlite_compat_columns(conn) -> None:
     """Add JSON columns introduced after early VM databases were created."""
-    if engine.url.get_backend_name() != "sqlite":
+    if conn.engine.url.get_backend_name() != "sqlite":
         return
 
     async def ensure_column(table: str, column: str, ddl: str) -> None:
         result = await conn.execute(text(f"PRAGMA table_info({table})"))
-        existing = {row[1] for row in result.fetchall()}
+        rows = result.fetchall()
+        if not rows:
+            return
+        existing = {row[1] for row in rows}
         if column not in existing:
             await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
@@ -69,6 +72,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         "pipeline_jobs",
         "when",
         '"when" VARCHAR DEFAULT \'on_success\'',
+    )
+    await ensure_column(
+        "pipeline_schedules",
+        "next_run_at",
+        "next_run_at DATETIME",
     )
     await ensure_column(
         "collaborators",

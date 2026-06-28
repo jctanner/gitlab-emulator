@@ -59,6 +59,10 @@ from app.models.user import User
 from app.models.webhook import Webhook
 from app.services.auth_service import verify_password
 from app.services.ci_security import normalize_ci_security_settings
+from app.services.pipeline_schedules import (
+    play_pipeline_schedule as materialize_pipeline_schedule,
+    set_schedule_next_run,
+)
 from app.services import issue_service, pr_service, repo_service
 from app.services.repo_service import REPO_NAME_PATTERN
 
@@ -2310,6 +2314,7 @@ async def repo_pipeline_schedule_create(
             ),
             owner_id=current_user.id if current_user else repo.owner_id,
         )
+        set_schedule_next_run(schedule)
         db.add(schedule)
         await db.commit()
     except ValueError as exc:
@@ -2367,6 +2372,7 @@ async def repo_pipeline_schedule_update(
         schedule.variables = _schedule_variables_from_form(
             variables_text, variable_key, variable_value, variable_type
         )
+        set_schedule_next_run(schedule)
         await db.commit()
     except ValueError as exc:
         await db.rollback()
@@ -2406,20 +2412,12 @@ async def repo_pipeline_schedule_play(
     if schedule is None:
         return RedirectResponse(url=f"{redirect}?error=Schedule%20not%20found.", status_code=302)
     try:
-        variables = [
-            PipelineVariable(**variable)
-            for variable in schedule.variables or []
-            if isinstance(variable, dict)
-        ]
-        pipeline = await _create_pipeline(
+        pipeline = await materialize_pipeline_schedule(
+            schedule,
             repo.id,
-            CreatePipelineRequest(ref=schedule.ref, variables=variables),
             db,
-            source="schedule",
             actor=current_user,
         )
-        schedule.last_pipeline_id = pipeline.id
-        await db.commit()
     except Exception as exc:
         await db.rollback()
         detail = exc.detail if hasattr(exc, "detail") else str(exc)

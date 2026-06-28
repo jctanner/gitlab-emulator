@@ -5,6 +5,7 @@ middleware, the GraphQL schema, the admin frontend, and the
 Git Smart HTTP protocol handler.
 """
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -31,13 +32,40 @@ async def lifespan(app: FastAPI):
 
     # Start SSH server
     ssh_server = None
+    schedule_worker_task = None
+    schedule_worker_stop = None
     try:
         from app.git.ssh_server import start_ssh_server
         ssh_server = await start_ssh_server()
     except Exception:
         logger.warning("SSH server failed to start")
 
+    if settings.PIPELINE_SCHEDULE_WORKER_ENABLED:
+        from app.services.pipeline_schedules import pipeline_schedule_worker
+
+        schedule_worker_stop = asyncio.Event()
+        schedule_worker_task = asyncio.create_task(
+            pipeline_schedule_worker(
+                interval_seconds=settings.PIPELINE_SCHEDULE_WORKER_INTERVAL_SECONDS,
+                stop_event=schedule_worker_stop,
+            )
+        )
+        logger.info(
+            "Pipeline schedule worker started with interval %.1fs",
+            settings.PIPELINE_SCHEDULE_WORKER_INTERVAL_SECONDS,
+        )
+
     yield
+
+    # Stop pipeline schedule worker
+    if schedule_worker_task is not None:
+        if schedule_worker_stop is not None:
+            schedule_worker_stop.set()
+        schedule_worker_task.cancel()
+        try:
+            await schedule_worker_task
+        except asyncio.CancelledError:
+            pass
 
     # Stop SSH server
     if ssh_server is not None:

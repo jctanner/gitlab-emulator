@@ -130,6 +130,8 @@ All settings are driven by environment variables with the `GITLAB_EMULATOR_` pre
 | `GITLAB_EMULATOR_ADMIN_PASSWORD` | `admin` | Admin user password |
 | `GITLAB_EMULATOR_HOSTNAME` | `glemu.local` | Hostname for Caddy TLS certificate |
 | `GITLAB_EMULATOR_CI_REMOTE_INCLUDE_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host allowlist for `include:remote` |
+| `GITLAB_EMULATOR_PIPELINE_SCHEDULE_WORKER_ENABLED` | `true` | Enable automatic materialization of due pipeline schedules |
+| `GITLAB_EMULATOR_PIPELINE_SCHEDULE_WORKER_INTERVAL_SECONDS` | `60.0` | Poll interval for due pipeline schedule checks |
 | `GITLAB_EMULATOR_SSH_ENABLED` | `true` | Enable/disable the SSH transport |
 | `GITLAB_EMULATOR_SSH_PORT` | `2222` | SSH server listen port |
 

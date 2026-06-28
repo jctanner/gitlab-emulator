@@ -49,6 +49,11 @@ from app.services.permissions import (
     project_access_level,
     require_project_access,
 )
+from app.services.pipeline_schedules import (
+    http_cron_error,
+    play_pipeline_schedule as materialize_pipeline_schedule,
+    set_schedule_next_run,
+)
 
 router = APIRouter(tags=["pipelines"])
 
@@ -1192,6 +1197,10 @@ async def create_pipeline_schedule(
         variables=[variable.model_dump() for variable in body.variables],
         owner_id=project.owner_id,
     )
+    try:
+        set_schedule_next_run(schedule)
+    except ValueError as exc:
+        raise http_cron_error(exc) from exc
     db.add(schedule)
     await db.commit()
     await db.refresh(schedule)
@@ -1230,6 +1239,10 @@ async def update_pipeline_schedule(
     for key, value in updates.items():
         if value is not None:
             setattr(schedule, key, value)
+    try:
+        set_schedule_next_run(schedule)
+    except ValueError as exc:
+        raise http_cron_error(exc) from exc
     await db.commit()
     await db.refresh(schedule)
     return _schedule_json(schedule)
@@ -1282,16 +1295,12 @@ async def play_pipeline_schedule(
     project = await _get_project(project_id, db)
     await require_project_access(project, current_user, db, DEVELOPER)
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
-    variables = [PipelineVariable(**variable) for variable in schedule.variables or []]
-    pipeline = await _create_pipeline(
+    pipeline = await materialize_pipeline_schedule(
+        schedule,
         project_id,
-        CreatePipelineRequest(ref=schedule.ref, variables=variables),
         db,
-        source="schedule",
+        actor=current_user,
     )
-    schedule.last_pipeline_id = pipeline.id
-    await db.commit()
-    await db.refresh(schedule)
     return _pipeline_json(pipeline)
 
 

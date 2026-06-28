@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Runner registration token for official gitlab-runner validation
     RUNNER_REGISTRATION_TOKEN: str = "runner-registration-token"
 
+    # Automatic pipeline schedule materialization
+    PIPELINE_SCHEDULE_WORKER_ENABLED: bool = True
+    PIPELINE_SCHEDULE_WORKER_INTERVAL_SECONDS: float = 60.0
+
     # Comma-separated host allowlist for include:remote.
     CI_REMOTE_INCLUDE_ALLOWED_HOSTS: str = "localhost,127.0.0.1"
 

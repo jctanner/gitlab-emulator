@@ -23,8 +23,8 @@ trigger tokens, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.
-Pipeline schedule CRUD and manual Play create `source=schedule` pipelines, but
-automatic cron materialization of due schedules is not implemented yet.
+Pipeline schedule CRUD, manual Play, and automatic cron materialization of due
+schedules create `source=schedule` pipelines through the persisted job path.
 Runner-side job scheduling is implemented as persisted pending-job eligibility
 over stage order, `needs`, manual state, runner tags, runner pause/lock state,
 and `run_untagged`; delayed/timer jobs remain explicitly unsupported.
@@ -89,10 +89,9 @@ Status: implemented.
 - Pipeline diagnostics explain eligible pending jobs, stage blockers, `needs`
   blockers, runner tag blockers, `run_untagged` blockers, running jobs, manual
   jobs, and terminal jobs.
-- Pipeline scheduling is currently explicit/manual: schedule CRUD is persisted,
-  and Play creates a scheduled pipeline through the normal persisted job path.
-  A background cron scheduler loop for due schedules is deferred until a target
-  workflow requires unattended scheduled execution.
+- Pipeline scheduling supports persisted schedule CRUD, manual Play, next-run
+  calculation, and a background cron scheduler loop that materializes due
+  schedules through the normal persisted job path.
 - Admin CI Lab diagnostics now use the same `explain_job_scheduling` helper as
   the API endpoint, so UI and API scheduler explanations share one source.
 
@@ -448,9 +447,9 @@ Done when:
   cancel/retry/play controls require Developer or higher. Direct API pipeline
   creation requires Developer or higher.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
-- Automatic background execution for due pipeline schedules and delayed/timer
-  job queues. Current support covers pipeline schedule CRUD/manual Play and
-  runner-side pending-job eligibility, but not a cron scheduler service.
+- Delayed/timer job queues. Current support covers pipeline schedule CRUD,
+  manual Play, automatic cron materialization through the schedule worker, and
+  runner-side pending-job eligibility, but not delayed/timer jobs.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses, and admin bootstrap user/token
   helper endpoints require an authenticated site admin; broader hardening
