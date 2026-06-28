@@ -341,6 +341,9 @@ Done when:
 - The GitLab pipeline API also imports the `Project` alias, and the catch-all
   encoded project-path pipeline route now sits after trigger/schedule routes so
   `/projects/:id/trigger/pipeline` is not shadowed.
+- Inherited GitHub-compatible `/pulls/:number/commits` and
+  `/pulls/:number/files` now resolve real git commits and changed-file metadata
+  instead of placeholder head-SHA and empty-file responses.
 - The backing database tables and inherited GitHub-compatible repos/orgs/
   `/pulls`, review, review-comment, GraphQL, and admin/web scaffolding still
   use legacy naming intentionally for compatibility.

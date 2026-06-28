@@ -277,7 +277,9 @@ Done when:
   including regression coverage for GitLab project issue payloads
 - `glab` smoke workflows pass for the implemented surface
 - GitHub-specific naming remains only in shared historical scaffolding or has a
-  clear compatibility reason
+  clear compatibility reason; inherited `/pulls/:number/commits` and
+  `/pulls/:number/files` compatibility endpoints now return real git-backed
+  data rather than placeholder responses
 
 ### 5. Validation and Operations
 

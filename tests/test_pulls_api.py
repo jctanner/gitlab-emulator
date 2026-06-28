@@ -232,29 +232,102 @@ async def test_pr_shares_issue_numbering(client, test_user, test_token, repo_wit
 @pytest.mark.asyncio
 async def test_pr_list_commits(client, test_user, test_token, repo_with_branch):
     """GET /repos/{owner}/{repo}/pulls/{number}/commits returns commits."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "pr-commits-real", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    file_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/feature.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "add feature file",
+            "content": "one\ntwo\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert file_resp.status_code == 201
+
     await client.post(
-        f"{API}/repos/testuser/pr-repo/pulls",
+        f"{API}/repos/testuser/pr-commits-real/pulls",
         json={"title": "Commit test", "head": "feature", "base": "main"},
         headers=auth_headers(test_token),
     )
-    resp = await client.get(f"{API}/repos/testuser/pr-repo/pulls/1/commits")
+    resp = await client.get(f"{API}/repos/testuser/pr-commits-real/pulls/1/commits")
     assert resp.status_code == 200
     data = resp.json()
-    assert isinstance(data, list)
-    assert len(data) >= 1
+    assert len(data) == 1
+    assert data[0]["commit"]["message"] == "add feature file"
+    assert len(data[0]["sha"]) == 40
+    assert data[0]["parents"]
 
 
 @pytest.mark.asyncio
 async def test_pr_list_files(client, test_user, test_token, repo_with_branch):
     """GET /repos/{owner}/{repo}/pulls/{number}/files returns files list."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "pr-files-real", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    file_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/src%2Ffeature.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "add feature file",
+            "content": "one\ntwo\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert file_resp.status_code == 201
+
     await client.post(
-        f"{API}/repos/testuser/pr-repo/pulls",
+        f"{API}/repos/testuser/pr-files-real/pulls",
         json={"title": "Files test", "head": "feature", "base": "main"},
         headers=auth_headers(test_token),
     )
-    resp = await client.get(f"{API}/repos/testuser/pr-repo/pulls/1/files")
+    resp = await client.get(f"{API}/repos/testuser/pr-files-real/pulls/1/files")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    data = resp.json()
+    assert data == [
+        {
+            "sha": data[0]["sha"],
+            "filename": "src/feature.txt",
+            "status": "added",
+            "additions": 2,
+            "deletions": 0,
+            "changes": 2,
+            "blob_url": data[0]["blob_url"],
+            "raw_url": data[0]["raw_url"],
+            "contents_url": data[0]["contents_url"],
+            "patch": data[0]["patch"],
+        }
+    ]
+    assert len(data[0]["sha"]) == 40
+    assert data[0]["blob_url"].endswith(f"/blob/{data[0]['sha']}/src/feature.txt")
+    assert data[0]["raw_url"].endswith(f"/raw/{data[0]['sha']}/src/feature.txt")
+    assert "src/feature.txt" in data[0]["contents_url"]
+    assert "+one" in data[0]["patch"]
 
 
 @pytest.mark.asyncio

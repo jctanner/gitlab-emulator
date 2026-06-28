@@ -44,6 +44,32 @@ def _pr_query():
     )
 
 
+async def _git_text(repo_path: str, *args: str) -> str:
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "GIT_DIR": repo_path},
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(stderr.decode().strip() or "git command failed")
+    return stdout.decode()
+
+
+async def _git_lines(repo_path: str, *args: str) -> list[str]:
+    try:
+        output = await _git_text(repo_path, *args)
+    except RuntimeError:
+        return []
+    return [line for line in output.splitlines() if line.strip()]
+
+
+def _int_stat(value: str) -> int:
+    return int(value) if value.isdigit() else 0
+
+
 def _pr_json(pr: PullRequest, base_url: str) -> dict:
     """Build a GitLab-compatible pull-request JSON object."""
     api = f"{base_url}/api/v4"
@@ -628,7 +654,7 @@ async def list_pull_commits(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    """List commits on a pull request (stub)."""
+    """List commits on a pull request."""
     repository = await get_repo_or_404(owner, repo, db)
 
     result = await db.execute(
@@ -640,24 +666,56 @@ async def list_pull_commits(
     if pr is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    # Return a minimal commit list based on head_sha
-    return [
-        {
-            "sha": pr.head_sha,
-            "node_id": _make_node_id("Commit", hash(pr.head_sha) % 10**8),
-            "commit": {
-                "author": {"name": "unknown", "email": "unknown", "date": _fmt_dt(pr.issue.created_at)},
-                "committer": {"name": "unknown", "email": "unknown", "date": _fmt_dt(pr.issue.created_at)},
-                "message": pr.issue.title,
-                "tree": {"sha": "0" * 40, "url": ""},
-                "url": "",
-                "comment_count": 0,
-            },
-            "url": f"{BASE}/api/v4/repos/{owner}/{repo}/commits/{pr.head_sha}",
-            "html_url": f"{BASE}/{owner}/{repo}/commit/{pr.head_sha}",
-            "parents": [],
-        }
-    ]
+    if not repository.disk_path or not os.path.isdir(repository.disk_path):
+        return []
+
+    lines = await _git_lines(
+        repository.disk_path,
+        "log",
+        "--reverse",
+        "--format=%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%P",
+        f"{pr.base_sha}..{pr.head_sha}",
+    )
+    commits = []
+    for line in lines:
+        parts = line.split("\x00")
+        if len(parts) < 9:
+            continue
+        sha, author_name, author_email, author_date = parts[0:4]
+        committer_name, committer_email, committer_date, message, parents = parts[4:9]
+        commits.append(
+            {
+                "sha": sha,
+                "node_id": _make_node_id("Commit", hash(sha) % 10**8),
+                "commit": {
+                    "author": {
+                        "name": author_name,
+                        "email": author_email,
+                        "date": author_date,
+                    },
+                    "committer": {
+                        "name": committer_name,
+                        "email": committer_email,
+                        "date": committer_date,
+                    },
+                    "message": message,
+                    "tree": {"sha": "", "url": ""},
+                    "url": f"{BASE}/api/v4/repos/{owner}/{repo}/commits/{sha}",
+                    "comment_count": 0,
+                },
+                "url": f"{BASE}/api/v4/repos/{owner}/{repo}/commits/{sha}",
+                "html_url": f"{BASE}/{owner}/{repo}/commit/{sha}",
+                "parents": [
+                    {
+                        "sha": parent,
+                        "url": f"{BASE}/api/v4/repos/{owner}/{repo}/commits/{parent}",
+                        "html_url": f"{BASE}/{owner}/{repo}/commit/{parent}",
+                    }
+                    for parent in parents.split()
+                ],
+            }
+        )
+    return commits
 
 
 @router.get("/repos/{owner}/{repo}/pulls/{pull_number}/files")
@@ -668,7 +726,7 @@ async def list_pull_files(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    """List files changed by a pull request (stub)."""
+    """List files changed by a pull request."""
     repository = await get_repo_or_404(owner, repo, db)
 
     result = await db.execute(
@@ -680,4 +738,73 @@ async def list_pull_files(
     if pr is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    return []
+    if not repository.disk_path or not os.path.isdir(repository.disk_path):
+        return []
+
+    status_by_path: dict[str, tuple[str, str | None]] = {}
+    for line in await _git_lines(
+        repository.disk_path,
+        "diff",
+        "--name-status",
+        "-M",
+        pr.base_sha,
+        pr.head_sha,
+    ):
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0]
+        if status.startswith("R") and len(parts) >= 3:
+            status_by_path[parts[2]] = ("renamed", parts[1])
+        elif status == "A":
+            status_by_path[parts[1]] = ("added", None)
+        elif status == "D":
+            status_by_path[parts[1]] = ("removed", None)
+        else:
+            status_by_path[parts[1]] = ("modified", None)
+
+    files = []
+    for line in await _git_lines(
+        repository.disk_path,
+        "diff",
+        "--numstat",
+        pr.base_sha,
+        pr.head_sha,
+    ):
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        additions = _int_stat(parts[0])
+        deletions = _int_stat(parts[1])
+        filename = parts[-1]
+        status, previous_filename = status_by_path.get(filename, ("modified", None))
+        patch = ""
+        try:
+            patch = await _git_text(
+                repository.disk_path,
+                "diff",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+                pr.base_sha,
+                pr.head_sha,
+                "--",
+                filename,
+            )
+        except RuntimeError:
+            patch = ""
+        file_json = {
+            "sha": pr.head_sha,
+            "filename": filename,
+            "status": status,
+            "additions": additions,
+            "deletions": deletions,
+            "changes": additions + deletions,
+            "blob_url": f"{BASE}/{owner}/{repo}/blob/{pr.head_sha}/{filename}",
+            "raw_url": f"{BASE}/{owner}/{repo}/raw/{pr.head_sha}/{filename}",
+            "contents_url": f"{BASE}/api/v4/repos/{owner}/{repo}/contents/{filename}?ref={pr.head_sha}",
+            "patch": patch,
+        }
+        if previous_filename:
+            file_json["previous_filename"] = previous_filename
+        files.append(file_json)
+    return files
