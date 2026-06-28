@@ -857,6 +857,37 @@ deploy_downstream:
     assert "trigger" in resp.text
 
 
+async def test_create_pipeline_rejects_workflow_rules_skip(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - when: never
+
+job:
+  script:
+    - echo skipped
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add workflow ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert resp.status_code == 400
+    assert "workflow rules skipped pipeline" in resp.text
+
+
 async def test_pipeline_variables_merge_with_yaml_and_job_precedence(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

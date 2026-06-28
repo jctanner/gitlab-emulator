@@ -410,6 +410,26 @@ def _job_rule_decision(
     return _RuleDecision(included=True)
 
 
+def _workflow_allows_pipeline(
+    parsed: dict,
+    ref: str,
+    variables: dict[str, str],
+    existing_paths: set[str],
+    changed_paths: set[str],
+) -> bool:
+    workflow = parsed.get("workflow")
+    if not isinstance(workflow, dict) or "rules" not in workflow:
+        return True
+    decision = _job_rule_decision(
+        {"rules": workflow.get("rules")},
+        ref,
+        variables,
+        existing_paths,
+        changed_paths,
+    )
+    return decision.included
+
+
 def _deep_merge(parent: dict, child: dict) -> dict:
     merged = dict(parent)
     for key, value in child.items():
@@ -567,6 +587,14 @@ def parse_gitlab_ci(
     pipeline_variables = variables or {}
     repository_paths = existing_paths or set()
     commit_changed_paths = changed_paths or set()
+    if not _workflow_allows_pipeline(
+        parsed,
+        ref,
+        pipeline_variables,
+        repository_paths,
+        commit_changed_paths,
+    ):
+        raise ValueError(".gitlab-ci.yml workflow rules skipped pipeline")
 
     jobs: list[ParsedCiJob] = []
     resolved_configs: dict[str, dict] = {}

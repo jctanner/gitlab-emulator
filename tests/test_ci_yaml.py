@@ -387,6 +387,27 @@ skipped:
     ]
 
 
+def test_parse_gitlab_ci_applies_workflow_rules():
+    content = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - when: never
+
+job:
+  script: echo workflow
+"""
+    jobs = parse_gitlab_ci(content, variables={"CI_PIPELINE_SOURCE": "schedule"})
+    assert [job.name for job in jobs] == ["job"]
+
+    try:
+        parse_gitlab_ci(content, variables={"CI_PIPELINE_SOURCE": "api"})
+    except ValueError as exc:
+        assert "workflow rules skipped pipeline" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_applies_rules_exists_and_changes():
     jobs = parse_gitlab_ci(
         """
