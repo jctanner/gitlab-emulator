@@ -27,6 +27,9 @@ GitLab-shaped global search now covers projects, issues, merge requests, and
 indexed code blobs. GitLab-shaped project labels and milestones now expose
 MVP list/create/get/update/delete surfaces with pagination, encoded project
 path lookup, and GitLab response fields.
+GitLab-shaped commit status create/list routes are backed by the existing
+commit status storage and covered by local tests plus client-VM `glab api`
+smoke checks.
 Pipeline and job API/UI surfaces now expose non-sensitive CI secret metadata
 for requested secrets without exposing secret values.
 Nested group namespaces are represented as organization-backed full paths and
@@ -260,16 +263,16 @@ Status: implemented.
 Status: implemented.
 
 - Focused local compatibility tests pass together for groups, projects,
-  branches/tags/protected branches, repository files/tree, commits, merge
-  requests, labels, milestones, issues, and search.
+  branches/tags/protected branches, repository files/tree, commits, commit
+  statuses, merge requests, labels, milestones, issues, and search.
 - `make test-affected` passes after the full resource pass.
 - Targeted client-VM `glab api` checks pass for the expanded resource
   surfaces.
 - Keep exact GitLab-style total counts, page headers, and query-preserving
   `Link` headers intact for projects, user projects, groups, group projects,
   project issues, merge requests, branches, tags, protected branches,
-  repository tree, commits, releases, pipelines, jobs, search, project/group
-  hooks, and project/group members.
+  repository tree, commits, commit statuses, releases, pipelines, jobs, search,
+  project/group hooks, and project/group members.
 - Keep project and group member list support for `query`, exact pagination
   headers, and common GitLab member response fields such as `created_at`,
   `created_by`, `invite_email`, and SAML/SCIM identity placeholders.

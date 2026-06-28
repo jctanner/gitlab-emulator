@@ -586,6 +586,16 @@ assert_json_field "glab api commit stats" "$commit_stats" '.stats.total >= 0'
 commit_filtered=$(glab_api "projects/$PROJECT_ID/repository/commits?ref_name=main&path=smoke.txt&with_stats=true")
 assert_json_field "glab api commit filters" "$commit_filtered" 'length >= 1 and .[0].stats.total >= 0'
 
+status_create=$(curl -sk -X POST \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"state":"running","name":"glab-status","description":"glab status smoke","target_url":"https://ci.example.test/glab-status"}' \
+    "$API/projects/$PROJECT_ID/statuses/$HEAD_SHA")
+assert_json_field "glab api commit status created" "$status_create" '.status == "running" and .name == "glab-status"'
+
+status_list=$(glab_api "projects/$PROJECT_REF/repository/commits/$HEAD_SHA/statuses")
+assert_json_field "glab api commit statuses list" "$status_list" 'map(.name) | index("glab-status")'
+
 section "Merge Requests API via glab"
 
 mr_create=$(curl -sk -X POST \

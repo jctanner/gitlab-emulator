@@ -76,6 +76,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in
   persisted runner payloads and validated through the official runner VM.
+- GitLab-shaped commit status create/list routes exist for project commits and
+  are included in client-VM `glab api` smoke validation.
 - Project-scoped CI/CD variables can be created, listed, read, updated, and
   deleted through GitLab-shaped project variable APIs. Environment-scope
   filtering, key validation, and hidden write-only read behavior are covered by
