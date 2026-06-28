@@ -63,8 +63,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   match/non-match operators, `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, mapping-form `only`/`except` filters,
   workflow/rule-level variables, `allow_failure` scheduling/status behavior,
-  `when: always` failure cleanup scheduling, runner tags, cache metadata with
-  list and file-derived keys,
+  `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
+  metadata with list and file-derived keys,
   variable-expanded keys/policies/fallback keys, deeper `extends` semantics,
   nested local `include`, `include:project`, controlled `include:remote`, and a
   small set of built-in template includes.

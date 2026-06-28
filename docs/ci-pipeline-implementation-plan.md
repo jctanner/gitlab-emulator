@@ -28,7 +28,9 @@ Already working:
 - persisted jobs are stage-gated: later stages wait for earlier stages to
   succeed, same-stage jobs remain eligible for parallel runners, and later
   pending jobs are skipped after an earlier required stage fails, except
-  `when: always` jobs remain runnable for cleanup after failed earlier stages
+  `when: always` jobs remain runnable for cleanup after failed earlier stages;
+  `when: on_failure` jobs wait for an earlier required failure and are skipped
+  when previous dependencies finish successfully
 - minimal `needs` and common rules/ref filters are implemented: jobs can unlock
   from named dependencies, `needs: []` can run immediately, invalid needs are
   rejected early, `needs:artifacts` dependencies follow declared needs order,
@@ -37,7 +39,8 @@ Already working:
   variable comparisons, regex match/non-match, simple boolean operators with
   grouped parentheses, `exists`, commit-local `changes`, `exists`/`changes`
   path-object forms, variable-expanded rule path patterns, `when: never`,
-  `when: always`, and persisted non-runnable `manual` jobs. Matched
+  `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
+  Matched
   `workflow:rules:variables` are applied as job defaults before job-level
   variables. Current
   `only`/`except` support covers
@@ -354,6 +357,8 @@ Implemented:
 - fail or skip later-stage jobs when an earlier required stage fails
 - keep `when: always` jobs pending and runnable after an earlier required stage
   fails so cleanup can run before the pipeline finalizes
+- run `when: on_failure` jobs only after an earlier required failure, and skip
+  them when previous dependencies finish successfully
 - allow same-stage jobs to be assigned before their same-stage peers finish
 
 ## Slice 10: Needs, Rules, Tags, and Cache

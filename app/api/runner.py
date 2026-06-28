@@ -315,7 +315,16 @@ def explain_job_scheduling(
         eligible = job.status == "pending"
 
         if job.status == "pending":
-            job_runs_after_failure = (job.when or "on_success") == "always"
+            job_runs_after_failure = _job_runs_after_failure(job)
+            if _job_waits_for_failure(job) and not _job_has_required_failure_dependency(
+                job
+            ):
+                blocked = True
+                reason = "waiting for an earlier required failure"
+                reasons.append(reason)
+                blockers.append(
+                    {"type": "when", "when": "on_failure", "reason": reason}
+                )
             if job.needs is not None:
                 for need in _need_items(job.needs):
                     peer = jobs_by_name.get(need["job"])
@@ -783,8 +792,57 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.status = "pending"
 
 
+TERMINAL_DEPENDENCY_STATUSES = {"success", "skipped", "manual", "failed", "canceled"}
+
+
+def _job_waits_for_failure(job: PipelineJob) -> bool:
+    return (job.when or "on_success") == "on_failure"
+
+
+def _job_runs_after_failure(job: PipelineJob) -> bool:
+    return (job.when or "on_success") in {"always", "on_failure"}
+
+
+def _job_has_required_failure_dependency(job: PipelineJob) -> bool:
+    if job.needs is not None:
+        peers = {peer.name: peer for peer in job.pipeline.jobs}
+        return any(
+            (peer := peers.get(need["job"])) is not None
+            and peer.status == "failed"
+            and not peer.allow_failure
+            for need in _need_items(job.needs)
+        )
+    return any(
+        peer.stage_index < job.stage_index
+        and peer.status == "failed"
+        and not peer.allow_failure
+        for peer in job.pipeline.jobs
+    )
+
+
+def _job_dependencies_are_terminal(job: PipelineJob) -> bool:
+    if job.needs is not None:
+        peers = {peer.name: peer for peer in job.pipeline.jobs}
+        for need in _need_items(job.needs):
+            peer = peers.get(need["job"])
+            if peer is None:
+                if need["optional"]:
+                    continue
+                return False
+            if peer.status not in TERMINAL_DEPENDENCY_STATUSES:
+                return False
+        return True
+    return all(
+        peer.status in TERMINAL_DEPENDENCY_STATUSES
+        for peer in job.pipeline.jobs
+        if peer.stage_index < job.stage_index
+    )
+
+
 def _job_stage_is_unblocked(job: PipelineJob) -> bool:
-    job_runs_after_failure = (job.when or "on_success") == "always"
+    if _job_waits_for_failure(job) and not _job_has_required_failure_dependency(job):
+        return False
+    job_runs_after_failure = _job_runs_after_failure(job)
     if job.needs is not None:
         peers = {peer.name: peer for peer in job.pipeline.jobs}
         for need in _need_items(job.needs):
@@ -848,11 +906,24 @@ def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     for job in pipeline.jobs:
         needed_names = {need["job"] for need in _need_items(job.needs)}
         needs_failed_job = bool(needed_names & failed_job_names)
-        job_runs_after_failure = (job.when or "on_success") == "always"
+        job_runs_after_failure = _job_runs_after_failure(job)
         if (
             job.status == "pending"
             and (job.stage_index > first_failed_stage or needs_failed_job)
             and not job_runs_after_failure
+        ):
+            job.status = "skipped"
+            job.finished_at = job.finished_at or now
+
+
+def _skip_on_failure_jobs_without_failure(pipeline: Pipeline) -> None:
+    now = datetime.now(timezone.utc)
+    for job in pipeline.jobs:
+        if (
+            job.status == "pending"
+            and _job_waits_for_failure(job)
+            and _job_dependencies_are_terminal(job)
+            and not _job_has_required_failure_dependency(job)
         ):
             job.status = "skipped"
             job.finished_at = job.finished_at or now
@@ -1127,6 +1198,7 @@ async def update_job(
             persisted_job.status = body.state
         if persisted_job.status == "failed":
             _skip_jobs_after_failed_stage(persisted_job.pipeline)
+        _skip_on_failure_jobs_without_failure(persisted_job.pipeline)
         persisted_job.failure_reason = body.failure_reason
         persisted_job.exit_code = body.exit_code
         if body.output:

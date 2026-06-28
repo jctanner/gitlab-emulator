@@ -3221,6 +3221,165 @@ unit:
     assert pipeline_done.json()["status"] == "failed"
 
 
+async def test_when_on_failure_job_is_skipped_after_success(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages:
+  - build
+  - cleanup
+
+compile:
+  stage: build
+  script:
+    - echo build
+
+notify_failure:
+  stage: cleanup
+  when: on_failure
+  script:
+    - echo failed
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add when on failure ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    pipeline = pipeline_resp.json()
+
+    first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    first_payload = first.json()
+    assert first_payload["job_info"]["name"] == "compile"
+
+    success = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={"token": first_payload["token"], "state": "success"},
+    )
+    assert success.status_code == 200
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["compile"]["status"] == "success"
+    assert by_name["notify_failure"]["status"] == "skipped"
+    assert by_name["notify_failure"]["when"] == "on_failure"
+
+    blocked = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert blocked.status_code == 204
+
+    pipeline_done = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert pipeline_done.json()["status"] == "success"
+
+
+async def test_when_on_failure_job_runs_after_failed_stage(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages:
+  - build
+  - cleanup
+  - test
+
+compile:
+  stage: build
+  script:
+    - exit 1
+
+notify_failure:
+  stage: cleanup
+  when: on_failure
+  script:
+    - echo failed
+
+unit:
+  stage: test
+  script:
+    - echo test
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add when on failure ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    pipeline = pipeline_resp.json()
+
+    first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    first_payload = first.json()
+    assert first_payload["job_info"]["name"] == "compile"
+
+    fail = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={"token": first_payload["token"], "state": "failed", "exit_code": 1},
+    )
+    assert fail.status_code == 200
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["compile"]["status"] == "failed"
+    assert by_name["notify_failure"]["status"] == "pending"
+    assert by_name["notify_failure"]["when"] == "on_failure"
+    assert by_name["unit"]["status"] == "skipped"
+
+    notify = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert notify.status_code == 201
+    notify_payload = notify.json()
+    assert notify_payload["job_info"]["name"] == "notify_failure"
+    assert notify_payload["steps"][0]["when"] == "on_failure"
+
+    success = await client.put(
+        f"{API}/jobs/{notify_payload['id']}",
+        headers={"JOB-TOKEN": notify_payload["token"]},
+        json={"token": notify_payload["token"], "state": "success"},
+    )
+    assert success.status_code == 200
+
+    pipeline_done = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert pipeline_done.json()["status"] == "failed"
+
+
 async def test_allowed_failure_does_not_block_later_jobs(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
