@@ -1318,6 +1318,36 @@ delayed_job:
     assert "when delayed is not supported" in resp.text
 
 
+async def test_create_pipeline_rejects_unknown_gitlab_ci_when(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+unknown_when:
+  script:
+    - echo invalid
+  rules:
+    - when: eventually
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add unknown when ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 400
+    assert "when value is not supported" in resp.text
+    assert "eventually" in resp.text
+
+
 async def test_create_pipeline_rejects_workflow_rules_skip(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

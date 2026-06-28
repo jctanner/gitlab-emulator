@@ -856,6 +856,36 @@ delayed_job:
             raise AssertionError("expected ValueError")
 
 
+def test_parse_gitlab_ci_rejects_unknown_when_values():
+    for content, detail in [
+        (
+            """
+invalid_when:
+  script: echo invalid
+  when: sometimes
+""",
+            "sometimes",
+        ),
+        (
+            """
+invalid_rule_when:
+  script: echo invalid
+  rules:
+    - when: eventually
+""",
+            "eventually",
+        ),
+    ]:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            message = str(exc)
+            assert "when value is not supported" in message
+            assert detail in message
+        else:
+            raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_applies_rule_variables_and_allow_failure():
     jobs = parse_gitlab_ci(
         """

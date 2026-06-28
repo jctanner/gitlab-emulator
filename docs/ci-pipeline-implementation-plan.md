@@ -43,7 +43,8 @@ Already working:
   `rules:exists` project/ref options, `when: never`,
   `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
   Unsupported delayed jobs using `when: delayed` or `start_in` are rejected
-  clearly because delayed scheduling is not modeled.
+  clearly because delayed scheduling is not modeled, and other unsupported
+  `when` values are rejected before pipeline creation.
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
   variables. Boolean `allow_failure` is supported for jobs and rules, while
@@ -392,7 +393,8 @@ Implemented:
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
   including MVP `if` with unary negation, `exists`, `changes`, `never`,
   `manual`, `when: always`, `when: on_failure`, boolean `allow_failure`,
-  clear delayed-job rejection, branch/tag, and pipeline-source legacy filter
+  clear delayed-job and unknown-`when` rejection, branch/tag, and
+  pipeline-source legacy filter
   behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`

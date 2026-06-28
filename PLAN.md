@@ -68,7 +68,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   variables, boolean `allow_failure` scheduling/status behavior with clear
   rejection of unsupported `allow_failure:exit_codes`,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
-  metadata with clear rejection of unsupported delayed jobs, list and
+  metadata with clear rejection of unsupported delayed jobs and unknown `when`
+  values, list and
   file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, deeper `extends` semantics, nested local
   `include`, `include:project`, list-valued controlled `include:remote`, and

@@ -51,6 +51,7 @@ SUPPORTED_CACHE_ENTRY_KEYS = {
 }
 SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
 SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
+SUPPORTED_JOB_WHEN = {"on_success", "on_failure", "always", "manual", "never"}
 
 
 @dataclass
@@ -398,6 +399,8 @@ def _when_setting(value: Any) -> str:
     when = str(value or "on_success")
     if when == "delayed":
         raise ValueError("when delayed is not supported")
+    if when not in SUPPORTED_JOB_WHEN:
+        raise ValueError(f"when value is not supported: {when}")
     return when
 
 
