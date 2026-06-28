@@ -5,6 +5,7 @@ from urllib.parse import quote
 import pytest
 
 from tests.conftest import API, auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 
 async def _project_with_source_branch(client, test_token, name: str) -> dict:
@@ -364,3 +365,72 @@ async def test_create_merge_request_requires_auth(client, test_token):
     )
 
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_merge_request_writes_require_developer(
+    client, db_session, test_user, test_token
+):
+    developer, developer_token = await _create_user_and_token(
+        db_session, "mr-role-developer"
+    )
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "mr-role-reporter"
+    )
+    project = await _project_with_source_branch(
+        client, test_token, "mr-role-boundary-project"
+    )
+    project_id = project["id"]
+
+    for user, level in ((developer, 30), (reporter, 20)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    denied_create = await client.post(
+        f"{API}/projects/{project_id}/merge_requests",
+        json={
+            "title": "Reporter denied",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(reporter_token),
+    )
+    assert denied_create.status_code == 403
+
+    allowed_create = await client.post(
+        f"{API}/projects/{project_id}/merge_requests",
+        json={
+            "title": "Developer allowed",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(developer_token),
+    )
+    assert allowed_create.status_code == 201
+    iid = allowed_create.json()["iid"]
+
+    denied_update = await client.put(
+        f"{API}/projects/{project_id}/merge_requests/{iid}",
+        json={"title": "Reporter denied update"},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied_update.status_code == 403
+
+    allowed_update = await client.put(
+        f"{API}/projects/{project_id}/merge_requests/{iid}",
+        json={"title": "Developer allowed update"},
+        headers=auth_headers(developer_token),
+    )
+    assert allowed_update.status_code == 200
+    assert allowed_update.json()["title"] == "Developer allowed update"
+
+    denied_merge = await client.put(
+        f"{API}/projects/{project_id}/merge_requests/{iid}/merge",
+        json={},
+        headers=auth_headers(reporter_token),
+    )
+    assert denied_merge.status_code == 403

@@ -339,7 +339,10 @@ Done when:
   require Maintainer or higher, and group webhook writes require Owner. Label
   and milestone definition writes require Maintainer or higher; issue label
   assignment, release writes, and commit status writes require Developer or
-  higher. Remaining lower-risk collaboration endpoints still need broader
-  permission hardening.
+  higher. Issue, issue-comment, and reaction writes require Reporter or higher;
+  merge request create/update/merge requires Developer or higher. Remaining
+  long-tail parity includes exact Guest-vs-Reporter project access semantics
+  where the inherited collaborator permission model cannot yet distinguish
+  GitLab Guest from Reporter.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
 - Production security hardening.

@@ -17,6 +17,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
 from app.schemas.label import LabelResponse
+from app.services.permissions import REPORTER, require_project_access
 
 router = APIRouter(tags=["issues"])
 
@@ -288,6 +289,7 @@ async def create_project_issue(
 ):
     """Create a GitLab-shaped project issue."""
     project = await _get_project_or_404(project_ref, db)
+    await require_project_access(project, user, db, REPORTER)
     title = body.get("title")
     if not title:
         raise HTTPException(status_code=422, detail="title is required")
@@ -338,6 +340,7 @@ async def update_project_issue(
 ):
     """Update a GitLab-shaped project issue by IID."""
     project = await _get_project_or_404(project_ref, db)
+    await require_project_access(project, user, db, REPORTER)
     issue = await _project_issue_or_404(project, issue_iid, db)
     if "title" in body:
         issue.title = body["title"]
@@ -447,6 +450,7 @@ async def create_issue(
 ):
     """Create a new issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     title = body.get("title")
     if not title:
@@ -538,6 +542,7 @@ async def update_issue(
 ):
     """Update an issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     result = await db.execute(
         select(Issue).where(

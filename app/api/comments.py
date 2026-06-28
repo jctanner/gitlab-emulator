@@ -11,6 +11,7 @@ from app.config import settings
 from app.models.comment import IssueComment
 from app.models.issue import Issue
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import REPORTER, require_project_access
 
 router = APIRouter(tags=["comments"])
 
@@ -106,6 +107,7 @@ async def create_comment(
 ):
     """Create a comment on an issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     result = await db.execute(
         select(Issue).where(
@@ -167,6 +169,7 @@ async def update_comment(
 ):
     """Update an issue comment."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     result = await db.execute(
         select(IssueComment).where(IssueComment.id == comment_id)
@@ -194,6 +197,7 @@ async def delete_comment(
 ):
     """Delete an issue comment."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
 
     result = await db.execute(
         select(IssueComment).where(IssueComment.id == comment_id)

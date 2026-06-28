@@ -26,6 +26,7 @@ from app.models.issue import Issue
 from app.models.merge_request import MergeRequest
 from app.models.project import Project
 from app.schemas.user import _fmt_dt
+from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["merge-requests"])
 
@@ -362,6 +363,7 @@ async def create_merge_request(
 ):
     """Create a GitLab-shaped merge request."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     title = body.get("title")
     source_branch = body.get("source_branch")
     target_branch = body.get("target_branch")
@@ -533,6 +535,7 @@ async def update_merge_request(
 ):
     """Update a GitLab-shaped merge request."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     merge_request = await _get_mr_or_404(project, iid, db)
     issue = merge_request.issue
 
@@ -605,6 +608,7 @@ async def merge_merge_request(
 ):
     """Merge a GitLab-shaped merge request."""
     project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
     merge_request = await _get_mr_or_404(project, iid, db)
     if merge_request.merged:
         raise HTTPException(status_code=405, detail="Merge request already merged")

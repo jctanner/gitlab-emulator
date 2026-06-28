@@ -9,6 +9,7 @@ from app.models.reaction import Reaction
 from app.models.issue import Issue
 from app.models.comment import IssueComment
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import REPORTER, require_project_access
 
 router = APIRouter(tags=["reactions"])
 
@@ -63,6 +64,7 @@ async def create_issue_reaction(
 ):
     """Create a reaction for an issue."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
     result = await db.execute(
         select(Issue).where(Issue.repo_id == repository.id, Issue.number == issue_number)
     )
@@ -105,6 +107,8 @@ async def delete_issue_reaction(
     user: AuthUser, db: DbSession,
 ):
     """Delete an issue reaction."""
+    repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
     result = await db.execute(select(Reaction).where(Reaction.id == reaction_id))
     reaction = result.scalar_one_or_none()
     if reaction is None:
@@ -138,6 +142,8 @@ async def create_comment_reaction(
     owner: str, repo: str, comment_id: int, body: dict, user: AuthUser, db: DbSession,
 ):
     """Create a reaction for an issue comment."""
+    repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
     content = body.get("content", "")
     if content not in VALID_CONTENTS:
         raise HTTPException(status_code=422, detail=f"Invalid reaction: {content}")
@@ -172,6 +178,8 @@ async def delete_comment_reaction(
     user: AuthUser, db: DbSession,
 ):
     """Delete a comment reaction."""
+    repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, REPORTER)
     result = await db.execute(select(Reaction).where(Reaction.id == reaction_id))
     reaction = result.scalar_one_or_none()
     if reaction is None:

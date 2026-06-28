@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -233,3 +234,66 @@ async def test_comment_response_shape(client, test_user, test_token, comment_rep
     assert "total_count" in reactions
     assert "+1" in reactions
     assert "-1" in reactions
+
+
+@pytest.mark.asyncio
+async def test_comment_writes_require_reporter(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "comment-role-reporter"
+    )
+    outsider, outsider_token = await _create_user_and_token(
+        db_session, "comment-role-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "comment-role-project"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    issue = await client.post(
+        f"{API}/projects/{project_id}/issues",
+        json={"title": "comment role issue"},
+        headers=auth_headers(test_token),
+    )
+    assert issue.status_code == 201
+
+    denied_create = await client.post(
+        f"{API}/repos/testuser/comment-role-project/issues/1/comments",
+        json={"body": "outsider denied"},
+        headers=auth_headers(outsider_token),
+    )
+    assert denied_create.status_code == 403
+
+    allowed_create = await client.post(
+        f"{API}/repos/testuser/comment-role-project/issues/1/comments",
+        json={"body": "reporter allowed"},
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_create.status_code == 201
+    comment_id = allowed_create.json()["id"]
+
+    denied_update = await client.patch(
+        f"{API}/repos/testuser/comment-role-project/issues/comments/{comment_id}",
+        json={"body": "outsider denied update"},
+        headers=auth_headers(outsider_token),
+    )
+    assert denied_update.status_code == 403
+
+    allowed_update = await client.patch(
+        f"{API}/repos/testuser/comment-role-project/issues/comments/{comment_id}",
+        json={"body": "reporter allowed update"},
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_update.status_code == 200
+    assert allowed_update.json()["body"] == "reporter allowed update"

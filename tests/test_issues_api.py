@@ -3,6 +3,7 @@
 import pytest
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -198,3 +199,58 @@ async def test_gitlab_project_issues_accept_url_encoded_project_path(
     assert list_resp.status_code == 200
     assert list_resp.headers["x-total"] == "1"
     assert list_resp.json()[0]["title"] == "Path issue"
+
+
+@pytest.mark.asyncio
+async def test_issue_writes_require_reporter(
+    client, db_session, test_user, test_token
+):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "issue-role-reporter"
+    )
+    outsider, outsider_token = await _create_user_and_token(
+        db_session, "issue-role-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "issue-role-project"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    denied_create = await client.post(
+        f"{API}/projects/{project_id}/issues",
+        json={"title": "outsider denied"},
+        headers=auth_headers(outsider_token),
+    )
+    assert denied_create.status_code == 403
+
+    allowed_create = await client.post(
+        f"{API}/projects/{project_id}/issues",
+        json={"title": "reporter allowed"},
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_create.status_code == 201
+
+    denied_update = await client.put(
+        f"{API}/projects/{project_id}/issues/1",
+        json={"title": "outsider denied update"},
+        headers=auth_headers(outsider_token),
+    )
+    assert denied_update.status_code == 403
+
+    allowed_update = await client.put(
+        f"{API}/projects/{project_id}/issues/1",
+        json={"title": "reporter allowed update"},
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_update.status_code == 200
+    assert allowed_update.json()["title"] == "reporter allowed update"
