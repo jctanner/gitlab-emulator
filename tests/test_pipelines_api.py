@@ -4386,6 +4386,67 @@ fallback_rule:
     assert [job["name"] for job in jobs.json()] == ["main_only"]
 
 
+async def test_pipeline_legacy_ref_glob_filters_jobs_from_gitlab_ci_yaml(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+release_glob:
+  script:
+    - echo release glob
+  only: ["release/*"]
+
+feature_glob:
+  script:
+    - echo feature glob
+  only: ["feature/*"]
+
+skip_release_glob:
+  script:
+    - echo skip release glob
+  except: ["release/*"]
+
+skip_feature_glob:
+  script:
+    - echo skip feature glob
+  except: ["feature/*"]
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add glob ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    branch = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        headers=auth_headers(test_token),
+        json={"branch": "release/1.0", "ref": "main"},
+    )
+    assert branch.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "release/1.0"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == [
+        "release_glob",
+        "skip_feature_glob",
+    ]
+
+
 async def test_pipeline_rules_if_exists_changes_and_manual_from_gitlab_ci_yaml(
     client, test_token
 ):

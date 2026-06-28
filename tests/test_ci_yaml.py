@@ -361,6 +361,31 @@ fallback_rule:
     assert [job.name for job in jobs] == ["fallback_rule", "main_only"]
 
 
+def test_parse_gitlab_ci_applies_legacy_ref_glob_filters():
+    jobs = parse_gitlab_ci(
+        """
+release_glob:
+  script: echo release glob
+  only: ["release/*"]
+
+feature_glob:
+  script: echo feature glob
+  only: ["feature/*"]
+
+skip_release_glob:
+  script: echo skip release glob
+  except: ["release/*"]
+
+skip_feature_glob:
+  script: echo skip feature glob
+  except: ["feature/*"]
+""",
+        ref="release/1.0",
+    )
+
+    assert [job.name for job in jobs] == ["release_glob", "skip_feature_glob"]
+
+
 def test_parse_gitlab_ci_applies_tag_ref_filters_and_variables():
     jobs = parse_gitlab_ci(
         """

@@ -12,10 +12,10 @@ null/empty variable comparisons, variable-backed regex patterns in `rules:if`,
 `exists`/`changes` path-object rules, variable-expanded rule path patterns,
 mapping-form `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters, cache
-list/file-derived keys, cache path/key/policy/when/fallback-key variable
-expansion, clear rejection of unsupported cache entry options and invalid cache
-policy/when values, richer `needs`, including clear rejection of unsupported
-`needs:parallel:matrix`, deeper
+glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
+cache path/key/policy/when/fallback-key variable expansion, clear rejection of
+unsupported cache entry options and invalid cache policy/when values, richer
+`needs`, including clear rejection of unsupported `needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries, clear rejection of unsupported cross-ref
 `rules:changes:compare_to` and `rules:exists` project/ref options,

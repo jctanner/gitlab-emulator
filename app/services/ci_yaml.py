@@ -375,6 +375,8 @@ def _ref_matches(pattern: str, ref: str, ref_kind: str, source: str) -> bool:
         import re
 
         return re.search(pattern[1:-1], ref) is not None
+    if any(char in pattern for char in "*?["):
+        return fnmatch.fnmatch(ref, pattern)
     return False
 
 
