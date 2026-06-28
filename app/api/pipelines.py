@@ -159,11 +159,20 @@ def _pipeline_context_variable_entries(
     variables: list[PipelineVariable],
     *,
     source: str,
+    ref: str | None = None,
+    ref_kind: str = "branch",
 ) -> dict[str, dict]:
-    return {
+    entries = {
         **_pipeline_variable_entries(variables),
         "CI_PIPELINE_SOURCE": _variable_entry(source),
     }
+    if ref:
+        entries["CI_COMMIT_REF_NAME"] = _variable_entry(ref)
+        if ref_kind == "tag":
+            entries["CI_COMMIT_TAG"] = _variable_entry(ref)
+        else:
+            entries["CI_COMMIT_BRANCH"] = _variable_entry(ref)
+    return entries
 
 
 def _simple_variable_values(entries: dict[str, dict]) -> dict[str, str]:
@@ -229,7 +238,33 @@ async def _resolve_ref(project: Project, ref: str) -> str:
     if not project.disk_path:
         return "0000000000000000000000000000000000000000"
     sha = await _git_output(project.disk_path, "rev-parse", f"refs/heads/{ref}")
+    if not sha:
+        sha = await _git_output(
+            project.disk_path,
+            "rev-parse",
+            f"refs/tags/{ref}^{{commit}}",
+        )
     return sha.strip() if sha else "0000000000000000000000000000000000000000"
+
+
+async def _ref_kind(project: Project, ref: str) -> str:
+    if not project.disk_path:
+        return "branch"
+    branch = await _git_output(
+        project.disk_path,
+        "show-ref",
+        "--verify",
+        f"refs/heads/{ref}",
+    )
+    if branch:
+        return "branch"
+    tag = await _git_output(
+        project.disk_path,
+        "show-ref",
+        "--verify",
+        f"refs/tags/{ref}",
+    )
+    return "tag" if tag else "branch"
 
 
 async def _repo_paths_at_ref(project: Project, ref: str) -> set[str]:
@@ -816,6 +851,7 @@ async def _create_pipeline(
     sha = body.sha
     if sha == "0000000000000000000000000000000000000000":
         sha = await _resolve_ref(project, body.ref)
+    ref_kind = await _ref_kind(project, body.ref)
 
     if body.variables and source not in {"trigger", "schedule"}:
         access_level = await project_access_level(project, actor, db)
@@ -871,8 +907,7 @@ async def _create_pipeline(
                 ref=body.ref,
             )
             pipeline_variable_entries = _pipeline_context_variable_entries(
-                body.variables,
-                source=source,
+                body.variables, source=source, ref=body.ref, ref_kind=ref_kind
             )
             ci_content = await _read_repo_file(
                 project,
@@ -886,6 +921,7 @@ async def _create_pipeline(
             parsed_jobs = parse_gitlab_ci(
                 merged_ci_content,
                 ref=body.ref,
+                ref_kind=ref_kind,
                 variables=_simple_variable_values(
                     {
                         **rule_project_variable_entries,
@@ -935,8 +971,7 @@ async def _create_pipeline(
     await db.flush()
 
     pipeline_variable_entries = _pipeline_context_variable_entries(
-        body.variables,
-        source=source,
+        body.variables, source=source, ref=body.ref, ref_kind=ref_kind
     )
     for parsed_job in parsed_jobs:
         project_variable_metadata = await project_variable_entries(

@@ -319,9 +319,32 @@ def _ref_values(value: Any) -> list[str]:
     return [str(value)]
 
 
-def _ref_matches(pattern: str, ref: str) -> bool:
+def _ref_matches(pattern: str, ref: str, ref_kind: str, source: str) -> bool:
     if pattern in {"branches", "refs"}:
-        return True
+        return ref_kind == "branch"
+    if pattern == "tags":
+        return ref_kind == "tag"
+    if pattern in {
+        "api",
+        "external",
+        "merge_requests",
+        "pipelines",
+        "pushes",
+        "schedules",
+        "triggers",
+        "web",
+    }:
+        expected_sources = {
+            "api": {"api"},
+            "external": {"external"},
+            "merge_requests": {"merge_request_event"},
+            "pipelines": {"pipeline"},
+            "pushes": {"push"},
+            "schedules": {"schedule"},
+            "triggers": {"trigger"},
+            "web": {"web"},
+        }
+        return source in expected_sources.get(pattern, set())
     if pattern == ref:
         return True
     if pattern.startswith("/") and pattern.endswith("/") and len(pattern) > 2:
@@ -458,7 +481,6 @@ def _if_matches(expression: Any, ref: str, variables: dict[str, str]) -> bool:
     if not isinstance(expression, str):
         return True
     context = {
-        "CI_COMMIT_BRANCH": ref,
         "CI_COMMIT_REF_NAME": ref,
         **variables,
     }
@@ -497,18 +519,22 @@ def _variable_filters_match(value: Any, ref: str, variables: dict[str, str]) -> 
 def _legacy_filter_matches(
     value: Any,
     ref: str,
+    ref_kind: str,
+    source: str,
     variables: dict[str, str],
     changed_paths: set[str],
 ) -> bool:
     if not isinstance(value, dict):
         refs = _ref_values(value)
-        return bool(refs) and any(_ref_matches(pattern, ref) for pattern in refs)
+        return bool(refs) and any(
+            _ref_matches(pattern, ref, ref_kind, source) for pattern in refs
+        )
 
     has_condition = False
     refs = _ref_values(value.get("refs"))
     if refs:
         has_condition = True
-        if not any(_ref_matches(pattern, ref) for pattern in refs):
+        if not any(_ref_matches(pattern, ref, ref_kind, source) for pattern in refs):
             return False
 
     if "variables" in value:
@@ -527,6 +553,8 @@ def _legacy_filter_matches(
 def _job_rule_decision(
     config: dict,
     ref: str,
+    ref_kind: str,
+    source: str,
     variables: dict[str, str],
     existing_paths: set[str],
     changed_paths: set[str],
@@ -561,13 +589,13 @@ def _job_rule_decision(
 
     only = config.get("only")
     if only is not None and not _legacy_filter_matches(
-        only, ref, variables, changed_paths
+        only, ref, ref_kind, source, variables, changed_paths
     ):
         return _RuleDecision(included=False)
 
     except_filter = config.get("except")
     if except_filter is not None and _legacy_filter_matches(
-        except_filter, ref, variables, changed_paths
+        except_filter, ref, ref_kind, source, variables, changed_paths
     ):
         return _RuleDecision(included=False)
 
@@ -586,6 +614,8 @@ def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
 def _workflow_rule_decision(
     parsed: dict,
     ref: str,
+    ref_kind: str,
+    source: str,
     variables: dict[str, str],
     existing_paths: set[str],
     changed_paths: set[str],
@@ -596,6 +626,8 @@ def _workflow_rule_decision(
     return _job_rule_decision(
         {"rules": workflow.get("rules")},
         ref,
+        ref_kind,
+        source,
         variables,
         existing_paths,
         changed_paths,
@@ -725,6 +757,7 @@ def _unsupported_job_keys(name: str, config: dict) -> None:
 def parse_gitlab_ci(
     content: str,
     ref: str = "main",
+    ref_kind: str = "branch",
     variables: dict[str, str] | None = None,
     existing_paths: set[str] | None = None,
     changed_paths: set[str] | None = None,
@@ -759,15 +792,21 @@ def parse_gitlab_ci(
     global_tags: list[str] = []
     stage_order = {stage_name: index for index, stage_name in enumerate(stages)}
     pipeline_variables = variables or {}
+    pipeline_source = pipeline_variables.get("CI_PIPELINE_SOURCE", "api")
     repository_paths = existing_paths or set()
     commit_changed_paths = changed_paths or set()
     workflow_context = {
+        "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+        "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+        "CI_COMMIT_REF_NAME": ref,
         **pipeline_variables,
         **_variable_values(global_variables),
     }
     workflow_decision = _workflow_rule_decision(
         parsed,
         ref,
+        ref_kind,
+        pipeline_source,
         workflow_context,
         repository_paths,
         commit_changed_paths,
@@ -801,12 +840,17 @@ def parse_gitlab_ci(
             **job_variable_entries,
         }
         rule_variables = {
+            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+            "CI_COMMIT_REF_NAME": ref,
             **pipeline_variables,
             **_variable_values(merged_variable_entries),
         }
         decision = _job_rule_decision(
             config,
             ref,
+            ref_kind,
+            pipeline_source,
             rule_variables,
             repository_paths,
             commit_changed_paths,

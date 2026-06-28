@@ -1125,6 +1125,73 @@ compile:
     } in payload["variables"]
 
 
+async def test_create_pipeline_from_gitlab_ci_yaml_for_tag_ref(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages: [test]
+
+tag_only:
+  script:
+    - echo tag $CI_COMMIT_TAG
+  only: [tags]
+
+branch_only:
+  script:
+    - echo branch $CI_COMMIT_BRANCH
+  only: [branches]
+
+skip_tag:
+  script:
+    - echo skip tag
+  except: [tags]
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add tag ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    tag = await client.post(
+        f"{API}/projects/{project['id']}/repository/tags",
+        headers=auth_headers(test_token),
+        json={"tag_name": "v1.2.3", "ref": "main"},
+    )
+    assert tag.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "v1.2.3"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+    pipeline = resp.json()
+    assert pipeline["sha"] == tag.json()["commit"]["id"]
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["tag_only"]
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == "tag_only"
+    variables = {item["key"]: item["value"] for item in payload["variables"]}
+    assert variables["CI_COMMIT_REF_NAME"] == "v1.2.3"
+    assert variables["CI_COMMIT_TAG"] == "v1.2.3"
+    assert "CI_COMMIT_BRANCH" not in variables
+
+
 async def test_create_pipeline_rejects_unsupported_gitlab_ci_execution_keyword(
     client, test_token
 ):

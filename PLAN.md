@@ -61,8 +61,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   validation edge cases, common ref filters, richer `rules` job selection with
   grouped boolean `if` expressions, null/empty checks, and regex
   match/non-match operators, `exists`/`changes` path-object rules,
-  variable-expanded rule path patterns, mapping-form `only`/`except` filters,
-  workflow/rule-level variables, `allow_failure` scheduling/status behavior,
+  variable-expanded rule path patterns, branch/tag/source-aware
+  `only`/`except` filters including mapping forms, workflow/rule-level
+  variables, `allow_failure` scheduling/status behavior,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
   metadata with list and file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, deeper `extends` semantics, nested local

@@ -340,6 +340,54 @@ fallback_rule:
     assert [job.name for job in jobs] == ["fallback_rule", "main_only"]
 
 
+def test_parse_gitlab_ci_applies_tag_ref_filters_and_variables():
+    jobs = parse_gitlab_ci(
+        """
+tag_only:
+  script: echo tag
+  only: [tags]
+
+branch_only:
+  script: echo branch
+  only: [branches]
+
+skip_tags:
+  script: echo skip tags
+  except: [tags]
+
+tag_rule:
+  script: echo tag rule
+  rules:
+    - if: '$CI_COMMIT_TAG == "v1.2.3" && $CI_COMMIT_BRANCH == ""'
+""",
+        ref="v1.2.3",
+        ref_kind="tag",
+    )
+
+    assert [job.name for job in jobs] == ["tag_only", "tag_rule"]
+
+
+def test_parse_gitlab_ci_applies_legacy_source_ref_filters():
+    jobs = parse_gitlab_ci(
+        """
+api_only:
+  script: echo api
+  only: [api]
+
+trigger_only:
+  script: echo trigger
+  only: [triggers]
+
+not_schedules:
+  script: echo not schedule
+  except: [schedules]
+""",
+        variables={"CI_PIPELINE_SOURCE": "trigger"},
+    )
+
+    assert [job.name for job in jobs] == ["not_schedules", "trigger_only"]
+
+
 def test_parse_gitlab_ci_applies_mapping_only_except_filters():
     jobs = parse_gitlab_ci(
         """

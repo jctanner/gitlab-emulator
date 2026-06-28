@@ -43,8 +43,8 @@ Already working:
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
   variables. Current
-  `only`/`except` support covers
-  scalar/list refs plus mapping-form `refs`, `variables`, and `changes`.
+  `only`/`except` support covers scalar/list branch, tag, and pipeline-source
+  refs plus mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
   matching runner tags, and untagged jobs honor the runner's `run_untagged`
   setting
@@ -382,7 +382,8 @@ Implemented:
   payloads for official runner downloads
 - preserve declared needs order in official runner dependency payloads
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
-  including MVP `if`, `exists`, `changes`, `never`, and `manual` behavior
+  including MVP `if`, `exists`, `changes`, `never`, `manual`, branch/tag, and
+  pipeline-source legacy filter behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in

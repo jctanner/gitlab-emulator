@@ -466,7 +466,8 @@ validation, `needs:artifacts`, common ref filters, rule-level variables,
 workflow variables, grouped `rules:if` boolean expressions, regex non-match
 operators, null/empty variable comparisons, `exists`/`changes` path-object rule
 parsing, variable-expanded rule path patterns, mapping-form `only`/`except`,
-and `allow_failure` scheduling/status behavior are covered by local tests.
+branch/tag/source-aware legacy `only`/`except` filters, and `allow_failure`
+scheduling/status behavior are covered by local tests.
 Runner tag matching is also covered by local API tests. The smoke queue is
 intentionally temporary. Cache metadata, list-form cache keys,
 variable-expanded cache paths/keys/policies/when/fallback keys, and archive
