@@ -17,7 +17,11 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
 from app.schemas.label import LabelResponse
-from app.services.permissions import REPORTER, require_project_access
+from app.services.permissions import (
+    REPORTER,
+    project_access_level,
+    require_project_access,
+)
 
 router = APIRouter(tags=["issues"])
 
@@ -28,6 +32,7 @@ BASE = settings.BASE_URL
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _issue_json(issue: Issue, base_url: str) -> dict:
     """Build a GitHub-compatible issue JSON object."""
     api = f"{base_url}/api/v4"
@@ -37,7 +42,9 @@ def _issue_json(issue: Issue, base_url: str) -> dict:
     repo_full = f"{owner_login}/{repo_name}"
     issue_url = f"{api}/repos/{repo_full}/issues/{issue.number}"
 
-    user_simple = SimpleUser.from_db(issue.user, base_url).model_dump() if issue.user else None
+    user_simple = (
+        SimpleUser.from_db(issue.user, base_url).model_dump() if issue.user else None
+    )
 
     labels = []
     if issue.labels:
@@ -48,11 +55,14 @@ def _issue_json(issue: Issue, base_url: str) -> dict:
 
     assignees = []
     if issue.assignees:
-        assignees = [SimpleUser.from_db(u, base_url).model_dump() for u in issue.assignees]
+        assignees = [
+            SimpleUser.from_db(u, base_url).model_dump() for u in issue.assignees
+        ]
 
     milestone = None
     if issue.milestone:
         from app.schemas.milestone import MilestoneResponse
+
         milestone = MilestoneResponse.from_db(
             issue.milestone, base_url, owner_login, repo_name
         ).model_dump()
@@ -118,14 +128,25 @@ def _issue_json(issue: Issue, base_url: str) -> dict:
     }
 
 
-async def _get_project_or_404(project_ref: str, db: DbSession) -> Project:
+async def _get_project_or_404(
+    project_ref: str,
+    db: DbSession,
+    current_user: User | None,
+) -> Project:
     decoded_ref = unquote(str(project_ref)).strip("/")
     if decoded_ref.isdigit():
         result = await db.execute(select(Project).where(Project.id == int(decoded_ref)))
     else:
-        result = await db.execute(select(Project).where(Project.full_name == decoded_ref))
+        result = await db.execute(
+            select(Project).where(Project.full_name == decoded_ref)
+        )
     project = result.scalar_one_or_none()
     if project is None:
+        raise HTTPException(status_code=404, detail="Project Not Found")
+    if project.private and (
+        current_user is None
+        or await project_access_level(project, current_user, db) < REPORTER
+    ):
         raise HTTPException(status_code=404, detail="Project Not Found")
     return project
 
@@ -133,7 +154,9 @@ async def _get_project_or_404(project_ref: str, db: DbSession) -> Project:
 def _gitlab_issue_json(issue: Issue, base_url: str) -> dict:
     project = issue.repository
     project_path = project.full_name if project else "unknown/unknown"
-    author = SimpleUser.from_db(issue.user, base_url).model_dump() if issue.user else None
+    author = (
+        SimpleUser.from_db(issue.user, base_url).model_dump() if issue.user else None
+    )
     assignees = [
         SimpleUser.from_db(user, base_url).model_dump()
         for user in (issue.assignees or [])
@@ -205,7 +228,9 @@ def _label_names(value: object) -> list[str]:
     return []
 
 
-async def _apply_issue_labels(issue: Issue, project: Project, labels: list[str], db: DbSession) -> None:
+async def _apply_issue_labels(
+    issue: Issue, project: Project, labels: list[str], db: DbSession
+) -> None:
     for label_name in labels:
         result = await db.execute(
             select(Label).where(Label.repo_id == project.id, Label.name == label_name)
@@ -218,7 +243,9 @@ async def _apply_issue_labels(issue: Issue, project: Project, labels: list[str],
         db.add(IssueLabel(issue_id=issue.id, label_id=label.id))
 
 
-async def _apply_issue_assignees(issue: Issue, assignee_ids: list[int], db: DbSession) -> None:
+async def _apply_issue_assignees(
+    issue: Issue, assignee_ids: list[int], db: DbSession
+) -> None:
     for user_id in assignee_ids:
         result = await db.execute(select(User).where(User.id == user_id))
         assignee = result.scalar_one_or_none()
@@ -226,7 +253,9 @@ async def _apply_issue_assignees(issue: Issue, assignee_ids: list[int], db: DbSe
             db.add(IssueAssignee(issue_id=issue.id, user_id=assignee.id))
 
 
-async def _project_issue_or_404(project: Project, issue_iid: int, db: DbSession) -> Issue:
+async def _project_issue_or_404(
+    project: Project, issue_iid: int, db: DbSession
+) -> Issue:
     result = await db.execute(
         select(Issue).where(Issue.repo_id == project.id, Issue.number == issue_iid)
     )
@@ -240,6 +269,7 @@ async def _project_issue_or_404(project: Project, issue_iid: int, db: DbSession)
 # Routes
 # ---------------------------------------------------------------------------
 
+
 @router.get("/projects/{project_ref:path}/issues")
 async def list_project_issues(
     project_ref: str,
@@ -252,7 +282,7 @@ async def list_project_issues(
     per_page: int = Query(30, ge=1, le=100),
 ):
     """List GitLab-shaped project issues."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, current_user)
     query = select(Issue).where(Issue.repo_id == project.id)
     if state not in {"all", "opened"}:
         query = query.where(Issue.state == ("closed" if state == "closed" else state))
@@ -267,10 +297,14 @@ async def list_project_issues(
             )
             query = query.where(Issue.id.in_(label_subq))
     query = query.order_by(Issue.created_at.desc())
-    total = (await db.execute(select(sa_func.count()).select_from(query.subquery()))).scalar() or 0
+    total = (
+        await db.execute(select(sa_func.count()).select_from(query.subquery()))
+    ).scalar() or 0
     issues = (
-        await db.execute(query.offset((page - 1) * per_page).limit(per_page))
-    ).scalars().all()
+        (await db.execute(query.offset((page - 1) * per_page).limit(per_page)))
+        .scalars()
+        .all()
+    )
     return paginated_json(
         [_gitlab_issue_json(issue, BASE) for issue in issues],
         request,
@@ -288,7 +322,7 @@ async def create_project_issue(
     db: DbSession,
 ):
     """Create a GitLab-shaped project issue."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, REPORTER)
     title = body.get("title")
     if not title:
@@ -324,7 +358,7 @@ async def get_project_issue(
     current_user: CurrentUser,
 ):
     """Get a GitLab-shaped project issue by IID."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, current_user)
     issue = await _project_issue_or_404(project, issue_iid, db)
     return _gitlab_issue_json(issue, BASE)
 
@@ -339,7 +373,7 @@ async def update_project_issue(
     db: DbSession,
 ):
     """Update a GitLab-shaped project issue by IID."""
-    project = await _get_project_or_404(project_ref, db)
+    project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, REPORTER)
     issue = await _project_issue_or_404(project, issue_iid, db)
     if "title" in body:
@@ -370,10 +404,16 @@ async def update_project_issue(
     if "assignee_ids" in body:
         from sqlalchemy import delete
 
-        await db.execute(delete(IssueAssignee).where(IssueAssignee.issue_id == issue.id))
+        await db.execute(
+            delete(IssueAssignee).where(IssueAssignee.issue_id == issue.id)
+        )
         await _apply_issue_assignees(
             issue,
-            [int(value) for value in body.get("assignee_ids", []) if str(value).isdigit()],
+            [
+                int(value)
+                for value in body.get("assignee_ids", [])
+                if str(value).isdigit()
+            ],
             db,
         )
     await db.commit()
@@ -475,9 +515,7 @@ async def create_issue(
     if label_names:
         for lname in label_names:
             result = await db.execute(
-                select(Label).where(
-                    Label.repo_id == repository.id, Label.name == lname
-                )
+                select(Label).where(Label.repo_id == repository.id, Label.name == lname)
             )
             label = result.scalar_one_or_none()
             if label:
@@ -590,19 +628,13 @@ async def update_issue(
     # Labels
     if "labels" in body:
         # Remove existing labels
-        await db.execute(
-            select(IssueLabel).where(IssueLabel.issue_id == issue.id)
-        )
+        await db.execute(select(IssueLabel).where(IssueLabel.issue_id == issue.id))
         from sqlalchemy import delete
 
-        await db.execute(
-            delete(IssueLabel).where(IssueLabel.issue_id == issue.id)
-        )
+        await db.execute(delete(IssueLabel).where(IssueLabel.issue_id == issue.id))
         for lname in body["labels"]:
             lbl_result = await db.execute(
-                select(Label).where(
-                    Label.repo_id == repository.id, Label.name == lname
-                )
+                select(Label).where(Label.repo_id == repository.id, Label.name == lname)
             )
             label = lbl_result.scalar_one_or_none()
             if label:

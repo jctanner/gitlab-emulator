@@ -91,7 +91,7 @@ async def test_list_issues(client, test_user, test_token, repo_with_issues):
     for i in range(3):
         await client.post(
             f"{API}/repos/testuser/issue-repo/issues",
-            json={"title": f"Issue {i+1}"},
+            json={"title": f"Issue {i + 1}"},
             headers=auth_headers(test_token),
         )
     resp = await client.get(f"{API}/repos/testuser/issue-repo/issues")
@@ -101,7 +101,9 @@ async def test_list_issues(client, test_user, test_token, repo_with_issues):
 
 
 @pytest.mark.asyncio
-async def test_list_issues_filter_state(client, test_user, test_token, repo_with_issues):
+async def test_list_issues_filter_state(
+    client, test_user, test_token, repo_with_issues
+):
     """List issues can filter by state."""
     await client.post(
         f"{API}/repos/testuser/issue-repo/issues",
@@ -130,7 +132,9 @@ async def test_list_issues_filter_state(client, test_user, test_token, repo_with
 
 
 @pytest.mark.asyncio
-async def test_gitlab_project_issue_crud(client, test_user, test_token, repo_with_issues):
+async def test_gitlab_project_issue_crud(
+    client, test_user, test_token, repo_with_issues
+):
     """GitLab-shaped project issue endpoints work by project ID."""
     resp = await client.post(
         f"{API}/projects/{repo_with_issues['id']}/issues",
@@ -202,9 +206,61 @@ async def test_gitlab_project_issues_accept_url_encoded_project_path(
 
 
 @pytest.mark.asyncio
-async def test_issue_writes_require_reporter(
-    client, db_session, test_user, test_token
+async def test_private_project_issues_require_reporter_read_access(
+    client, db_session, test_token
 ):
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "private-issue-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "private-issue-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "private-issue-project", "visibility": "private"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    created = await client.post(
+        f"{API}/projects/{project_id}/issues",
+        json={"title": "Private issue"},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+
+    anonymous_list = await client.get(f"{API}/projects/{project_id}/issues")
+    assert anonymous_list.status_code == 404
+    outsider_get = await client.get(
+        f"{API}/projects/{project_id}/issues/1",
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_get.status_code == 404
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    allowed_list = await client.get(
+        f"{API}/projects/{project_id}/issues",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_list.status_code == 200
+    assert [issue["title"] for issue in allowed_list.json()] == ["Private issue"]
+
+    allowed_get = await client.get(
+        f"{API}/projects/{project_id}/issues/1",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_get.status_code == 200
+    assert allowed_get.json()["title"] == "Private issue"
+
+
+@pytest.mark.asyncio
+async def test_issue_writes_require_reporter(client, db_session, test_user, test_token):
     reporter, reporter_token = await _create_user_and_token(
         db_session, "issue-role-reporter"
     )
