@@ -62,11 +62,11 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   grouped boolean `if` expressions, null/empty checks, and regex
   match/non-match operators, `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, mapping-form `only`/`except` filters,
-  rule-level variables, `allow_failure` scheduling/status behavior, runner
-  tags, cache metadata with list and file-derived keys, variable-expanded
-  keys/policies/fallback keys, deeper `extends` semantics, nested local
-  `include`, `include:project`, controlled `include:remote`, and a small set of
-  built-in template includes.
+  workflow/rule-level variables, `allow_failure` scheduling/status behavior,
+  runner tags, cache metadata with list and file-derived keys,
+  variable-expanded keys/policies/fallback keys, deeper `extends` semantics,
+  nested local `include`, `include:project`, controlled `include:remote`, and a
+  small set of built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in

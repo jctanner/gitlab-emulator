@@ -580,24 +580,23 @@ def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
     return "rules" not in config and decision.when == "manual"
 
 
-def _workflow_allows_pipeline(
+def _workflow_rule_decision(
     parsed: dict,
     ref: str,
     variables: dict[str, str],
     existing_paths: set[str],
     changed_paths: set[str],
-) -> bool:
+) -> _RuleDecision:
     workflow = parsed.get("workflow")
     if not isinstance(workflow, dict) or "rules" not in workflow:
-        return True
-    decision = _job_rule_decision(
+        return _RuleDecision(included=True)
+    return _job_rule_decision(
         {"rules": workflow.get("rules")},
         ref,
         variables,
         existing_paths,
         changed_paths,
     )
-    return decision.included
 
 
 def _deep_merge(parent: dict, child: dict) -> dict:
@@ -759,14 +758,24 @@ def parse_gitlab_ci(
     pipeline_variables = variables or {}
     repository_paths = existing_paths or set()
     commit_changed_paths = changed_paths or set()
-    if not _workflow_allows_pipeline(
+    workflow_context = {
+        **pipeline_variables,
+        **_variable_values(global_variables),
+    }
+    workflow_decision = _workflow_rule_decision(
         parsed,
         ref,
-        pipeline_variables,
+        workflow_context,
         repository_paths,
         commit_changed_paths,
-    ):
+    )
+    if not workflow_decision.included:
         raise ValueError(".gitlab-ci.yml workflow rules skipped pipeline")
+    if workflow_decision.variables:
+        global_variables = {
+            **global_variables,
+            **workflow_decision.variables,
+        }
 
     jobs: list[ParsedCiJob] = []
     resolved_configs: dict[str, dict] = {}

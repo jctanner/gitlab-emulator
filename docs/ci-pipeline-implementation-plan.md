@@ -36,7 +36,8 @@ Already working:
   variable comparisons, regex match/non-match, simple boolean operators with
   grouped parentheses, `exists`, commit-local `changes`, `exists`/`changes`
   path-object forms, variable-expanded rule path patterns, `when: never`, and
-  persisted non-runnable `manual` jobs. Current
+  persisted non-runnable `manual` jobs. Matched `workflow:rules:variables` are
+  applied as job defaults before job-level variables. Current
   `only`/`except` support covers
   scalar/list refs plus mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require

@@ -51,7 +51,7 @@ harness architecture.
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
   boolean expressions, null and empty-string variable comparisons, regex
   match/non-match operators, `exists`, commit-local `changes`, `when: never`,
-  and persisted non-runnable `manual` jobs.
+  persisted non-runnable `manual` jobs, and matched workflow-level variables.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a
   manual job changes it to `pending` and requeues it through the persisted
   runner coordinator.

@@ -502,6 +502,43 @@ job:
         raise AssertionError("expected ValueError")
 
 
+def test_parse_gitlab_ci_applies_workflow_rule_variables():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  SHARED: global
+  GLOBAL_ONLY: global
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      variables:
+        SHARED: workflow
+        WORKFLOW_ONLY: workflow
+    - when: never
+
+default_job:
+  script: echo default
+
+override_job:
+  variables:
+    SHARED: job
+  script: echo override
+""",
+        variables={"CI_PIPELINE_SOURCE": "schedule"},
+    )
+
+    default_job = next(job for job in jobs if job.name == "default_job")
+    override_job = next(job for job in jobs if job.name == "override_job")
+    assert default_job.variables == {
+        "SHARED": "workflow",
+        "GLOBAL_ONLY": "global",
+        "WORKFLOW_ONLY": "workflow",
+    }
+    assert override_job.variables["SHARED"] == "job"
+    assert override_job.variables["WORKFLOW_ONLY"] == "workflow"
+
+
 def test_parse_gitlab_ci_applies_rules_exists_and_changes():
     jobs = parse_gitlab_ci(
         """
