@@ -330,8 +330,10 @@ Done when:
   resolve common same-repository closing keywords from merge request bodies.
   GraphQL search total counts report all matches independently of the returned
   node limit. The broader schema remains an incremental parity area.
-- Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
-  surface.
+- Full GitLab UI parity. The current UI covers repository/source editing,
+  issues/work items, merge requests, branches, commits, tags, project settings,
+  project members, CI/CD variables, secrets, pipelines, jobs, runners, and the
+  admin CI Lab, but it is not a complete GitLab clone.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,
   GitLab repository file write gates, and protected-branch management gates now

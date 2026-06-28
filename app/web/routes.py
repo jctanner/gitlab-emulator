@@ -41,7 +41,7 @@ from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
 from app.models.issue import Issue
 from app.models.organization import Organization
 from app.models.pull_request import PullRequest
-from app.models.repository import Repository
+from app.models.repository import Collaborator, Repository
 from app.models.user import User
 from app.services.auth_service import verify_password
 from app.services.ci_security import normalize_ci_security_settings
@@ -58,6 +58,20 @@ router = APIRouter(prefix="/ui", tags=["web"])
 _URL_PREFIX = "/ui"
 _CI_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CI_VARIABLE_TYPES = {"env_var", "file"}
+_MEMBER_ACCESS_LEVELS = {
+    10: "Guest",
+    20: "Reporter",
+    30: "Developer",
+    40: "Maintainer",
+    50: "Owner",
+}
+_ACCESS_TO_PERMISSION = {
+    10: "pull",
+    20: "pull",
+    30: "push",
+    40: "maintain",
+    50: "admin",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +151,20 @@ def _validate_ci_key(value: str, label: str = "Key") -> str:
 
 def _bool_form(value: str | None) -> bool:
     return value == "1"
+
+
+def _access_level_label(level: int | None) -> str:
+    return _MEMBER_ACCESS_LEVELS.get(int(level or 20), f"Access level {level}")
+
+
+def _normalize_access_level(value: str | int | None) -> int:
+    try:
+        access_level = int(value or 20)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid access level.") from exc
+    if access_level not in _MEMBER_ACCESS_LEVELS:
+        raise ValueError("Access level must be Guest, Reporter, Developer, Maintainer, or Owner.")
+    return access_level
 
 
 async def _managed_repo_or_response(
@@ -1089,6 +1117,209 @@ async def repo_secret_delete(
         await db.commit()
     return RedirectResponse(
         url=f"/ui/{owner}/{repo.name}/-/secrets?message={urlencode({'x': 'Secret deleted.'})[2:]}",
+        status_code=302,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repository members
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/members", response_class=HTMLResponse)
+async def repo_members_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage direct project members."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+
+    result = await db.execute(
+        select(Collaborator)
+        .where(Collaborator.repo_id == repo.id)
+        .order_by(Collaborator.user_id.asc())
+    )
+    collaborators = result.scalars().all()
+    members = [
+        {
+            "user": repo.owner,
+            "access_level": 50,
+            "access_label": _access_level_label(50),
+            "is_owner": True,
+        }
+    ]
+    for collaborator in collaborators:
+        if collaborator.user is None or collaborator.user_id == repo.owner_id:
+            continue
+        access_level = collaborator.access_level or 20
+        members.append(
+            {
+                "user": collaborator.user,
+                "access_level": access_level,
+                "access_label": _access_level_label(access_level),
+                "is_owner": False,
+            }
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_members.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            members=members,
+            access_levels=_MEMBER_ACCESS_LEVELS,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/members", response_class=HTMLResponse)
+async def repo_member_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    username: str = Form(...),
+    access_level: str = Form("20"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add or update a direct project member."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/members"
+    try:
+        level = _normalize_access_level(access_level)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+
+    target = (
+        await db.execute(select(User).where(User.login == username.strip()))
+    ).scalar_one_or_none()
+    if target is None:
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': 'User not found.'})[2:]}",
+            status_code=302,
+        )
+    if target.id == repo.owner_id:
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': 'The owner is already a project member.'})[2:]}",
+            status_code=302,
+        )
+
+    collaborator = (
+        await db.execute(
+            select(Collaborator).where(
+                Collaborator.repo_id == repo.id,
+                Collaborator.user_id == target.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if collaborator is None:
+        collaborator = Collaborator(
+            repo_id=repo.id,
+            user_id=target.id,
+        )
+        db.add(collaborator)
+    collaborator.access_level = level
+    collaborator.permission = _ACCESS_TO_PERMISSION[level]
+    await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Member saved.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/members/{user_id}/update", response_class=HTMLResponse)
+async def repo_member_update(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    user_id: int,
+    access_level: str = Form("20"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a direct project member access level."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/members"
+    if user_id == repo.owner_id:
+        return RedirectResponse(url=f"{redirect}?error=Owner%20access%20cannot%20be%20changed.", status_code=302)
+    try:
+        level = _normalize_access_level(access_level)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    collaborator = (
+        await db.execute(
+            select(Collaborator).where(
+                Collaborator.repo_id == repo.id,
+                Collaborator.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if collaborator is None:
+        return RedirectResponse(url=f"{redirect}?error=Member%20not%20found.", status_code=302)
+    collaborator.access_level = level
+    collaborator.permission = _ACCESS_TO_PERMISSION[level]
+    await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Member updated.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/members/{user_id}/delete", response_class=HTMLResponse)
+async def repo_member_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a direct project member."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/members"
+    if user_id == repo.owner_id:
+        return RedirectResponse(url=f"{redirect}?error=Owner%20cannot%20be%20removed.", status_code=302)
+    collaborator = (
+        await db.execute(
+            select(Collaborator).where(
+                Collaborator.repo_id == repo.id,
+                Collaborator.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if collaborator is not None:
+        await db.delete(collaborator)
+        await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Member removed.'})[2:]}",
         status_code=302,
     )
 

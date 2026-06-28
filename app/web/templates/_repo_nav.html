@@ -24,11 +24,19 @@
     </div>
 
     <nav class="gl-sidebar-nav">
-        <span class="gl-sidebar-link disabled">
-            <span class="gl-sidebar-icon">{{ repo_icon(16) }}</span>
-            <span>Manage</span>
-            <span class="gl-sidebar-caret">›</span>
-        </span>
+        <div class="gl-sidebar-group">
+            <div class="gl-sidebar-group-title">
+                <span class="gl-sidebar-icon">{{ repo_icon(16) }}</span>
+                <span>Manage</span>
+                <span class="gl-sidebar-caret">⌄</span>
+            </div>
+            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'members' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/members">Members</a>
+            {% else %}
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Members</span>
+            {% endif %}
+        </div>
         <div class="gl-sidebar-group">
             <div class="gl-sidebar-group-title">
                 <span class="gl-sidebar-icon">{{ issue_opened(16) }}</span>

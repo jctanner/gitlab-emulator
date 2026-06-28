@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Members - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "members" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Members</div>
+    <div class="Subhead-description">Manage direct project access for this repository.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Add member</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/members">
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>Username<br><input class="form-control" name="username" required autocomplete="off"></label>
+                <label>Role<br>
+                    <select class="form-select" name="access_level">
+                        {% for level, label in access_levels.items() %}
+                        <option value="{{ level }}" {% if level == 20 %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button class="btn btn-primary" type="submit">Add member</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project members</h3></div>
+    {% if members %}
+    {% for member in members %}
+    <div class="Box-row">
+        <div class="d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
+            <div>
+                <div class="text-bold">{{ member.user.name or member.user.login }}</div>
+                <div class="color-fg-muted">@{{ member.user.login }}</div>
+            </div>
+            {% if member.is_owner %}
+            <span class="Label Label--secondary">{{ member.access_label }}</span>
+            {% else %}
+            <div class="d-flex flex-items-center flex-wrap" style="gap:8px;">
+                <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/members/{{ member.user.id }}/update">
+                    <select class="form-select" name="access_level">
+                        {% for level, label in access_levels.items() %}
+                        <option value="{{ level }}" {% if level == member.access_level %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-sm" type="submit">Update</button>
+                </form>
+                <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/members/{{ member.user.id }}/delete"
+                      onsubmit="return confirm('Remove {{ member.user.login }} from {{ repo.full_name }}?');">
+                    <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No members yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

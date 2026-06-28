@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from tests.test_projects_api import _create_user_and_token
+
 
 def _ui_session(client, username: str) -> None:
     from app.web.routes import _sign_session
@@ -398,6 +400,60 @@ async def test_ui_project_secrets_management(client, test_user):
     assert delete_secret.status_code in (302, 303)
     secrets_page = await client.get("/ui/testuser/ui-ci-secrets/-/secrets")
     assert "No secrets yet." in secrets_page.text
+
+
+@pytest.mark.asyncio
+async def test_ui_project_members_management(client, db_session, test_user):
+    """The project UI can create, update, and delete direct project members."""
+    member, _ = await _create_user_and_token(db_session, "ui-project-member")
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-members", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    members_page = await client.get("/ui/testuser/ui-members/-/members")
+    assert members_page.status_code == 200
+    assert "Members" in members_page.text
+    assert "Add member" in members_page.text
+    assert "@testuser" in members_page.text
+    assert "Owner" in members_page.text
+    assert 'href="/ui/testuser/ui-members/-/members">Members</a>' in members_page.text
+
+    add_member = await client.post(
+        "/ui/testuser/ui-members/-/members",
+        data={"username": member.login, "access_level": "30"},
+        follow_redirects=False,
+    )
+    assert add_member.status_code in (302, 303)
+
+    members_page = await client.get("/ui/testuser/ui-members/-/members")
+    assert members_page.status_code == 200
+    assert "@ui-project-member" in members_page.text
+    assert '<option value="30" selected>Developer</option>' in members_page.text
+
+    update_member = await client.post(
+        f"/ui/testuser/ui-members/-/members/{member.id}/update",
+        data={"access_level": "40"},
+        follow_redirects=False,
+    )
+    assert update_member.status_code in (302, 303)
+
+    members_page = await client.get("/ui/testuser/ui-members/-/members")
+    assert members_page.status_code == 200
+    assert '<option value="40" selected>Maintainer</option>' in members_page.text
+
+    delete_member = await client.post(
+        f"/ui/testuser/ui-members/-/members/{member.id}/delete",
+        follow_redirects=False,
+    )
+    assert delete_member.status_code in (302, 303)
+    members_page = await client.get("/ui/testuser/ui-members/-/members")
+    assert "@ui-project-member" not in members_page.text
+    assert "@testuser" in members_page.text
 
 
 @pytest.mark.asyncio
