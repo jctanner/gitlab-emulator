@@ -14,25 +14,25 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 
 ## Canonical Supporting Docs
 
-- `docs/compatibility-plan.md`: GitLab REST/API compatibility work.
-- `docs/ci-runner-plan.md`: GitLab CI, runner coordinator, and job execution
+- `docs/plans/compatibility.md`: GitLab REST/API compatibility work.
+- `docs/plans/ci-runner.md`: GitLab CI, runner coordinator, and job execution
   work.
-- `docs/validation-plan.md`: local, VM, official runner, and client validation
+- `docs/plans/validation.md`: local, VM, official runner, and client validation
   strategy.
-- `docs/operations-runbook.md`: VM deploy, smoke, and recovery checklist for
+- `docs/runbooks/operations.md`: VM deploy, smoke, and recovery checklist for
   runner/TLS/token/image/pending/stale job issues.
-- `docs/ci-pipeline-implementation-plan.md`: detailed CI implementation slices
+- `docs/plans/ci-pipeline-implementation.md`: detailed CI implementation slices
   and current CI status.
-- `docs/runner-testing.md`: official GitLab Runner validation notes and known
+- `docs/notes/runner-testing.md`: official GitLab Runner validation notes and known
   runner behavior.
-- `docs/kubernetes-runner-validation-plan.md`: k3s-backed GitLab Runner
+- `docs/plans/kubernetes-runner-validation.md`: k3s-backed GitLab Runner
   Kubernetes executor validation plan and results.
-- `docs/runner-deployment-guide.md`: supported runner deployment modes,
+- `docs/runbooks/runner-deployment.md`: supported runner deployment modes,
   registration flow, network/TLS requirements, and full k3s integration notes.
-- `docs/ci-variables-secrets-security-plan.md`: CI/CD variables, GitLab
+- `docs/plans/ci-variables-secrets-security.md`: CI/CD variables, GitLab
   Secrets Manager compatibility, log redaction, and pipeline security
   guardrail plan.
-- `docs/remaining-slices.md`: completed MVP slice record and deferred work.
+- `docs/tasks/done/mvp-slice-ledger.md`: completed MVP slice record and deferred work.
 - `GITLAB_STATUS.md`: current status snapshot.
 
 ## Current State
@@ -313,11 +313,11 @@ Done when:
   complete in the current `make vm-validate` run
 - local tests are exposed through `make test-focused`, `make test-affected`,
   and `make test-full`, and VM tests are documented in
-  `docs/validation-plan.md`: complete
+  `docs/plans/validation.md`: complete
 - known operational issues, such as Docker Hub pull limits, have documented
   workarounds: complete
 - VM deploy/reset behavior and runner recovery checklists are documented in
-  `docs/operations-runbook.md`: complete
+  `docs/runbooks/operations.md`: complete
 
 ## Deferred Work
 

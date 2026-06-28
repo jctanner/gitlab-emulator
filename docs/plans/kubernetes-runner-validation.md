@@ -8,7 +8,7 @@ run CI jobs against the emulator without requiring the emulator to execute jobs
 itself.
 
 For an integration-oriented description of all supported runner deployment
-methods and registration flows, see `docs/runner-deployment-guide.md`.
+methods and registration flows, see `docs/runbooks/runner-deployment.md`.
 
 ## Goal
 

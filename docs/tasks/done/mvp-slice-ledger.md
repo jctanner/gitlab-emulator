@@ -137,7 +137,7 @@ Status: implemented.
 - `make vm-ci-lab-smoke` remains a fast operational smoke for CI Lab project
   setup, pipeline creation, official runner execution, trace markers, and
   artifact metadata rather than a full validation suite.
-- `gitlab_emulator/docs/operations-runbook.md` documents recovery checklists
+- `gitlab_emulator/docs/runbooks/operations.md` documents recovery checklists
   for runner TLS failures, runner registration token mismatch, Docker image
   pull failures, stuck pending jobs, and stale running jobs.
 
@@ -386,10 +386,10 @@ Done when:
 - `make vm-runner-validate` remains aligned with runner capabilities; current
   validation covers variables, rules, extends, includes, cache, and
   `needs:artifacts`.
-- `docs/validation-plan.md` documents local commands, VM commands, Docker Hub
+- `docs/plans/validation.md` documents local commands, VM commands, Docker Hub
   pull-limit workarounds, TLS/runner operational risks, and the sandbox
   `aiosqlite` hang caveat after force-aborted async test runs.
-- Keep `GITLAB_STATUS.md`, `PLAN.md`, and `docs/validation-plan.md` updated
+- Keep `GITLAB_STATUS.md`, `docs/PLAN.md`, and `docs/plans/validation.md` updated
   after future slices.
 
 ## Deferred Work

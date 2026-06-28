@@ -41,7 +41,7 @@ https://glemu.local
 ```
 
 For current recovery commands covering TLS, token mismatch, image pulls, stuck
-pending jobs, and stale running jobs, see `docs/operations-runbook.md`.
+pending jobs, and stale running jobs, see `docs/runbooks/operations.md`.
 
 ## Emulator API Surface Used
 

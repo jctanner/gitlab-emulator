@@ -104,7 +104,7 @@ URL for inspection. The target refreshes runner CA trust only if the runner
 cannot verify `https://glemu.local`.
 
 For recovery commands and operational triage, see
-`docs/operations-runbook.md`.
+`docs/runbooks/operations.md`.
 
 The runner registration helper defaults to `https://glemu.local`, uses the
 emulator validation registration token by default, and registers the runner with

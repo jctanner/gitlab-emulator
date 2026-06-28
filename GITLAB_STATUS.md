@@ -102,7 +102,7 @@ harness architecture.
 - VM deploy now preserves Docker volumes by default. Destructive deploys are
   explicit through `make vm-deploy-reset`, which avoids routine data loss and
   unnecessary Caddy CA rotation during emulator iteration.
-- `docs/operations-runbook.md` documents the normal deploy path, fast CI Lab
+- `docs/runbooks/operations.md` documents the normal deploy path, fast CI Lab
   smoke, full VM validation, and recovery checklists for runner TLS failures,
   registration token mismatch, Docker image pull failures, stuck pending jobs,
   and stale running jobs.
