@@ -214,6 +214,80 @@ async def test_pipeline_variable_security_gate_blocks_and_allows_owner(
     assert maintainer_allowed.status_code == 201
 
 
+async def test_ci_management_actions_require_project_roles(
+    client, db_session, test_token
+):
+    from tests.test_projects_api import _create_user_and_token
+
+    project = await _create_project(client, test_token)
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "ci-action-reporter"
+    )
+    developer, developer_token = await _create_user_and_token(
+        db_session, "ci-action-developer"
+    )
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "ci-action-maintainer"
+    )
+    for user, level in ((reporter, 20), (developer, 30), (maintainer, 40)):
+        member = await client.post(
+            f"{API}/projects/{project['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {"name": "role_gate", "script": ["echo role gate"]},
+        },
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    cancel_denied = await client.post(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/cancel",
+        headers=auth_headers(reporter_token),
+    )
+    assert cancel_denied.status_code == 403
+
+    cancel_allowed = await client.post(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/cancel",
+        headers=auth_headers(developer_token),
+    )
+    assert cancel_allowed.status_code == 200
+
+    trigger_denied = await client.post(
+        f"{API}/projects/{project['id']}/triggers",
+        json={"description": "developer trigger"},
+        headers=auth_headers(developer_token),
+    )
+    assert trigger_denied.status_code == 403
+
+    trigger_allowed = await client.post(
+        f"{API}/projects/{project['id']}/triggers",
+        json={"description": "maintainer trigger"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert trigger_allowed.status_code == 201
+
+    schedule_denied = await client.post(
+        f"{API}/projects/{project['id']}/pipeline_schedules",
+        json={"description": "reporter schedule", "ref": "main"},
+        headers=auth_headers(reporter_token),
+    )
+    assert schedule_denied.status_code == 403
+
+    schedule_allowed = await client.post(
+        f"{API}/projects/{project['id']}/pipeline_schedules",
+        json={"description": "developer schedule", "ref": "main"},
+        headers=auth_headers(developer_token),
+    )
+    assert schedule_allowed.status_code == 201
+
+
 async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
     project = await _create_project(client, test_token)
     pipeline_resp = await client.post(
@@ -231,7 +305,8 @@ async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
     pipeline = pipeline_resp.json()
 
     cancel = await client.post(
-        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/cancel"
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/cancel",
+        headers=auth_headers(test_token),
     )
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "canceled"
@@ -281,7 +356,10 @@ async def test_retry_job_requeues_failed_job_for_runner(client, test_token):
     )
     assert update.status_code == 200
 
-    retry = await client.post(f"{API}/projects/{project['id']}/jobs/{job_id}/retry")
+    retry = await client.post(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/retry",
+        headers=auth_headers(test_token),
+    )
     assert retry.status_code == 200
     retried = retry.json()
     assert retried["id"] == job_id
@@ -393,7 +471,8 @@ unit:
     assert update.status_code == 200
 
     retry = await client.post(
-        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/retry"
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/retry",
+        headers=auth_headers(test_token),
     )
     assert retry.status_code == 200
     assert retry.json()["status"] == "pending"
@@ -1765,13 +1844,17 @@ api_only:
     trigger_resp = await client.post(
         f"{API}/projects/{project['id']}/triggers",
         json={"description": "external system"},
+        headers=auth_headers(test_token),
     )
     assert trigger_resp.status_code == 201
     trigger = trigger_resp.json()
     assert trigger["description"] == "external system"
     assert trigger["token"].startswith("glptt-")
 
-    list_resp = await client.get(f"{API}/projects/{project['id']}/triggers")
+    list_resp = await client.get(
+        f"{API}/projects/{project['id']}/triggers",
+        headers=auth_headers(test_token),
+    )
     assert list_resp.status_code == 200
     assert [item["id"] for item in list_resp.json()] == [trigger["id"]]
 
@@ -1804,7 +1887,8 @@ api_only:
     assert variables["TRIGGER_VAR"] == "from-trigger"
 
     delete_resp = await client.delete(
-        f"{API}/projects/{project['id']}/triggers/{trigger['id']}"
+        f"{API}/projects/{project['id']}/triggers/{trigger['id']}",
+        headers=auth_headers(test_token),
     )
     assert delete_resp.status_code == 204
 
@@ -1848,6 +1932,7 @@ api_only:
             "active": True,
             "variables": [{"key": "SCHEDULE_VAR", "value": "from-schedule"}],
         },
+        headers=auth_headers(test_token),
     )
     assert create_resp.status_code == 201
     schedule = create_resp.json()
@@ -1857,20 +1942,23 @@ api_only:
     update_resp = await client.put(
         f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}",
         json={"description": "nightly updated", "active": False},
+        headers=auth_headers(test_token),
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["description"] == "nightly updated"
     assert update_resp.json()["active"] is False
 
     play_resp = await client.post(
-        f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}/play"
+        f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}/play",
+        headers=auth_headers(test_token),
     )
     assert play_resp.status_code == 201
     pipeline = play_resp.json()
     assert pipeline["source"] == "schedule"
 
     get_resp = await client.get(
-        f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}"
+        f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}",
+        headers=auth_headers(test_token),
     )
     assert get_resp.status_code == 200
     assert get_resp.json()["last_pipeline"]["id"] == pipeline["id"]
@@ -1890,12 +1978,16 @@ api_only:
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["SCHEDULE_VAR"] == "from-schedule"
 
-    list_resp = await client.get(f"{API}/projects/{project['id']}/pipeline_schedules")
+    list_resp = await client.get(
+        f"{API}/projects/{project['id']}/pipeline_schedules",
+        headers=auth_headers(test_token),
+    )
     assert list_resp.status_code == 200
     assert [item["id"] for item in list_resp.json()] == [schedule["id"]]
 
     delete_resp = await client.delete(
-        f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}"
+        f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}",
+        headers=auth_headers(test_token),
     )
     assert delete_resp.status_code == 204
 
@@ -3393,7 +3485,10 @@ manual_review:
     )
     assert no_job.status_code == 204
 
-    played = await client.post(f"{API}/projects/{project['id']}/jobs/{job['id']}/play")
+    played = await client.post(
+        f"{API}/projects/{project['id']}/jobs/{job['id']}/play",
+        headers=auth_headers(test_token),
+    )
     assert played.status_code == 200
     assert played.json()["status"] == "pending"
 
@@ -3428,7 +3523,10 @@ async def test_non_manual_job_play_is_rejected(client, test_token):
     job = jobs.json()[0]
     assert job["status"] == "pending"
 
-    played = await client.post(f"{API}/projects/{project['id']}/jobs/{job['id']}/play")
+    played = await client.post(
+        f"{API}/projects/{project['id']}/jobs/{job['id']}/play",
+        headers=auth_headers(test_token),
+    )
     assert played.status_code == 400
     assert played.json()["message"] == "Job is not playable"
 

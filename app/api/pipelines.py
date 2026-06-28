@@ -42,8 +42,11 @@ from app.services.ci_secrets import ci_secret_metadata_entry, project_secret_ent
 from app.services.ci_variables import project_variable_entries
 from app.services.ci_yaml import ParsedCiJob, parse_gitlab_ci
 from app.services.permissions import (
+    DEVELOPER,
+    MAINTAINER,
     pipeline_variables_allowed_for_access_level,
     project_access_level,
+    require_project_access,
 )
 
 router = APIRouter(tags=["pipelines"])
@@ -960,8 +963,13 @@ async def _create_pipeline(
 
 
 @router.get("/projects/{project_id}/triggers")
-async def list_pipeline_triggers(project_id: int, db: DbSession):
-    await _get_project(project_id, db)
+async def list_pipeline_triggers(
+    project_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, MAINTAINER)
     result = await db.execute(
         select(PipelineTrigger)
         .where(PipelineTrigger.project_id == project_id)
@@ -975,8 +983,10 @@ async def create_pipeline_trigger(
     project_id: int,
     body: CreatePipelineTriggerRequest,
     db: DbSession,
+    current_user: CurrentUser,
 ):
     project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, MAINTAINER)
     trigger = PipelineTrigger(
         project_id=project.id,
         description=body.description,
@@ -990,8 +1000,14 @@ async def create_pipeline_trigger(
 
 
 @router.delete("/projects/{project_id}/triggers/{trigger_id}", status_code=204)
-async def delete_pipeline_trigger(project_id: int, trigger_id: int, db: DbSession):
-    await _get_project(project_id, db)
+async def delete_pipeline_trigger(
+    project_id: int,
+    trigger_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, MAINTAINER)
     result = await db.execute(
         select(PipelineTrigger).where(
             PipelineTrigger.project_id == project_id,
@@ -1051,8 +1067,13 @@ async def trigger_pipeline(project_id: int, request: Request, db: DbSession):
 
 
 @router.get("/projects/{project_id}/pipeline_schedules")
-async def list_pipeline_schedules(project_id: int, db: DbSession):
-    await _get_project(project_id, db)
+async def list_pipeline_schedules(
+    project_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     result = await db.execute(
         select(PipelineSchedule)
         .where(PipelineSchedule.project_id == project_id)
@@ -1066,8 +1087,10 @@ async def create_pipeline_schedule(
     project_id: int,
     body: CreatePipelineScheduleRequest,
     db: DbSession,
+    current_user: CurrentUser,
 ):
     project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     schedule = PipelineSchedule(
         project_id=project.id,
         description=body.description,
@@ -1085,7 +1108,14 @@ async def create_pipeline_schedule(
 
 
 @router.get("/projects/{project_id}/pipeline_schedules/{schedule_id}")
-async def get_pipeline_schedule(project_id: int, schedule_id: int, db: DbSession):
+async def get_pipeline_schedule(
+    project_id: int,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     return _schedule_json(schedule)
 
@@ -1096,7 +1126,10 @@ async def update_pipeline_schedule(
     schedule_id: int,
     body: UpdatePipelineScheduleRequest,
     db: DbSession,
+    current_user: CurrentUser,
 ):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     updates = body.model_dump(exclude_unset=True)
     if "variables" in updates and updates["variables"] is not None:
@@ -1110,7 +1143,14 @@ async def update_pipeline_schedule(
 
 
 @router.delete("/projects/{project_id}/pipeline_schedules/{schedule_id}", status_code=204)
-async def delete_pipeline_schedule(project_id: int, schedule_id: int, db: DbSession):
+async def delete_pipeline_schedule(
+    project_id: int,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     await db.delete(schedule)
     await db.commit()
@@ -1136,7 +1176,14 @@ async def _get_pipeline_schedule(
 
 
 @router.post("/projects/{project_id}/pipeline_schedules/{schedule_id}/play", status_code=201)
-async def play_pipeline_schedule(project_id: int, schedule_id: int, db: DbSession):
+async def play_pipeline_schedule(
+    project_id: int,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     variables = [PipelineVariable(**variable) for variable in schedule.variables or []]
     pipeline = await _create_pipeline(
@@ -1239,8 +1286,14 @@ async def _get_pipeline_for_project_ref(
 
 
 @router.post("/projects/{project_ref:path}/pipelines/{pipeline_id}/cancel")
-async def cancel_pipeline(project_ref: str, pipeline_id: int, db: DbSession):
+async def cancel_pipeline(
+    project_ref: str,
+    pipeline_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
     pipeline = await _get_pipeline_for_project_ref(project_ref, pipeline_id, db)
+    await require_project_access(pipeline.project, current_user, db, DEVELOPER)
     now = datetime.now(timezone.utc)
     for job in pipeline.jobs:
         if job.status in {"pending", "running", "manual"}:
@@ -1254,8 +1307,14 @@ async def cancel_pipeline(project_ref: str, pipeline_id: int, db: DbSession):
 
 
 @router.post("/projects/{project_ref:path}/pipelines/{pipeline_id}/retry")
-async def retry_pipeline(project_ref: str, pipeline_id: int, db: DbSession):
+async def retry_pipeline(
+    project_ref: str,
+    pipeline_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
     pipeline = await _get_pipeline_for_project_ref(project_ref, pipeline_id, db)
+    await require_project_access(pipeline.project, current_user, db, DEVELOPER)
     now = datetime.now(timezone.utc)
     retryable = {"failed", "canceled", "skipped"}
     for job in pipeline.jobs:
@@ -1420,8 +1479,14 @@ async def _get_job_for_project_ref(
 
 
 @router.post("/projects/{project_ref:path}/jobs/{job_id}/cancel")
-async def cancel_project_job(project_ref: str, job_id: int, db: DbSession):
+async def cancel_project_job(
+    project_ref: str,
+    job_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
     job = await _get_job_for_project_ref(project_ref, job_id, db)
+    await require_project_access(job.project, current_user, db, DEVELOPER)
     now = datetime.now(timezone.utc)
     if job.status in {"pending", "running", "manual"}:
         job.status = "canceled"
@@ -1433,8 +1498,14 @@ async def cancel_project_job(project_ref: str, job_id: int, db: DbSession):
 
 
 @router.post("/projects/{project_ref:path}/jobs/{job_id}/retry")
-async def retry_project_job(project_ref: str, job_id: int, db: DbSession):
+async def retry_project_job(
+    project_ref: str,
+    job_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
     job = await _get_job_for_project_ref(project_ref, job_id, db)
+    await require_project_access(job.project, current_user, db, DEVELOPER)
     if job.status in {"failed", "canceled", "skipped", "success"}:
         _reset_job_for_retry(job, datetime.now(timezone.utc))
     await _derive_pipeline_status(job.pipeline, db)
@@ -1445,8 +1516,14 @@ async def retry_project_job(project_ref: str, job_id: int, db: DbSession):
 
 
 @router.post("/projects/{project_ref:path}/jobs/{job_id}/play")
-async def play_project_job(project_ref: str, job_id: int, db: DbSession):
+async def play_project_job(
+    project_ref: str,
+    job_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
     job = await _get_job_for_project_ref(project_ref, job_id, db)
+    await require_project_access(job.project, current_user, db, DEVELOPER)
     if job.status != "manual":
         raise HTTPException(status_code=400, detail="Job is not playable")
     now = datetime.now(timezone.utc)

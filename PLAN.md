@@ -306,7 +306,9 @@ Done when:
   Smart HTTP read access for private projects requires Reporter or higher, while
   push advertisement and receive-pack require Developer or higher. Implemented
   GraphQL issue/comment/reaction mutations use Reporter or higher, and GraphQL
-  merge request mutations use Developer or higher.
+  merge request mutations use Developer or higher. CI trigger token management
+  requires Maintainer or higher; pipeline schedules and pipeline/job
+  cancel/retry/play controls require Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses. The emulator is still intended
