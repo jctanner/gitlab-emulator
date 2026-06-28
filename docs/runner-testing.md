@@ -460,15 +460,15 @@ jobs are gated by stage order, with same-stage jobs remaining eligible for
 parallel runners. Minimal `needs`, optional missing needs, missing required
 needs validation, `needs:artifacts`, common ref filters, rule-level variables,
 grouped `rules:if` boolean expressions, regex non-match operators,
-`exists`/`changes` path-object rule parsing, variable-expanded rule path
-patterns, mapping-form `only`/`except`, and `allow_failure` scheduling/status
-behavior are covered by local tests. Runner tag matching is also covered by
-local API tests. The smoke queue is intentionally temporary. Cache metadata,
-list-form cache keys, variable-expanded cache keys/policies/fallback keys, and
-archive endpoints are covered by local API tests. VM runner cache adapter
-configuration points at MinIO/S3 by default, and the official runner has
-validated cache upload/restore plus dependency artifact download across
-two-stage pipelines.
+null/empty variable comparisons, `exists`/`changes` path-object rule parsing,
+variable-expanded rule path patterns, mapping-form `only`/`except`, and
+`allow_failure` scheduling/status behavior are covered by local tests. Runner
+tag matching is also covered by local API tests. The smoke queue is
+intentionally temporary. Cache metadata, list-form cache keys, variable-expanded
+cache keys/policies/fallback keys, and archive endpoints are covered by local
+API tests. VM runner cache adapter configuration points at MinIO/S3 by default,
+and the official runner has validated cache upload/restore plus dependency
+artifact download across two-stage pipelines.
 
 Missing behavior for fuller GitLab CI execution:
 

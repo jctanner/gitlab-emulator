@@ -350,6 +350,14 @@ def _expression_value(value: str, variables: dict[str, str]) -> str:
     return _unquote(value)
 
 
+def _is_null_literal(value: str) -> bool:
+    return value.strip() == "null"
+
+
+def _is_empty_string_literal(value: str) -> bool:
+    return value.strip() in {'""', "''"}
+
+
 def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
     expression = expression.strip()
     if not expression:
@@ -360,6 +368,7 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
     )
     if match:
         left, operator, right = match.groups()
+        left_key = left[1:]
         left_value = _expression_value(left, variables)
         if operator in {"=~", "!~"}:
             pattern = right.strip()
@@ -369,6 +378,12 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
                 pattern = _unquote(pattern)
             matches = re.search(pattern, left_value) is not None
             return matches if operator == "=~" else not matches
+        if _is_null_literal(right):
+            matches = left_key not in variables
+            return matches if operator == "==" else not matches
+        if _is_empty_string_literal(right):
+            matches = left_key in variables and left_value == ""
+            return matches if operator == "==" else not matches
         right_value = _expression_value(right, variables)
         if operator == "==":
             return left_value == right_value

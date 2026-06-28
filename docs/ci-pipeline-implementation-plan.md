@@ -32,10 +32,11 @@ Already working:
   from named dependencies, `needs: []` can run immediately, invalid needs are
   rejected early, `needs:artifacts` dependencies follow declared needs order,
   and pipeline creation applies `rules`, `only`, and `except` filters. Current
-  `rules` support covers common `if` expressions, regex match/non-match,
-  simple boolean operators with grouped parentheses, `exists`, commit-local
-  `changes`, `exists`/`changes` path-object forms, variable-expanded rule path
-  patterns, `when: never`, and persisted non-runnable `manual` jobs. Current
+  `rules` support covers common `if` expressions, null and empty-string
+  variable comparisons, regex match/non-match, simple boolean operators with
+  grouped parentheses, `exists`, commit-local `changes`, `exists`/`changes`
+  path-object forms, variable-expanded rule path patterns, `when: never`, and
+  persisted non-runnable `manual` jobs. Current
   `only`/`except` support covers
   scalar/list refs plus mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require

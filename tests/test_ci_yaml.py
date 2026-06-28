@@ -401,6 +401,26 @@ not_equals:
   rules:
     - if: '$TARGET != "dev"'
 
+null_match:
+  script: echo null match
+  rules:
+    - if: '$OPTIONAL == null'
+
+null_not_match:
+  script: echo null not match
+  rules:
+    - if: '$TARGET != null'
+
+empty_match:
+  script: echo empty match
+  rules:
+    - if: '$EMPTY_VALUE == ""'
+
+empty_skip:
+  script: echo empty skip
+  rules:
+    - if: '$OPTIONAL == ""'
+
 regex:
   script: echo regex
   rules:
@@ -443,15 +463,18 @@ skipped:
       when: never
 """,
         ref="release-1.0",
-        variables={"RUN_TRUTHY": "1", "TARGET": "prod"},
+        variables={"RUN_TRUTHY": "1", "TARGET": "prod", "EMPTY_VALUE": ""},
     )
 
     assert [job.name for job in jobs] == [
         "and_or",
+        "empty_match",
         "equals",
         "grouped",
         "nested_grouped",
         "not_equals",
+        "null_match",
+        "null_not_match",
         "regex",
         "regex_not_match",
         "truthy",
