@@ -279,6 +279,22 @@ async def test_gitlab_version_endpoint(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_gitlab_metadata_endpoint(client, test_user, test_token):
+    """GET /metadata returns GitLab-shaped server metadata."""
+    resp = await client.get(f"{API}/metadata")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version"] == "17.11.0"
+    assert data["revision"] == "gitlab-emulator"
+    assert data["enterprise"] is False
+    assert data["kas"] == {
+        "enabled": False,
+        "externalUrl": None,
+        "version": None,
+    }
+
+
+@pytest.mark.asyncio
 async def test_rate_limit(client, test_user, test_token):
     """GET /rate_limit returns rate limit information."""
     resp = await client.get(f"{API}/rate_limit")

@@ -97,6 +97,21 @@ async def version():
     }
 
 
+@router.get("/api/v4/metadata")
+async def metadata():
+    """GitLab-compatible server metadata."""
+    return {
+        "version": settings.GITLAB_VERSION,
+        "revision": settings.GITLAB_REVISION,
+        "kas": {
+            "enabled": False,
+            "externalUrl": None,
+            "version": None,
+        },
+        "enterprise": False,
+    }
+
+
 @router.get("/api/v4/rate_limit")
 async def rate_limit():
     """Rate-limit status -- always returns unlimited for the emulator."""

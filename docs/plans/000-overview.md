@@ -148,6 +148,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   commit stats/diff metadata, and merge request diffs/merge validation.
 - `/api/v4/version` exposes configurable GitLab-shaped server version metadata
   for CLI compatibility probes.
+- `/api/v4/metadata` exposes matching GitLab-shaped server metadata, including
+  version, revision, KAS disabled state, and enterprise flag.
 
 ## Near-Term Slices
 
