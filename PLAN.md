@@ -297,7 +297,8 @@ Done when:
   Project member/collaborator writes require Maintainer or higher, and group
   member writes require Owner. Project/repository destructive settings and org
   settings require Owner. Project/repository webhook and deploy-key writes
-  require Maintainer or higher, and group webhook writes require Owner. Label
+  require Maintainer or higher, repository Actions secret/variable management
+  requires Maintainer or higher, and group webhook writes require Owner. Label
   and milestone definition writes require Maintainer or higher; issue label
   assignment, release writes, commit status writes, and check run/suite writes
   require Developer or higher. Issue, issue-comment, PR review-comment, PR review

@@ -7,6 +7,7 @@ from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.config import settings
 from app.models.actions import Workflow, WorkflowRun, WorkflowJob, Secret, Variable
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
+from app.services.permissions import MAINTAINER, require_project_access
 
 router = APIRouter(tags=["actions"])
 
@@ -162,6 +163,7 @@ async def list_secrets(
 ):
     """List repository secrets (names only, not values)."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     query = select(Secret).where(Secret.repo_id == repository.id)
     secrets = (await db.execute(query)).scalars().all()
     return {
@@ -183,6 +185,7 @@ async def get_secret(
 ):
     """Get a repository secret (name only)."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Secret).where(Secret.repo_id == repository.id, Secret.name == secret_name)
     )
@@ -198,6 +201,7 @@ async def create_or_update_secret(
 ):
     """Create or update a repository secret."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Secret).where(Secret.repo_id == repository.id, Secret.name == secret_name)
     )
@@ -215,6 +219,7 @@ async def delete_secret(
 ):
     """Delete a repository secret."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Secret).where(Secret.repo_id == repository.id, Secret.name == secret_name)
     )
@@ -233,6 +238,7 @@ async def list_variables(
 ):
     """List repository variables."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     query = select(Variable).where(Variable.repo_id == repository.id)
     variables = (await db.execute(query)).scalars().all()
     return {
@@ -250,6 +256,7 @@ async def create_variable(
 ):
     """Create a repository variable."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     name = body.get("name", "")
     value = body.get("value", "")
     if not name:
@@ -267,6 +274,7 @@ async def update_variable(
 ):
     """Update a repository variable."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Variable).where(Variable.repo_id == repository.id, Variable.name == variable_name)
     )
@@ -289,6 +297,7 @@ async def delete_variable(
 ):
     """Delete a repository variable."""
     repository = await get_repo_or_404(owner, repo, db)
+    await require_project_access(repository, user, db, MAINTAINER)
     result = await db.execute(
         select(Variable).where(Variable.repo_id == repository.id, Variable.name == variable_name)
     )
