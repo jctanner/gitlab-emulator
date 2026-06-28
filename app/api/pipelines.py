@@ -44,6 +44,7 @@ from app.services.ci_yaml import ParsedCiJob, parse_gitlab_ci
 from app.services.permissions import (
     DEVELOPER,
     MAINTAINER,
+    REPORTER,
     pipeline_variables_allowed_for_access_level,
     project_access_level,
     require_project_access,
@@ -83,7 +84,9 @@ class PipelineJobDefinition(BaseModel):
     stage: str = "test"
     stage_index: int = 0
     image: str = "alpine:3.20"
-    script: list[str] = Field(default_factory=lambda: ["echo hello from persisted pipeline"])
+    script: list[str] = Field(
+        default_factory=lambda: ["echo hello from persisted pipeline"]
+    )
     variables: dict[str, str] = Field(default_factory=dict)
     needs: list[str | dict] | None = None
     tags: list[str] = Field(default_factory=list)
@@ -174,12 +177,16 @@ async def _get_project(project_id: int, db: DbSession) -> Project:
     return project
 
 
-async def _get_project_ref(project_ref: str, db: DbSession) -> Project:
+async def _get_project_ref(
+    project_ref: str,
+    db: DbSession,
+    current_user=None,
+    *,
+    enforce_read_access: bool = False,
+) -> Project:
     decoded_ref = unquote(str(project_ref)).strip("/")
     if decoded_ref.isdigit():
-        result = await db.execute(
-            select(Project).where(Project.id == int(decoded_ref))
-        )
+        result = await db.execute(select(Project).where(Project.id == int(decoded_ref)))
     else:
         result = await db.execute(
             select(Project).where(Project.full_name == decoded_ref)
@@ -190,6 +197,15 @@ async def _get_project_ref(project_ref: str, db: DbSession) -> Project:
             status_code=400,
             detail=f"CI include project not found: {project_ref}",
         )
+    if (
+        enforce_read_access
+        and project.private
+        and (
+            current_user is None
+            or await project_access_level(project, current_user, db) < REPORTER
+        )
+    ):
+        raise HTTPException(status_code=404, detail="Project Not Found")
     return project
 
 
@@ -242,7 +258,9 @@ async def _changed_paths_at_sha(project: Project, sha: str) -> set[str]:
 
 
 async def _read_gitlab_ci(project: Project, ref: str) -> str:
-    return await _read_repo_file(project, ref, ".gitlab-ci.yml", ".gitlab-ci.yml not found")
+    return await _read_repo_file(
+        project, ref, ".gitlab-ci.yml", ".gitlab-ci.yml not found"
+    )
 
 
 async def _read_repo_file(
@@ -344,7 +362,9 @@ def _fetch_remote_include_sync(url: str) -> str:
     with urlopen(url, timeout=10, context=context) as response:
         status = getattr(response, "status", 200)
         if status >= 400:
-            raise HTTPException(status_code=400, detail=f"CI remote include failed: {url}")
+            raise HTTPException(
+                status_code=400, detail=f"CI remote include failed: {url}"
+            )
         return response.read().decode("utf-8")
 
 
@@ -368,7 +388,9 @@ async def _fetch_remote_include(url: str) -> str:
 def _read_template_include(name: str) -> str:
     content = CI_TEMPLATES.get(name)
     if content is None:
-        raise HTTPException(status_code=400, detail=f"CI template include not found: {name}")
+        raise HTTPException(
+            status_code=400, detail=f"CI template include not found: {name}"
+        )
     return content
 
 
@@ -466,7 +488,9 @@ async def _read_include_config(
         url = include_item["remote"]
         key = ("remote", url, "", "")
         if key in seen:
-            raise HTTPException(status_code=400, detail=f"Circular CI include detected: {url}")
+            raise HTTPException(
+                status_code=400, detail=f"Circular CI include detected: {url}"
+            )
         seen.add(key)
         try:
             return await _read_ci_config_content_with_includes(
@@ -484,7 +508,9 @@ async def _read_include_config(
         name = include_item["template"]
         key = ("template", name, "", "")
         if key in seen:
-            raise HTTPException(status_code=400, detail=f"Circular CI include detected: {name}")
+            raise HTTPException(
+                status_code=400, detail=f"Circular CI include detected: {name}"
+            )
         seen.add(key)
         try:
             return await _read_ci_config_content_with_includes(
@@ -501,7 +527,9 @@ async def _read_include_config(
     raise HTTPException(status_code=400, detail="Invalid CI include")
 
 
-async def _read_gitlab_ci_with_includes(project: Project, ref: str, db: DbSession) -> str:
+async def _read_gitlab_ci_with_includes(
+    project: Project, ref: str, db: DbSession
+) -> str:
     merged = await _read_ci_config_with_includes(
         project,
         ref,
@@ -706,7 +734,9 @@ def _job_json(job: PipelineJob) -> dict:
         "duration": None,
         "queued_duration": None,
         "user": None,
-        "commit": {"id": job.pipeline.sha, "short_id": job.pipeline.sha[:8]} if job.pipeline else None,
+        "commit": {"id": job.pipeline.sha, "short_id": job.pipeline.sha[:8]}
+        if job.pipeline
+        else None,
         "pipeline": {
             "id": job.pipeline.id,
             "iid": job.pipeline.iid,
@@ -832,7 +862,9 @@ async def _create_pipeline(
                 ".gitlab-ci.yml",
                 ".gitlab-ci.yml not found",
             )
-            merged_ci_content = await _read_gitlab_ci_with_includes(project, body.ref, db)
+            merged_ci_content = await _read_gitlab_ci_with_includes(
+                project, body.ref, db
+            )
             parsed_jobs = parse_gitlab_ci(
                 merged_ci_content,
                 ref=body.ref,
@@ -927,7 +959,9 @@ async def _create_pipeline(
             image=parsed_job.image,
             script=parsed_job.script,
             variables=variables,
-            needs=_need_items(parsed_job.needs) if parsed_job.needs is not None else None,
+            needs=_need_items(parsed_job.needs)
+            if parsed_job.needs is not None
+            else None,
             tags=parsed_job.tags,
             cache=parsed_job.cache,
             artifacts_paths=parsed_job.artifacts_paths,
@@ -1133,7 +1167,9 @@ async def update_pipeline_schedule(
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     updates = body.model_dump(exclude_unset=True)
     if "variables" in updates and updates["variables"] is not None:
-        updates["variables"] = [variable.model_dump() for variable in body.variables or []]
+        updates["variables"] = [
+            variable.model_dump() for variable in body.variables or []
+        ]
     for key, value in updates.items():
         if value is not None:
             setattr(schedule, key, value)
@@ -1142,7 +1178,9 @@ async def update_pipeline_schedule(
     return _schedule_json(schedule)
 
 
-@router.delete("/projects/{project_id}/pipeline_schedules/{schedule_id}", status_code=204)
+@router.delete(
+    "/projects/{project_id}/pipeline_schedules/{schedule_id}", status_code=204
+)
 async def delete_pipeline_schedule(
     project_id: int,
     schedule_id: int,
@@ -1175,7 +1213,9 @@ async def _get_pipeline_schedule(
     return schedule
 
 
-@router.post("/projects/{project_id}/pipeline_schedules/{schedule_id}/play", status_code=201)
+@router.post(
+    "/projects/{project_id}/pipeline_schedules/{schedule_id}/play", status_code=201
+)
 async def play_pipeline_schedule(
     project_id: int,
     schedule_id: int,
@@ -1225,16 +1265,21 @@ async def list_pipelines(
     project_ref: str,
     request: Request,
     db: DbSession,
+    current_user: CurrentUser,
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     query = (
         select(Pipeline)
         .where(Pipeline.project_id == project.id)
         .order_by(Pipeline.id.desc())
     )
-    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
     result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
     return paginated_json(
         [_pipeline_json(pipeline) for pipeline in result.scalars().all()],
@@ -1249,9 +1294,12 @@ async def list_pipelines(
 async def get_latest_pipeline(
     project_ref: str,
     db: DbSession,
+    current_user: CurrentUser,
     ref: str | None = None,
 ):
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     query = select(Pipeline).where(Pipeline.project_id == project.id)
     if ref:
         query = query.where(Pipeline.ref == ref)
@@ -1263,8 +1311,12 @@ async def get_latest_pipeline(
 
 
 @router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}")
-async def get_pipeline(project_ref: str, pipeline_id: int, db: DbSession):
-    pipeline = await _get_pipeline_for_project_ref(project_ref, pipeline_id, db)
+async def get_pipeline(
+    project_ref: str, pipeline_id: int, db: DbSession, current_user: CurrentUser
+):
+    pipeline = await _get_pipeline_for_project_ref(
+        project_ref, pipeline_id, db, current_user, enforce_read_access=True
+    )
     return _pipeline_json(pipeline)
 
 
@@ -1272,8 +1324,13 @@ async def _get_pipeline_for_project_ref(
     project_ref: str,
     pipeline_id: int,
     db: DbSession,
+    current_user=None,
+    *,
+    enforce_read_access: bool = False,
 ) -> Pipeline:
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=enforce_read_access
+    )
     result = await db.execute(
         select(Pipeline)
         .options(selectinload(Pipeline.jobs).selectinload(PipelineJob.trace))
@@ -1324,15 +1381,21 @@ async def retry_pipeline(
         if job.status in retryable:
             _reset_job_for_retry(job, now)
     await _derive_pipeline_status(pipeline, db)
-    pipeline.finished_at = None if pipeline.status in {"pending", "running"} else pipeline.finished_at
+    pipeline.finished_at = (
+        None if pipeline.status in {"pending", "running"} else pipeline.finished_at
+    )
     await db.commit()
     await db.refresh(pipeline)
     return _pipeline_json(pipeline)
 
 
 @router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/diagnostics")
-async def get_pipeline_diagnostics(project_ref: str, pipeline_id: int, db: DbSession):
-    pipeline = await _get_pipeline_for_project_ref(project_ref, pipeline_id, db)
+async def get_pipeline_diagnostics(
+    project_ref: str, pipeline_id: int, db: DbSession, current_user: CurrentUser
+):
+    pipeline = await _get_pipeline_for_project_ref(
+        project_ref, pipeline_id, db, current_user, enforce_read_access=True
+    )
     runner_result = await db.execute(
         select(CiRunner).order_by(
             CiRunner.last_contact_at.desc().nullslast(),
@@ -1366,17 +1429,22 @@ async def list_pipeline_jobs(
     pipeline_id: int,
     request: Request,
     db: DbSession,
+    current_user: CurrentUser,
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     query = (
         select(PipelineJob)
         .join(Pipeline)
         .where(Pipeline.project_id == project.id, Pipeline.id == pipeline_id)
         .order_by(PipelineJob.id.asc())
     )
-    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
     result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
     return paginated_json(
         [_job_json(job) for job in result.scalars().all()],
@@ -1392,16 +1460,21 @@ async def list_project_jobs(
     project_ref: str,
     request: Request,
     db: DbSession,
+    current_user: CurrentUser,
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     query = (
         select(PipelineJob)
         .where(PipelineJob.project_id == project.id)
         .order_by(PipelineJob.id.desc())
     )
-    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
     result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
     return paginated_json(
         [_job_json(job) for job in result.scalars().all()],
@@ -1417,9 +1490,12 @@ async def download_project_job_artifacts_by_ref(
     project_ref: str,
     ref_name: str,
     db: DbSession,
+    current_user: CurrentUser,
     job: str,
 ):
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     result = await db.execute(
         select(PipelineJob)
         .join(Pipeline)
@@ -1440,7 +1516,9 @@ async def download_project_job_artifacts_by_ref(
     artifact = pipeline_job.artifacts[0] if pipeline_job.artifacts else None
     if artifact is None or not artifact.storage_path:
         raise HTTPException(status_code=404, detail="Artifacts Not Found")
-    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(tzinfo=None):
+    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(
+        tzinfo=None
+    ):
         raise HTTPException(status_code=404, detail="Artifacts Expired")
     if not os.path.isfile(artifact.storage_path):
         raise HTTPException(status_code=404, detail="Artifacts Not Found")
@@ -1452,8 +1530,12 @@ async def download_project_job_artifacts_by_ref(
 
 
 @router.get("/projects/{project_ref:path}/jobs/{job_id}")
-async def get_project_job(project_ref: str, job_id: int, db: DbSession):
-    job = await _get_job_for_project_ref(project_ref, job_id, db)
+async def get_project_job(
+    project_ref: str, job_id: int, db: DbSession, current_user: CurrentUser
+):
+    job = await _get_job_for_project_ref(
+        project_ref, job_id, db, current_user, enforce_read_access=True
+    )
     return _job_json(job)
 
 
@@ -1461,8 +1543,13 @@ async def _get_job_for_project_ref(
     project_ref: str,
     job_id: int,
     db: DbSession,
+    current_user=None,
+    *,
+    enforce_read_access: bool = False,
 ) -> PipelineJob:
-    project = await _get_project_ref(project_ref, db)
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=enforce_read_access
+    )
     result = await db.execute(
         select(PipelineJob)
         .options(
@@ -1512,7 +1599,11 @@ async def retry_project_job(
     if job.status in {"failed", "canceled", "skipped", "success"}:
         _reset_job_for_retry(job, datetime.now(timezone.utc))
     await _derive_pipeline_status(job.pipeline, db)
-    job.pipeline.finished_at = None if job.pipeline.status in {"pending", "running"} else job.pipeline.finished_at
+    job.pipeline.finished_at = (
+        None
+        if job.pipeline.status in {"pending", "running"}
+        else job.pipeline.finished_at
+    )
     await db.commit()
     await db.refresh(job)
     return _job_json(job)
@@ -1535,15 +1626,23 @@ async def play_project_job(
     job.failure_reason = None
     job.exit_code = None
     await _derive_pipeline_status(job.pipeline, db)
-    job.pipeline.finished_at = None if job.pipeline.status in {"pending", "running"} else job.pipeline.finished_at
+    job.pipeline.finished_at = (
+        None
+        if job.pipeline.status in {"pending", "running"}
+        else job.pipeline.finished_at
+    )
     await db.commit()
     await db.refresh(job)
     return _job_json(job)
 
 
 @router.get("/projects/{project_ref:path}/jobs/{job_id}/trace")
-async def get_project_job_trace(project_ref: str, job_id: int, db: DbSession):
-    project = await _get_project_ref(project_ref, db)
+async def get_project_job_trace(
+    project_ref: str, job_id: int, db: DbSession, current_user: CurrentUser
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     result = await db.execute(
         select(PipelineJob).where(
             PipelineJob.project_id == project.id,
@@ -1560,8 +1659,12 @@ async def get_project_job_trace(project_ref: str, job_id: int, db: DbSession):
 
 
 @router.get("/projects/{project_ref:path}/jobs/{job_id}/artifacts")
-async def download_project_job_artifacts(project_ref: str, job_id: int, db: DbSession):
-    project = await _get_project_ref(project_ref, db)
+async def download_project_job_artifacts(
+    project_ref: str, job_id: int, db: DbSession, current_user: CurrentUser
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
     result = await db.execute(
         select(PipelineJob).where(
             PipelineJob.project_id == project.id,
@@ -1574,7 +1677,9 @@ async def download_project_job_artifacts(project_ref: str, job_id: int, db: DbSe
     artifact = job.artifacts[0] if job.artifacts else None
     if artifact is None or not artifact.storage_path:
         raise HTTPException(status_code=404, detail="Artifacts Not Found")
-    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(tzinfo=None):
+    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(
+        tzinfo=None
+    ):
         raise HTTPException(status_code=404, detail="Artifacts Expired")
     if not os.path.isfile(artifact.storage_path):
         raise HTTPException(status_code=404, detail="Artifacts Not Found")

@@ -315,6 +315,82 @@ async def test_ci_management_actions_require_project_roles(
     assert schedule_allowed.status_code == 201
 
 
+async def test_private_project_pipeline_reads_require_reporter_access(
+    client, db_session, test_token
+):
+    from tests.test_projects_api import _create_user_and_token
+
+    reporter, reporter_token = await _create_user_and_token(
+        db_session, "private-pipeline-reporter"
+    )
+    _outsider, outsider_token = await _create_user_and_token(
+        db_session, "private-pipeline-outsider"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "private-pipeline-project", "visibility": "private"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project_id}/pipeline",
+        json={
+            "ref": "main",
+            "job": {"name": "private_job", "script": ["echo private"]},
+        },
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+    jobs = await client.get(
+        f"{API}/projects/{project_id}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    job_id = jobs.json()[0]["id"]
+
+    outsider_list = await client.get(
+        f"{API}/projects/{project_id}/pipelines",
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_list.status_code == 404
+
+    member = await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"user_id": reporter.id, "access_level": 20},
+        headers=auth_headers(test_token),
+    )
+    assert member.status_code == 201
+
+    allowed_list = await client.get(
+        f"{API}/projects/{project_id}/pipelines",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_list.status_code == 200
+    assert [item["id"] for item in allowed_list.json()] == [pipeline["id"]]
+
+    allowed_pipeline = await client.get(
+        f"{API}/projects/{project_id}/pipelines/{pipeline['id']}",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_pipeline.status_code == 200
+    assert allowed_pipeline.json()["id"] == pipeline["id"]
+
+    allowed_jobs = await client.get(
+        f"{API}/projects/{project_id}/jobs",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_jobs.status_code == 200
+    assert [job["name"] for job in allowed_jobs.json()] == ["private_job"]
+
+    allowed_trace = await client.get(
+        f"{API}/projects/{project_id}/jobs/{job_id}/trace",
+        headers=auth_headers(reporter_token),
+    )
+    assert allowed_trace.status_code == 200
+
+
 async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
     project = await _create_project(client, test_token)
     pipeline_resp = await client.post(
