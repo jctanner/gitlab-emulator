@@ -40,7 +40,8 @@ harness architecture.
 - Persisted jobs now use stage dependency gating. Later-stage jobs are not
   assigned until all earlier-stage jobs succeed, same-stage jobs remain eligible
   for parallel runners, and later pending jobs are skipped after an earlier
-  required stage fails.
+  required stage fails unless they are `when: always` cleanup jobs, which remain
+  runnable before the pipeline finalizes.
 - Minimal `needs` and rules/ref-filter support exists. Jobs can declare common
   `needs` forms to unlock from dependency completion instead of pure stage
   gating, `needs: []` can run immediately, optional missing needs do not block,
@@ -51,7 +52,8 @@ harness architecture.
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
   boolean expressions, null and empty-string variable comparisons, regex
   match/non-match operators, `exists`, commit-local `changes`, `when: never`,
-  persisted non-runnable `manual` jobs, and matched workflow-level variables.
+  `when: always`, persisted non-runnable `manual` jobs, and matched
+  workflow-level variables.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a
   manual job changes it to `pending` and requeues it through the persisted
   runner coordinator.

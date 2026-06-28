@@ -1,6 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,7 +23,9 @@ class Pipeline(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("repositories.id"), nullable=False)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repositories.id"), nullable=False
+    )
     iid: Mapped[int] = mapped_column(Integer, nullable=False)
     ref: Mapped[str] = mapped_column(String, nullable=False)
     sha: Mapped[str] = mapped_column(String, nullable=False)
@@ -42,10 +53,14 @@ class PipelineTrigger(Base):
     __tablename__ = "pipeline_triggers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("repositories.id"), nullable=False)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repositories.id"), nullable=False
+    )
     description: Mapped[str] = mapped_column(String, default="")
     token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    owner_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -60,15 +75,21 @@ class PipelineSchedule(Base):
     __tablename__ = "pipeline_schedules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("repositories.id"), nullable=False)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repositories.id"), nullable=False
+    )
     description: Mapped[str] = mapped_column(String, default="")
     ref: Mapped[str] = mapped_column(String, default="main")
     cron: Mapped[str] = mapped_column(String, default="0 0 * * *")
     cron_timezone: Mapped[str] = mapped_column(String, default="UTC")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     variables: Mapped[list] = mapped_column(JSON, default=list)
-    owner_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    last_pipeline_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("pipelines.id"), nullable=True)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
+    last_pipeline_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("pipelines.id"), nullable=True
+    )
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -149,10 +170,18 @@ class CiSecretAccessEvent(Base):
     __tablename__ = "ci_secret_access_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    secret_id: Mapped[int] = mapped_column(Integer, ForeignKey("ci_secrets.id"), nullable=False)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("repositories.id"), nullable=False)
-    pipeline_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipelines.id"), nullable=False)
-    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipeline_jobs.id"), nullable=False)
+    secret_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ci_secrets.id"), nullable=False
+    )
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repositories.id"), nullable=False
+    )
+    pipeline_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipelines.id"), nullable=False
+    )
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipeline_jobs.id"), nullable=False
+    )
     ref: Mapped[str] = mapped_column(String, nullable=False)
     environment: Mapped[str | None] = mapped_column(String, nullable=True)
     accessed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -183,7 +212,9 @@ class CiRunner(Base):
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_verify_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_job_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("pipeline_jobs.id"), nullable=True)
+    last_job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("pipeline_jobs.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -196,8 +227,12 @@ class PipelineJob(Base):
     __tablename__ = "pipeline_jobs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    pipeline_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipelines.id"), nullable=False)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("repositories.id"), nullable=False)
+    pipeline_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipelines.id"), nullable=False
+    )
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repositories.id"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     stage: Mapped[str] = mapped_column(String, default="test")
     stage_index: Mapped[int] = mapped_column(Integer, default=0)
@@ -210,6 +245,7 @@ class PipelineJob(Base):
     cache: Mapped[list] = mapped_column(JSON, default=list)
     artifacts_paths: Mapped[list] = mapped_column(JSON, default=list)
     artifacts_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    when: Mapped[str] = mapped_column(String, default="on_success")
     allow_failure: Mapped[bool] = mapped_column(Boolean, default=False)
     secret_metadata: Mapped[list] = mapped_column(JSON, default=list)
     job_token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
@@ -248,7 +284,9 @@ class JobTrace(Base):
     __tablename__ = "job_traces"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipeline_jobs.id"), unique=True, nullable=False)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipeline_jobs.id"), unique=True, nullable=False
+    )
     content: Mapped[str] = mapped_column(Text, default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(
@@ -262,7 +300,9 @@ class JobArtifact(Base):
     __tablename__ = "job_artifacts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipeline_jobs.id"), nullable=False)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipeline_jobs.id"), nullable=False
+    )
     filename: Mapped[str] = mapped_column(String, default="artifacts.zip")
     content_type: Mapped[str | None] = mapped_column(String, nullable=True)
     file_type: Mapped[str] = mapped_column(String, default="archive")

@@ -3127,6 +3127,100 @@ unit:
     assert blocked.status_code == 204
 
 
+async def test_when_always_job_runs_after_failed_stage(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages:
+  - build
+  - cleanup
+  - test
+
+compile:
+  stage: build
+  script:
+    - exit 1
+
+cleanup:
+  stage: cleanup
+  when: always
+  script:
+    - echo cleanup
+
+unit:
+  stage: test
+  script:
+    - echo test
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add when always ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    pipeline = pipeline_resp.json()
+
+    first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    first_payload = first.json()
+    assert first_payload["job_info"]["name"] == "compile"
+
+    fail = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={"token": first_payload["token"], "state": "failed", "exit_code": 1},
+    )
+    assert fail.status_code == 200
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["compile"]["status"] == "failed"
+    assert by_name["cleanup"]["status"] == "pending"
+    assert by_name["cleanup"]["when"] == "always"
+    assert by_name["unit"]["status"] == "skipped"
+
+    pipeline_after_failure = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert pipeline_after_failure.json()["status"] == "pending"
+
+    cleanup = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert cleanup.status_code == 201
+    cleanup_payload = cleanup.json()
+    assert cleanup_payload["job_info"]["name"] == "cleanup"
+    assert cleanup_payload["steps"][0]["when"] == "always"
+
+    success = await client.put(
+        f"{API}/jobs/{cleanup_payload['id']}",
+        headers={"JOB-TOKEN": cleanup_payload["token"]},
+        json={"token": cleanup_payload["token"], "state": "success"},
+    )
+    assert success.status_code == 200
+
+    pipeline_done = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert pipeline_done.json()["status"] == "failed"
+
+
 async def test_allowed_failure_does_not_block_later_jobs(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

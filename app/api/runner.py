@@ -315,6 +315,7 @@ def explain_job_scheduling(
         eligible = job.status == "pending"
 
         if job.status == "pending":
+            job_runs_after_failure = (job.when or "on_success") == "always"
             if job.needs is not None:
                 for need in _need_items(job.needs):
                     peer = jobs_by_name.get(need["job"])
@@ -331,7 +332,9 @@ def explain_job_scheduling(
                                 "reason": reason,
                             }
                         )
-                    elif peer.status == "failed" and peer.allow_failure:
+                    elif peer.status == "failed" and (
+                        peer.allow_failure or job_runs_after_failure
+                    ):
                         continue
                     elif peer.status not in {"success", "skipped", "manual"}:
                         blocked = True
@@ -350,7 +353,7 @@ def explain_job_scheduling(
                 for peer in jobs:
                     if (
                         peer.status == "failed"
-                        and peer.allow_failure
+                        and (peer.allow_failure or job_runs_after_failure)
                         and peer.stage_index < job.stage_index
                     ):
                         continue
@@ -711,7 +714,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
                 "name": "script",
                 "script": job.script or [],
                 "timeout": 3600,
-                "when": "on_success",
+                "when": job.when or "on_success",
                 "allow_failure": bool(job.allow_failure),
             }
         ],
@@ -760,6 +763,13 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     ):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
+    elif any(job_status == "running" for job_status in blocking_statuses):
+        pipeline.status = "running"
+        pipeline.started_at = pipeline.started_at or now
+        pipeline.finished_at = None
+    elif any(job_status == "pending" for job_status in blocking_statuses):
+        pipeline.status = "pending"
+        pipeline.finished_at = None
     elif any(job_status == "failed" for job_status in blocking_statuses):
         pipeline.status = "failed"
         pipeline.finished_at = pipeline.finished_at or now
@@ -769,14 +779,12 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     ):
         pipeline.status = "success"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(job_status == "running" for job_status in blocking_statuses):
-        pipeline.status = "running"
-        pipeline.started_at = pipeline.started_at or now
     else:
         pipeline.status = "pending"
 
 
 def _job_stage_is_unblocked(job: PipelineJob) -> bool:
+    job_runs_after_failure = (job.when or "on_success") == "always"
     if job.needs is not None:
         peers = {peer.name: peer for peer in job.pipeline.jobs}
         for need in _need_items(job.needs):
@@ -786,14 +794,14 @@ def _job_stage_is_unblocked(job: PipelineJob) -> bool:
                     continue
                 return False
             status = peer.status
-            if status == "failed" and peer.allow_failure:
+            if status == "failed" and (peer.allow_failure or job_runs_after_failure):
                 continue
             if status not in {"success", "skipped", "manual"}:
                 return False
         return True
     return all(
         peer.status in {"success", "skipped", "manual"}
-        or (peer.status == "failed" and peer.allow_failure)
+        or (peer.status == "failed" and (peer.allow_failure or job_runs_after_failure))
         for peer in job.pipeline.jobs
         if peer.stage_index < job.stage_index
     )
@@ -840,8 +848,11 @@ def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     for job in pipeline.jobs:
         needed_names = {need["job"] for need in _need_items(job.needs)}
         needs_failed_job = bool(needed_names & failed_job_names)
-        if job.status == "pending" and (
-            job.stage_index > first_failed_stage or needs_failed_job
+        job_runs_after_failure = (job.when or "on_success") == "always"
+        if (
+            job.status == "pending"
+            and (job.stage_index > first_failed_stage or needs_failed_job)
+            and not job_runs_after_failure
         ):
             job.status = "skipped"
             job.finished_at = job.finished_at or now

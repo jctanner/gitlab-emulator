@@ -457,13 +457,15 @@ smoke jobs plus persisted jobs created directly or from a minimal
 repository through Git Smart HTTP using their CI job token. YAML-defined jobs
 can upload artifact archives and project job APIs can download them. Persisted
 jobs are gated by stage order, with same-stage jobs remaining eligible for
-parallel runners. Minimal `needs`, optional missing needs, missing required
-needs validation, `needs:artifacts`, common ref filters, rule-level variables,
-workflow variables, grouped `rules:if` boolean expressions, regex non-match
-operators, null/empty variable comparisons, `exists`/`changes` path-object rule
-parsing, variable-expanded rule path patterns, mapping-form `only`/`except`,
-and `allow_failure` scheduling/status behavior are covered by local tests.
-Runner tag matching is also covered by local API tests. The smoke queue is
+parallel runners. `when: always` cleanup jobs remain runnable after an earlier
+required stage fails, while later normal pending jobs are skipped. Minimal
+`needs`, optional missing needs, missing required needs validation,
+`needs:artifacts`, common ref filters, rule-level variables, workflow
+variables, grouped `rules:if` boolean expressions, regex non-match operators,
+null/empty variable comparisons, `exists`/`changes` path-object rule parsing,
+variable-expanded rule path patterns, mapping-form `only`/`except`, and
+`allow_failure` scheduling/status behavior are covered by local tests. Runner
+tag matching is also covered by local API tests. The smoke queue is
 intentionally temporary. Cache metadata, list-form cache keys, variable-expanded
 cache keys/policies/fallback keys, and archive endpoints are covered by local
 API tests. VM runner cache adapter configuration points at MinIO/S3 by default,

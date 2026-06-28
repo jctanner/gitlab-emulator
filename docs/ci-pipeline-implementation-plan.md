@@ -27,7 +27,8 @@ Already working:
   project job API
 - persisted jobs are stage-gated: later stages wait for earlier stages to
   succeed, same-stage jobs remain eligible for parallel runners, and later
-  pending jobs are skipped after an earlier required stage fails
+  pending jobs are skipped after an earlier required stage fails, except
+  `when: always` jobs remain runnable for cleanup after failed earlier stages
 - minimal `needs` and common rules/ref filters are implemented: jobs can unlock
   from named dependencies, `needs: []` can run immediately, invalid needs are
   rejected early, `needs:artifacts` dependencies follow declared needs order,
@@ -35,9 +36,10 @@ Already working:
   `rules` support covers common `if` expressions, null and empty-string
   variable comparisons, regex match/non-match, simple boolean operators with
   grouped parentheses, `exists`, commit-local `changes`, `exists`/`changes`
-  path-object forms, variable-expanded rule path patterns, `when: never`, and
-  persisted non-runnable `manual` jobs. Matched `workflow:rules:variables` are
-  applied as job defaults before job-level variables. Current
+  path-object forms, variable-expanded rule path patterns, `when: never`,
+  `when: always`, and persisted non-runnable `manual` jobs. Matched
+  `workflow:rules:variables` are applied as job defaults before job-level
+  variables. Current
   `only`/`except` support covers
   scalar/list refs plus mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
@@ -350,6 +352,8 @@ Implemented:
 - only schedule jobs from the first runnable stage until that stage completes
 - unlock later stages when all previous-stage jobs succeed
 - fail or skip later-stage jobs when an earlier required stage fails
+- keep `when: always` jobs pending and runnable after an earlier required stage
+  fails so cleanup can run before the pipeline finalizes
 - allow same-stage jobs to be assigned before their same-stage peers finish
 
 ## Slice 10: Needs, Rules, Tags, and Cache

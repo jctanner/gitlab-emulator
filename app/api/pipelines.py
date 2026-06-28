@@ -724,6 +724,7 @@ def _job_json(job: PipelineJob) -> dict:
         "needs": _need_names(job.needs),
         "tag_list": job.tags or [],
         "cache": job.cache or [],
+        "when": job.when or "on_success",
         "ref": job.pipeline.ref if job.pipeline else None,
         "tag": False,
         "coverage": None,
@@ -780,6 +781,13 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     ):
         pipeline.status = "canceled"
         pipeline.finished_at = pipeline.finished_at or now
+    elif any(status == "running" for status in blocking_statuses):
+        pipeline.status = "running"
+        pipeline.started_at = pipeline.started_at or now
+        pipeline.finished_at = None
+    elif any(status == "pending" for status in blocking_statuses):
+        pipeline.status = "pending"
+        pipeline.finished_at = None
     elif any(status == "failed" for status in blocking_statuses):
         pipeline.status = "failed"
         pipeline.finished_at = pipeline.finished_at or now
@@ -789,9 +797,6 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     ):
         pipeline.status = "success"
         pipeline.finished_at = pipeline.finished_at or now
-    elif any(status == "running" for status in blocking_statuses):
-        pipeline.status = "running"
-        pipeline.started_at = pipeline.started_at or now
     else:
         pipeline.status = "pending"
 
@@ -979,6 +984,7 @@ async def _create_pipeline(
             cache=parsed_job.cache,
             artifacts_paths=parsed_job.artifacts_paths,
             artifacts_config=parsed_job.artifacts,
+            when=parsed_job.when,
             allow_failure=parsed_job.allow_failure,
             secret_metadata=[
                 ci_secret_metadata_entry(resolved_secret)

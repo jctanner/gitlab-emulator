@@ -31,9 +31,7 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_sqlite_compat_columns(conn)
-        await conn.execute(
-            text("PRAGMA journal_mode=WAL")
-        )
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
 
 
 async def _ensure_sqlite_compat_columns(conn) -> None:
@@ -66,6 +64,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         "pipeline_jobs",
         "allow_failure",
         "allow_failure BOOLEAN DEFAULT 0",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "when",
+        "when VARCHAR DEFAULT 'on_success'",
     )
     await ensure_column(
         "collaborators",
