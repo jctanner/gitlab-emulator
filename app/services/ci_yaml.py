@@ -516,14 +516,27 @@ def _path_matches(pattern: str, paths: set[str]) -> bool:
     )
 
 
-def _rule_path_patterns(value: Any, variables: dict[str, str]) -> list[str]:
+def _rule_path_patterns(
+    value: Any,
+    variables: dict[str, str],
+    rule_name: str,
+) -> list[str]:
     if isinstance(value, dict):
+        unsupported_keys = set(value) - {"paths"}
+        if unsupported_keys:
+            unsupported = ", ".join(sorted(unsupported_keys))
+            raise ValueError(f"rules:{rule_name} option(s) not supported: {unsupported}")
         return _expand_string_list(value.get("paths"), variables)
     return _expand_string_list(value, variables)
 
 
-def _rule_paths_match(value: Any, paths: set[str], variables: dict[str, str]) -> bool:
-    patterns = _rule_path_patterns(value, variables)
+def _rule_paths_match(
+    value: Any,
+    paths: set[str],
+    variables: dict[str, str],
+    rule_name: str,
+) -> bool:
+    patterns = _rule_path_patterns(value, variables, rule_name)
     if not patterns:
         return False
     return any(_path_matches(pattern, paths) for pattern in patterns)
@@ -564,7 +577,9 @@ def _legacy_filter_matches(
 
     if "changes" in value:
         has_condition = True
-        if not _rule_paths_match(value.get("changes"), changed_paths, variables):
+        if not _rule_paths_match(
+            value.get("changes"), changed_paths, variables, "changes"
+        ):
             return False
 
     return has_condition
@@ -587,11 +602,11 @@ def _job_rule_decision(
             if "if" in rule and not _if_matches(rule.get("if"), ref, variables):
                 continue
             if "exists" in rule and not _rule_paths_match(
-                rule.get("exists"), existing_paths, variables
+                rule.get("exists"), existing_paths, variables, "exists"
             ):
                 continue
             if "changes" in rule and not _rule_paths_match(
-                rule.get("changes"), changed_paths, variables
+                rule.get("changes"), changed_paths, variables, "changes"
             ):
                 continue
             when = _when_setting(rule.get("when"))

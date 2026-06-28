@@ -39,7 +39,8 @@ Already working:
   empty-string variable comparisons, regex match/non-match, simple boolean
   operators with grouped parentheses, `exists`, commit-local `changes`,
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
-  `when: never`,
+  clear rejection of unsupported cross-ref `rules:changes:compare_to` and
+  `rules:exists` project/ref options, `when: never`,
   `when: always`, `when: on_failure`, and persisted non-runnable `manual` jobs.
   Unsupported delayed jobs using `when: delayed` or `start_in` are rejected
   clearly because delayed scheduling is not modeled.

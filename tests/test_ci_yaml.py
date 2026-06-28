@@ -718,6 +718,44 @@ variable_miss:
     assert [job.name for job in jobs] == ["changes_variable", "exists_variable"]
 
 
+def test_parse_gitlab_ci_rejects_unsupported_rules_path_options():
+    changes_content = """
+changes_compare_to:
+  script: echo changes
+  rules:
+    - changes:
+        compare_to: refs/heads/main
+        paths:
+          - docs/**
+"""
+    try:
+        parse_gitlab_ci(changes_content, changed_paths={"docs/readme.md"})
+        assert False, "Expected unsupported rules:changes options to fail"
+    except ValueError as exc:
+        message = str(exc)
+        assert "rules:changes option(s) not supported" in message
+        assert "compare_to" in message
+
+    exists_content = """
+exists_project:
+  script: echo exists
+  rules:
+    - exists:
+        project: group/templates
+        ref: main
+        paths:
+          - template.yml
+"""
+    try:
+        parse_gitlab_ci(exists_content, existing_paths={"template.yml"})
+        assert False, "Expected unsupported rules:exists options to fail"
+    except ValueError as exc:
+        message = str(exc)
+        assert "rules:exists option(s) not supported" in message
+        assert "project" in message
+        assert "ref" in message
+
+
 def test_parse_gitlab_ci_marks_manual_jobs():
     jobs = parse_gitlab_ci(
         """

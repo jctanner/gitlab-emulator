@@ -1222,6 +1222,41 @@ deploy_downstream:
     assert "trigger" in resp.text
 
 
+async def test_create_pipeline_rejects_unsupported_rules_path_option(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+compare_to_job:
+  script:
+    - echo compare-to
+  rules:
+    - changes:
+        compare_to: refs/heads/main
+        paths:
+          - docs/**
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add unsupported rules path option",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 400
+    assert "rules:changes option(s) not supported" in resp.text
+    assert "compare_to" in resp.text
+
+
 async def test_create_pipeline_rejects_delayed_gitlab_ci_job(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
