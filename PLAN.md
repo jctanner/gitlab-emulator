@@ -315,9 +315,10 @@ Done when:
   cancel/retry/play controls require Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Production security hardening. Baseline browser security headers are enabled
-  across API, admin, web, and error responses. The emulator is still intended
-  for controlled integration testing environments rather than open production
-  exposure.
+  across API, admin, web, and error responses. Admin bootstrap user/token
+  helper endpoints require an authenticated site admin. The emulator is still
+  intended for controlled integration testing environments rather than open
+  production exposure.
 
 ## High-Level Outcome
 

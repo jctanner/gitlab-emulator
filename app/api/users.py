@@ -71,13 +71,19 @@ async def list_users(
 
 # ---- admin helpers (not part of real GitLab API) ---------------------------
 
+def _require_site_admin(user: User) -> None:
+    if not user.site_admin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 @router.post("/admin/users", status_code=201)
-async def admin_create_user(body: UserCreate, db: DbSession):
+async def admin_create_user(body: UserCreate, user: AuthUser, db: DbSession):
     """Create a new user (admin bootstrap endpoint).
 
     This is **not** part of the real GitLab API.  It is provided so that
     automated test-harnesses can seed users without going through the UI.
     """
+    _require_site_admin(user)
     # Check uniqueness
     existing = await db.execute(select(User).where(User.login == body.login))
     if existing.scalar_one_or_none() is not None:
@@ -101,6 +107,7 @@ async def admin_create_user(body: UserCreate, db: DbSession):
 @router.post("/admin/tokens", status_code=201)
 async def admin_create_token(
     body: dict,
+    user: AuthUser,
     db: DbSession,
 ):
     """Create a personal-access token for a user (admin bootstrap endpoint).
@@ -108,6 +115,7 @@ async def admin_create_token(
     Accepts `{"login": "...", "name": "...", "scopes": [...]}`.
     Returns the **raw token** -- it cannot be retrieved again.
     """
+    _require_site_admin(user)
     login = body.get("login")
     token_name = body.get("name", "default")
     scopes = body.get("scopes", [])

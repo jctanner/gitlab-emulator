@@ -97,11 +97,12 @@ async def test_get_public_user_by_numeric_id(client, test_user):
 
 
 @pytest.mark.asyncio
-async def test_admin_token_helper_creates_gitlab_pat(client, test_user):
+async def test_admin_token_helper_creates_gitlab_pat(client, test_user, admin_token):
     """Admin token helper returns a GitLab-style token that authenticates."""
     token_resp = await client.post(
         f"{API}/admin/tokens",
         json={"login": "testuser", "name": "gitlab-token", "scopes": ["api"]},
+        headers=auth_headers(admin_token),
     )
     assert token_resp.status_code == 201
     token = token_resp.json()["token"]
@@ -110,6 +111,45 @@ async def test_admin_token_helper_creates_gitlab_pat(client, test_user):
     user_resp = await client.get(f"{API}/user", headers={"PRIVATE-TOKEN": token})
     assert user_resp.status_code == 200
     assert user_resp.json()["username"] == "testuser"
+
+
+@pytest.mark.asyncio
+async def test_admin_helpers_require_site_admin(client, test_user, test_token, admin_token):
+    unauthenticated = await client.post(
+        f"{API}/admin/tokens",
+        json={"login": "testuser"},
+    )
+    assert unauthenticated.status_code == 401
+
+    non_admin_token = await client.post(
+        f"{API}/admin/tokens",
+        json={"login": "testuser"},
+        headers=auth_headers(test_token),
+    )
+    assert non_admin_token.status_code == 403
+
+    non_admin_user = await client.post(
+        f"{API}/admin/users",
+        json={
+            "login": "not-allowed-user",
+            "email": "not-allowed@example.com",
+            "password": "password",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert non_admin_user.status_code == 403
+
+    admin_user = await client.post(
+        f"{API}/admin/users",
+        json={
+            "login": "admin-created-user",
+            "email": "admin-created@example.com",
+            "password": "password",
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert admin_user.status_code == 201
+    assert admin_user.json()["username"] == "admin-created-user"
 
 
 @pytest.mark.asyncio

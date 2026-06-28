@@ -358,5 +358,6 @@ Done when:
   cancel/retry/play controls require Developer or higher.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
 - Production security hardening. Baseline browser security headers are enabled
-  across API, admin, web, and error responses; broader hardening remains
-  environment-specific.
+  across API, admin, web, and error responses, and admin bootstrap user/token
+  helper endpoints require an authenticated site admin; broader hardening
+  remains environment-specific.
