@@ -83,6 +83,15 @@ class Commit:
     message: str = ""
 
 
+@strawberry.type
+class PullRequestChangedFile:
+    """A file changed by a pull request."""
+    path: str
+    additions: int = 0
+    deletions: int = 0
+    change_type: str = "MODIFIED"
+
+
 async def _git_lines(repo_path: str, *args: str) -> list[str]:
     """Run a read-only git command against a bare repository."""
     env = {**os.environ, "GIT_DIR": repo_path}
@@ -158,6 +167,59 @@ async def _pull_request_commits(
         if oid:
             commits.append(Commit(oid=oid, message=message))
     return commits
+
+
+async def _pull_request_files(
+    info: Info, repo_id: int, base_sha: str, head_sha: str
+) -> list[PullRequestChangedFile]:
+    if not repo_id or not base_sha or not head_sha:
+        return []
+
+    from app.models.repository import Repository as RepoModel
+
+    db = info.context["db"]
+    result = await db.execute(select(RepoModel).where(RepoModel.id == repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo or not repo.disk_path or not os.path.isdir(repo.disk_path):
+        return []
+
+    status_by_path: dict[str, str] = {}
+    status_lines = await _git_lines(
+        repo.disk_path, "diff", "--name-status", "-M", base_sha, head_sha
+    )
+    for line in status_lines:
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0]
+        if status.startswith("R") and len(parts) >= 3:
+            status_by_path[parts[2]] = "RENAMED"
+        elif status == "A":
+            status_by_path[parts[1]] = "ADDED"
+        elif status == "D":
+            status_by_path[parts[1]] = "DELETED"
+        else:
+            status_by_path[parts[1]] = "MODIFIED"
+
+    files: list[PullRequestChangedFile] = []
+    for line in await _git_lines(
+        repo.disk_path, "diff", "--numstat", base_sha, head_sha
+    ):
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        path = parts[-1]
+        additions = int(parts[0]) if parts[0].isdigit() else 0
+        deletions = int(parts[1]) if parts[1].isdigit() else 0
+        files.append(
+            PullRequestChangedFile(
+                path=path,
+                additions=additions,
+                deletions=deletions,
+                change_type=status_by_path.get(path, "MODIFIED"),
+            )
+        )
+    return files
 
 
 @strawberry.type
@@ -508,8 +570,21 @@ class PullRequest:
         return empty_connection()
 
     @strawberry.field
-    def files(self) -> Connection[Commit]:
-        return empty_connection()
+    async def files(
+        self,
+        info: Info,
+        first: Optional[int] = 30,
+        after: Optional[str] = None,
+        last: Optional[int] = None,
+        before: Optional[str] = None,
+    ) -> Connection[PullRequestChangedFile]:
+        files = await _pull_request_files(
+            info, self._repo_id, self._base_sha, self._head_sha
+        )
+        return build_connection(
+            files, lambda file: file, len(files),
+            first=first, after=after, last=last, before=before,
+        )
 
     @strawberry.field
     def project_cards(self) -> Connection[ProjectCardStub]:

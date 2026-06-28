@@ -318,12 +318,12 @@ Done when:
   issue connections support `filterBy.mentioned` for issue bodies and comments,
   while pull request `reviewDecision` reflects active approvals and change
   requests, pull request diff stat fields resolve from git diffs, and pull
-  request commit connections list the actual commits between base and head.
-  Repository `refs(refPrefix:)` distinguishes branch and tag refs, and
-  repository language/topic and watcher connections resolve from stored project
-  metadata and star data. GraphQL search total counts report all matches
-  independently of the returned node limit. The broader schema remains an
-  incremental parity area.
+  request commit and changed-file connections list the actual commits and files
+  between base and head. Repository `refs(refPrefix:)` distinguishes branch and
+  tag refs, and repository language/topic and watcher connections resolve from
+  stored project metadata and star data. GraphQL search total counts report all
+  matches independently of the returned node limit. The broader schema remains
+  an incremental parity area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI

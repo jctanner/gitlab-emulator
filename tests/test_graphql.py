@@ -839,6 +839,89 @@ async def test_graphql_pull_request_commits(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_pull_request_files(client, test_user, test_token):
+    """Pull request files connection reflects changed files between base and head."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-pr-files", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    file_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/src%2Ffeature.txt",
+        json={
+            "branch": "feature",
+            "commit_message": "add feature file",
+            "content": "one\ntwo\n",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert file_resp.status_code == 201
+
+    mr_resp = await client.post(
+        f"{API}/projects/{project['id']}/merge_requests",
+        json={
+            "title": "File list MR",
+            "source_branch": "feature",
+            "target_branch": "main",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert mr_resp.status_code == 201
+    iid = mr_resp.json()["iid"]
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                query($number: Int!) {
+                  repository(owner: "testuser", name: "gql-pr-files") {
+                    pullRequest(number: $number) {
+                      files(first: 10) {
+                        totalCount
+                        nodes {
+                          path
+                          additions
+                          deletions
+                          changeType
+                        }
+                      }
+                    }
+                  }
+                }
+            """,
+            "variables": {"number": iid},
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    files = data["data"]["repository"]["pullRequest"]["files"]
+    assert files == {
+        "totalCount": 1,
+        "nodes": [
+            {
+                "path": "src/feature.txt",
+                "additions": 2,
+                "deletions": 0,
+                "changeType": "ADDED",
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
 async def test_graphql_pull_request_review_decision(client, test_user, test_token):
     """Pull request reviewDecision is derived from active submitted reviews."""
     project_resp = await client.post(
