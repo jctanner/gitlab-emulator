@@ -510,6 +510,40 @@ object_miss:
     assert [job.name for job in jobs] == ["changes_object", "exists_object"]
 
 
+def test_parse_gitlab_ci_expands_variables_in_rules_path_patterns():
+    jobs = parse_gitlab_ci(
+        """
+exists_variable:
+  script: echo exists variable
+  rules:
+    - exists:
+        - "$SRC_GLOB"
+
+changes_variable:
+  script: echo changes variable
+  rules:
+    - changes:
+        paths:
+          - "$DOCS_GLOB"
+
+variable_miss:
+  script: echo miss
+  rules:
+    - changes:
+        - "$MISSING_GLOB"
+""",
+        variables={
+            "SRC_GLOB": "src/*.py",
+            "DOCS_GLOB": "docs/**",
+            "MISSING_GLOB": "missing/**",
+        },
+        existing_paths={"src/app.py", "docs/readme.md"},
+        changed_paths={"docs/readme.md"},
+    )
+
+    assert [job.name for job in jobs] == ["changes_variable", "exists_variable"]
+
+
 def test_parse_gitlab_ci_marks_manual_jobs():
     jobs = parse_gitlab_ci(
         """
