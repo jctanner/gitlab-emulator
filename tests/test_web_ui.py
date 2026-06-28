@@ -922,18 +922,33 @@ api_probe:
 
     schedules_page = await client.get("/ui/testuser/ui-schedules/-/pipeline_schedules")
     assert schedules_page.status_code == 200
-    assert "Schedule a new pipeline" in schedules_page.text
-    assert "Cron timezone" in schedules_page.text
-    assert "Interval Pattern" in schedules_page.text
-    assert "Every day (at 7:57am)" in schedules_page.text
-    assert "Select target branch or tag" in schedules_page.text
-    assert "Inputs" in schedules_page.text
-    assert "Variable type" in schedules_page.text
-    assert "Create pipeline schedule" in schedules_page.text
+    assert "Pipeline schedules" in schedules_page.text
+    assert "New schedule" in schedules_page.text
+    assert (
+        'href="/ui/testuser/ui-schedules/-/pipeline_schedules/new">New schedule</a>'
+        in schedules_page.text
+    )
     assert (
         'href="/ui/testuser/ui-schedules/-/pipeline_schedules">Pipeline schedules</a>'
         in schedules_page.text
     )
+    assert "Schedule a new pipeline" not in schedules_page.text
+
+    new_schedule_page = await client.get(
+        "/ui/testuser/ui-schedules/-/pipeline_schedules/new"
+    )
+    assert new_schedule_page.status_code == 200
+    assert 'href="/ui/testuser/ui-schedules/-/pipelines">Pipelines</a>' in new_schedule_page.text
+    assert ">Schedules</a>" in new_schedule_page.text
+    assert "Schedule a new pipeline" in new_schedule_page.text
+    assert "Cron timezone" in new_schedule_page.text
+    assert "Select timezone" in new_schedule_page.text
+    assert "Interval Pattern" in new_schedule_page.text
+    assert "Every day (at 7:57am)" in new_schedule_page.text
+    assert "Select target branch or tag" in new_schedule_page.text
+    assert "Inputs" in new_schedule_page.text
+    assert "Variable type" in new_schedule_page.text
+    assert "Create pipeline schedule" in new_schedule_page.text
 
     create_schedule = await client.post(
         "/ui/testuser/ui-schedules/-/pipeline_schedules",

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Schedule a new pipeline - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "pipeline_schedules" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<nav class="gl-breadcrumbs mb-3" aria-label="Breadcrumb">
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ owner }}</a>
+    <span>/</span>
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Pipelines</a>
+    <span>/</span>
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">Schedules</a>
+</nav>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+
+<section class="pipeline-schedule-form mb-5">
+    <h2 class="f2 mb-3">Schedule a new pipeline</h2>
+    <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">
+        <label class="d-block text-bold mb-1" for="schedule-description">Description</label>
+        <input id="schedule-description" class="form-control input-block mb-3" name="description" placeholder="Provide a short description for this pipeline">
+
+        <label class="d-block text-bold mb-1" for="schedule-timezone">Cron timezone</label>
+        <select id="schedule-timezone" class="form-select input-block mb-3" name="cron_timezone">
+            <option value="">Select timezone</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">America/New_York</option>
+            <option value="America/Chicago">America/Chicago</option>
+            <option value="America/Denver">America/Denver</option>
+            <option value="America/Los_Angeles">America/Los_Angeles</option>
+        </select>
+
+        <fieldset class="border-0 p-0 m-0 mb-3">
+            <legend class="text-bold mb-1">Interval Pattern</legend>
+            <p class="color-fg-muted f6 mb-2">Pipelines cannot run more frequently than the pipeline schedule worker cron setting (* /5 * * * *) allows.</p>
+            <label class="d-block mb-1"><input type="radio" name="interval_pattern" value="daily" checked> Every day (at 7:57am)</label>
+            <label class="d-block mb-1"><input type="radio" name="interval_pattern" value="weekly"> Every week (Tuesday at 7:57am)</label>
+            <label class="d-block mb-1"><input type="radio" name="interval_pattern" value="monthly"> Every month (Day 11 at 7:57am)</label>
+            <label class="d-block mb-2"><input type="radio" name="interval_pattern" value="custom"> Custom</label>
+            <input class="form-control input-block" name="cron" value="57 7 * * *" aria-label="Custom cron pattern">
+            <p class="color-fg-muted f6 mt-1 mb-0">Set a custom interval with Cron syntax.</p>
+        </fieldset>
+
+        <label class="d-block text-bold mb-1" for="schedule-ref">Select target branch or tag</label>
+        <select id="schedule-ref" class="form-select input-block mb-3" name="ref">
+            <option value="{{ repo.default_branch or 'main' }}">{{ repo.default_branch or 'main' }}</option>
+        </select>
+
+        <div class="schedule-inputs-placeholder mb-4">
+            <div class="text-bold">Inputs</div>
+            <p class="color-fg-muted f6 mb-2">Specify the input values to use in this pipeline. Any inputs left unselected will use their default values.</p>
+            <div class="schedule-inputs-grid" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <div class="text-bold mb-2">Variables</div>
+            <div class="schedule-variable-row">
+                <label>Variable type<br>
+                    <select class="form-select input-block" name="variable_type">
+                        <option value="variable">Variable</option>
+                        <option value="file">File</option>
+                    </select>
+                </label>
+                <label>Variable key<br><input class="form-control input-block" name="variable_key"></label>
+                <label>Variable value<br><textarea class="form-control input-block" name="variable_value" rows="1"></textarea></label>
+            </div>
+            <textarea class="form-control input-block mt-2" name="variables_text" rows="3" placeholder="Additional variables as KEY=VALUE lines"></textarea>
+        </div>
+
+        <label class="d-block mb-3"><input type="checkbox" name="active" value="1" checked> Activated</label>
+        <div class="d-flex flex-items-center" style="gap:8px;">
+            <button class="btn btn-primary" type="submit">Create pipeline schedule</button>
+            <a class="btn" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

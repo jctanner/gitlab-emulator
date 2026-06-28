@@ -2246,6 +2246,34 @@ async def repo_pipeline_schedules_page(
     )
 
 
+@router.get("/{owner}/{repo_name}/-/pipeline_schedules/new", response_class=HTMLResponse)
+async def repo_pipeline_schedule_new_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Render the GitLab-style new pipeline schedule page."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_pipeline_schedule_new.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            error=error,
+        ),
+    )
+
+
 @router.post("/{owner}/{repo_name}/-/pipeline_schedules", response_class=HTMLResponse)
 async def repo_pipeline_schedule_create(
     request: Request,
