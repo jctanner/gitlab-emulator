@@ -91,7 +91,9 @@ def _remote_include_urls(ci_content: str) -> list[str]:
         if isinstance(item, str) and item.startswith(("http://", "https://")):
             urls.append(item)
         elif isinstance(item, dict) and item.get("remote"):
-            urls.append(str(item["remote"]))
+            raw_remote = item["remote"]
+            remote_values = raw_remote if isinstance(raw_remote, list) else [raw_remote]
+            urls.extend(str(url) for url in remote_values)
     return urls
 
 

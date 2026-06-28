@@ -10,8 +10,8 @@ operators, null/empty variable comparisons, `exists`/`changes` path-object
 rules, variable-expanded rule path patterns, mapping-form `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters, cache
 list/file-derived keys, cache path/key/when variable expansion, richer `needs`,
-deeper `extends`, local/project/remote/template includes, trigger tokens,
-pipeline schedules,
+deeper `extends`, local/project/remote/template includes with list-valued
+remote/template entries, trigger tokens, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.

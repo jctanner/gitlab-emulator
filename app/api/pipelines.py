@@ -323,7 +323,7 @@ def _ci_mapping(content: str, path: str) -> dict:
     return parsed
 
 
-def _include_files(value: Any) -> list[str]:
+def _include_values(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
@@ -340,10 +340,10 @@ def _include_items(value: Any) -> list[dict]:
         if isinstance(item, str):
             items.append({"kind": "local", "file": item})
         elif isinstance(item, dict) and item.get("local"):
-            for file_path in _include_files(item["local"]):
+            for file_path in _include_values(item["local"]):
                 items.append({"kind": "local", "file": file_path})
         elif isinstance(item, dict) and item.get("project") and item.get("file"):
-            for file_path in _include_files(item["file"]):
+            for file_path in _include_values(item["file"]):
                 items.append(
                     {
                         "kind": "project",
@@ -353,9 +353,11 @@ def _include_items(value: Any) -> list[dict]:
                     }
                 )
         elif isinstance(item, dict) and item.get("remote"):
-            items.append({"kind": "remote", "remote": str(item["remote"])})
+            for remote_url in _include_values(item["remote"]):
+                items.append({"kind": "remote", "remote": remote_url})
         elif isinstance(item, dict) and item.get("template"):
-            items.append({"kind": "template", "template": str(item["template"])})
+            for template_name in _include_values(item["template"]):
+                items.append({"kind": "template", "template": template_name})
         elif isinstance(item, dict):
             raise HTTPException(
                 status_code=400,

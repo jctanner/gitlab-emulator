@@ -67,8 +67,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
   metadata with list and file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, deeper `extends` semantics, nested local
-  `include`, `include:project`, controlled `include:remote`, and a small set of
-  built-in template includes.
+  `include`, `include:project`, list-valued controlled `include:remote`, and
+  list-valued built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in

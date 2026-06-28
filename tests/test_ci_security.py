@@ -14,7 +14,9 @@ def test_ci_security_warnings_cover_images_includes_and_predefined_variables():
         ci_content="""
 include:
   - remote: http://example.test/ci.yml
-  - remote: https://example.test/floating.yml
+  - remote:
+      - https://example.test/floating.yml
+      - http://example.test/nested.yml
 """,
         parsed_jobs=[
             ParsedCiJob(name="latest", image="alpine:latest"),
@@ -31,8 +33,8 @@ include:
     warning_types = [warning["type"] for warning in warnings]
     assert "mutable_image_ref" in warning_types
     assert "variable_image_ref" in warning_types
-    assert "unsafe_remote_include" in warning_types
-    assert "unpinned_remote_include" in warning_types
+    assert warning_types.count("unsafe_remote_include") == 2
+    assert warning_types.count("unpinned_remote_include") == 3
     assert "predefined_variable_override" in warning_types
     assert all(warning["strict_mode"] is True for warning in warnings)
 

@@ -59,10 +59,11 @@ Already working:
 - artifact metadata and expiry are implemented: runner payloads preserve
   artifact name, exclude, untracked, when, and expire_in values; uploaded
   artifacts store type/format/expiry metadata and expired artifacts return 404
-- CI `include` support is implemented for local files, nested local files, and
-  `include:project`: pipeline creation resolves included files before parsing,
-  guards include depth/cycles, and supports included hidden jobs used by
-  `extends`
+- CI `include` support is implemented for local files, nested local files,
+  `include:project`, controlled `include:remote`, and built-in templates:
+  pipeline creation resolves included files before parsing, supports
+  list-valued local/project/remote/template entries, guards include
+  depth/cycles, and supports included hidden jobs used by `extends`
 - CI `extends` support now covers local hidden-template inheritance,
   multi-parent reverse deep merge for common job keys, `default:` inheritance,
   `inherit: default`, `inherit: variables`, invalid shape errors, and an
@@ -387,7 +388,7 @@ Implemented:
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in
-  template includes before parsing
+  template includes, including list-valued include entries, before parsing
 - merge pipeline-level, top-level YAML, and job-level YAML variables with
   runner-facing metadata for raw, masked/public, and file variables
 - create `source=trigger` pipelines from project trigger tokens

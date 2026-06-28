@@ -214,8 +214,8 @@ harness architecture.
   inheritance for common runner keys, `inherit: default`, `inherit: variables`,
   invalid extends-shape errors, and an extends depth guard. Pipeline creation
   resolves local includes, nested local includes, `include:project`, controlled
-  `include:remote`, and a small set of built-in template includes before
-  parsing.
+  `include:remote`, and built-in template includes before parsing, including
+  list-valued local/project/remote/template entries.
 - The runner coordinator now uses persisted jobs only. The old in-memory smoke
   queue and `/api/v4/admin/runner/jobs` debug endpoints have been removed.
 - The admin UI now includes `/admin/ci-lab`, a compact CI job lab for creating

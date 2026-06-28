@@ -2852,6 +2852,80 @@ remote_job:
     } in payload["variables"]
 
 
+async def test_gitlab_ci_supports_list_valued_remote_includes(
+    client, test_token, monkeypatch
+):
+    from app.api import pipelines
+
+    async def fake_remote_include(url: str) -> str:
+        includes = {
+            "http://localhost/ci/base.yml": """
+.remote-base:
+  image: python:3.12-alpine
+  before_script:
+    - echo remote base
+""",
+            "http://localhost/ci/vars.yml": """
+.remote-vars:
+  variables:
+    FROM_REMOTE_LIST: remote-list
+""",
+        }
+        return includes[url]
+
+    monkeypatch.setattr(pipelines, "_fetch_remote_include", fake_remote_include)
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+include:
+  remote:
+    - http://localhost/ci/base.yml
+    - http://localhost/ci/vars.yml
+
+remote_list_job:
+  extends:
+    - .remote-base
+    - .remote-vars
+  script:
+    - echo remote list
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add remote list include",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == "remote_list_job"
+    assert payload["image"]["name"] == "python:3.12-alpine"
+    assert payload["steps"][0]["script"] == ["echo remote base", "echo remote list"]
+    assert {
+        "key": "FROM_REMOTE_LIST",
+        "value": "remote-list",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
+
+
 async def test_gitlab_ci_rejects_disallowed_remote_include_host(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
@@ -2922,6 +2996,55 @@ template_job:
     assert payload["steps"][0]["script"] == [
         "echo bash template before",
         "echo template job",
+    ]
+
+
+async def test_gitlab_ci_supports_list_valued_template_includes(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+include:
+  template:
+    - Bash.gitlab-ci.yml
+    - Jobs/Build.gitlab-ci.yml
+
+template_list_job:
+  extends:
+    - .bash-template
+    - .build-template
+  script:
+    - echo template list
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add template list include",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == "template_list_job"
+    assert payload["job_info"]["stage"] == "build"
+    assert payload["image"]["name"] == "alpine:3.20"
+    assert payload["steps"][0]["script"] == [
+        "echo bash template before",
+        "echo template list",
     ]
 
 
