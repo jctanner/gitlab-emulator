@@ -406,6 +406,16 @@ regex:
   rules:
     - if: '$CI_COMMIT_REF_NAME =~ /^release-/'
 
+regex_not_match:
+  script: echo regex not match
+  rules:
+    - if: '$CI_COMMIT_REF_NAME !~ /^main$/'
+
+regex_not_match_skip:
+  script: echo regex not match skip
+  rules:
+    - if: '$CI_COMMIT_REF_NAME !~ /^release-/'
+
 and_or:
   script: echo and or
   rules:
@@ -443,6 +453,7 @@ skipped:
         "nested_grouped",
         "not_equals",
         "regex",
+        "regex_not_match",
         "truthy",
     ]
 

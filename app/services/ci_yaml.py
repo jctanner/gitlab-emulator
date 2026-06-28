@@ -355,17 +355,20 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
     if not expression:
         return False
 
-    match = re.fullmatch(r"(\$[A-Za-z_][A-Za-z0-9_]*)\s*(==|!=|=~)\s*(.+)", expression)
+    match = re.fullmatch(
+        r"(\$[A-Za-z_][A-Za-z0-9_]*)\s*(==|!=|=~|!~)\s*(.+)", expression
+    )
     if match:
         left, operator, right = match.groups()
         left_value = _expression_value(left, variables)
-        if operator == "=~":
+        if operator in {"=~", "!~"}:
             pattern = right.strip()
             if pattern.startswith("/") and pattern.endswith("/") and len(pattern) > 1:
                 pattern = pattern[1:-1]
             else:
                 pattern = _unquote(pattern)
-            return re.search(pattern, left_value) is not None
+            matches = re.search(pattern, left_value) is not None
+            return matches if operator == "=~" else not matches
         right_value = _expression_value(right, variables)
         if operator == "==":
             return left_value == right_value

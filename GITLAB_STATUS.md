@@ -49,8 +49,8 @@ harness architecture.
   feeds official runner dependency downloads in declared needs order, and
   pipeline creation applies `rules`, `only`, and `except` filters. Current
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
-  boolean expressions, regex matches, `exists`, commit-local `changes`,
-  `when: never`, and persisted non-runnable `manual` jobs.
+  boolean expressions, regex match/non-match operators, `exists`, commit-local
+  `changes`, `when: never`, and persisted non-runnable `manual` jobs.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a
   manual job changes it to `pending` and requeues it through the persisted
   runner coordinator.
