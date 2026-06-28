@@ -923,6 +923,67 @@ artifact_metadata:
     assert artifact["expire_in"] == "1 week"
 
 
+async def test_cache_variables_expand_in_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+variables:
+  CACHE_POLICY: push
+
+cache_probe:
+  variables:
+    LOCKFILE: uv.lock
+  rules:
+    - variables:
+        CACHE_PREFIX: "$CI_COMMIT_REF_NAME"
+  cache:
+    key:
+      prefix: "$CACHE_PREFIX"
+      files:
+        - "$LOCKFILE"
+    paths:
+      - .cache/
+    policy: "$CACHE_POLICY"
+    fallback_keys:
+      - "$CI_COMMIT_REF_NAME-fallback"
+  script:
+    - echo cache
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add cache variable ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    assert request.json()["cache"] == [
+        {
+            "key": "main-uv.lock",
+            "untracked": False,
+            "policy": "push",
+            "paths": [".cache/"],
+            "when": "on_success",
+            "fallback_keys": ["main-fallback"],
+        }
+    ]
+
+
 async def test_expired_artifact_upload_is_not_downloadable(client, test_token):
     project = await _create_project(client, test_token)
     pipeline_resp = await client.post(

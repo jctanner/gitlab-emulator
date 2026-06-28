@@ -461,16 +461,18 @@ parallel runners. Minimal `needs`, optional missing needs, missing required
 needs validation, `needs:artifacts`, common ref filters, rule-level variables,
 and `allow_failure` scheduling/status behavior are covered by local API tests.
 Runner tag matching is also covered by local API tests. The smoke queue is
-intentionally temporary. Cache metadata and archive endpoints are covered by
-local API tests. VM runner cache adapter configuration points at MinIO/S3 by
-default, and the official runner has validated cache upload/restore plus
-dependency artifact download across two-stage pipelines.
+intentionally temporary. Cache metadata, variable-expanded cache keys/policies/
+fallback keys, and archive endpoints are covered by local API tests. VM runner
+cache adapter configuration points at MinIO/S3 by default, and the official
+runner has validated cache upload/restore plus dependency artifact download
+across two-stage pipelines.
 
 Missing behavior for fuller GitLab CI execution:
 
 - broader `.gitlab-ci.yml` support such as richer `needs` edge cases and
   remaining long-tail `rules`, `extends`, and `include` semantics
-- richer cache options and edge cases beyond the current `pull-push` path
+- remaining richer cache options and edge cases beyond the current MinIO/S3
+  validation path
 - pipeline/job UI or richer API state transitions
 
 ## Implications

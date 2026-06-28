@@ -208,21 +208,44 @@ def _needs(value: Any) -> list[dict] | None:
     raise ValueError("needs must be a string, mapping, or list")
 
 
-def _cache_key(value: Any) -> str:
+def _expand_ci_variables(value: str, variables: dict[str, str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        braced, plain = match.groups()
+        return variables.get(braced or plain, match.group(0))
+
+    expanded = value
+    for _ in range(5):
+        next_value = re.sub(
+            r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)",
+            replace,
+            expanded,
+        )
+        if next_value == expanded:
+            break
+        expanded = next_value
+    return expanded
+
+
+def _expand_string_list(value: Any, variables: dict[str, str]) -> list[str]:
+    return [_expand_ci_variables(item, variables) for item in _string_list(value)]
+
+
+def _cache_key(value: Any, variables: dict[str, str] | None = None) -> str:
+    variables = variables or {}
     if value is None:
         return "default"
     if isinstance(value, str):
-        return value
+        return _expand_ci_variables(value, variables)
     if isinstance(value, dict):
-        prefix = str(value.get("prefix") or "").strip()
+        prefix = _expand_ci_variables(str(value.get("prefix") or "").strip(), variables)
         if value.get("key"):
-            key = str(value["key"])
+            key = _expand_ci_variables(str(value["key"]), variables)
             return f"{prefix}-{key}" if prefix else key
-        files = _string_list(value.get("files"))
+        files = _expand_string_list(value.get("files"), variables)
         if files:
             key = "-".join(files)
             return f"{prefix}-{key}" if prefix else key
-        files_commits = _string_list(value.get("files_commits"))
+        files_commits = _expand_string_list(value.get("files_commits"), variables)
         if files_commits:
             key = "-".join(files_commits)
             return f"{prefix}-{key}" if prefix else key
@@ -231,9 +254,10 @@ def _cache_key(value: Any) -> str:
     return "default"
 
 
-def _cache_entries(value: Any) -> list[dict]:
+def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[dict]:
     if value is None or value is False:
         return []
+    variables = variables or {}
     raw_entries = value if isinstance(value, list) else [value]
     entries: list[dict] = []
     for raw_entry in raw_entries:
@@ -244,12 +268,18 @@ def _cache_entries(value: Any) -> list[dict]:
             continue
         entries.append(
             {
-                "key": _cache_key(raw_entry.get("key")),
+                "key": _cache_key(raw_entry.get("key"), variables),
                 "untracked": bool(raw_entry.get("untracked", False)),
-                "policy": str(raw_entry.get("policy") or "pull-push"),
+                "policy": _expand_ci_variables(
+                    str(raw_entry.get("policy") or "pull-push"),
+                    variables,
+                ),
                 "paths": paths,
                 "when": str(raw_entry.get("when") or "on_success"),
-                "fallback_keys": _string_list(raw_entry.get("fallback_keys")),
+                "fallback_keys": _expand_string_list(
+                    raw_entry.get("fallback_keys"),
+                    variables,
+                ),
             }
         )
     return entries
@@ -606,7 +636,7 @@ def parse_gitlab_ci(
     global_variables = _variable_entries(parsed.get("variables"))
     global_before = _string_list(parsed.get("before_script"))
     global_after = _string_list(parsed.get("after_script"))
-    global_cache = _cache_entries(parsed.get("cache"))
+    global_cache_config = parsed.get("cache")
     global_tags: list[str] = []
     stage_order = {stage_name: index for index, stage_name in enumerate(stages)}
     pipeline_variables = variables or {}
@@ -663,13 +693,19 @@ def parse_gitlab_ci(
         stage = str(config.get("stage") or (stages[0] if stages else "test"))
         image = _image_name(config.get("image"), global_image)
         variables = _variable_values(merged_variable_entries)
+        cache_variables = {
+            "CI_COMMIT_BRANCH": ref,
+            "CI_COMMIT_REF_NAME": ref,
+            **variables,
+        }
         before = _string_list(config.get("before_script", global_before))
         script = _string_list(config.get("script"))
         after = _string_list(config.get("after_script", global_after))
         artifact_config = _artifact_config(config.get("artifacts"))
         artifact_paths = artifact_config.get("paths", [])
+        raw_cache = config.get("cache") if "cache" in config else global_cache_config
         cache = (
-            _cache_entries(config.get("cache")) if "cache" in config else global_cache
+            _cache_entries(raw_cache, cache_variables) if raw_cache is not None else []
         )
 
         jobs.append(

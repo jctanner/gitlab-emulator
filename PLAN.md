@@ -60,9 +60,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   after_script, artifacts, stage gating, needs, needs:artifacts, needs
   validation edge cases, common ref filters, richer `rules` job selection,
   rule-level variables, `allow_failure` scheduling/status behavior, runner
-  tags, cache metadata, deeper `extends` semantics, nested local `include`,
-  `include:project`, controlled `include:remote`, and a small set of built-in
-  template includes.
+  tags, cache metadata with variable-expanded keys/policies/fallback keys,
+  deeper `extends` semantics, nested local `include`, `include:project`,
+  controlled `include:remote`, and a small set of built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in
@@ -178,7 +178,8 @@ Target areas:
 
 - deeper `rules` behavior beyond the current MVP expression, exists, changes,
   never, manual, rule-variable, and `allow_failure` support
-- richer cache policy/options beyond the current validated path
+- remaining richer cache policy/options beyond variable-expanded keys,
+  policies, and fallback keys
 
 Done when:
 

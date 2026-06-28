@@ -522,6 +522,44 @@ cache_probe:
     assert jobs[0].cache[0]["key"] == "deps-pyproject.toml-uv.lock"
 
 
+def test_parse_gitlab_ci_expands_variables_in_cache_metadata():
+    jobs = parse_gitlab_ci(
+        """
+cache:
+  key:
+    prefix: "$CI_COMMIT_REF_NAME"
+    files:
+      - "$LOCKFILE"
+  paths:
+    - .cache/
+  policy: "$CACHE_POLICY"
+  fallback_keys:
+    - "$CI_COMMIT_REF_NAME-fallback"
+
+cache_probe:
+  variables:
+    LOCKFILE: uv.lock
+  rules:
+    - variables:
+        CACHE_POLICY: pull
+  script:
+    - echo cache
+""",
+        ref="feature/cache",
+    )
+
+    assert jobs[0].cache == [
+        {
+            "key": "feature/cache-uv.lock",
+            "untracked": False,
+            "policy": "pull",
+            "paths": [".cache/"],
+            "when": "on_success",
+            "fallback_keys": ["feature/cache-fallback"],
+        }
+    ]
+
+
 def test_parse_gitlab_ci_supports_extends_from_hidden_template():
     jobs = parse_gitlab_ci(
         """
