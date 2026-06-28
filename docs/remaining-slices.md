@@ -347,6 +347,9 @@ Done when:
 - Inherited GitHub-compatible `/repos/:owner/:repo/compare/:base...:head`
   now resolves real commit and changed-file metadata instead of placeholder
   compare payloads.
+- Inherited GitHub-compatible contents delete now creates a real git commit,
+  updates the target branch, and rejects stale blob SHAs instead of returning a
+  placeholder zero SHA.
 - The backing database tables and inherited GitHub-compatible repos/orgs/
   `/pulls`, review, review-comment, GraphQL, and admin/web scaffolding still
   use legacy naming intentionally for compatibility.

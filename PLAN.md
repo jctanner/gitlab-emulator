@@ -280,7 +280,8 @@ Done when:
   clear compatibility reason; inherited `/pulls/:number/commits` and
   `/pulls/:number/files` compatibility endpoints now return real git-backed
   data rather than placeholder responses, and inherited repository compare
-  compatibility returns real commit and changed-file data
+  compatibility returns real commit and changed-file data. Inherited contents
+  delete now creates a real git commit and validates stale blob SHAs.
 
 ### 5. Validation and Operations
 

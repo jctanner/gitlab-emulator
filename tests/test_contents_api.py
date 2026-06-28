@@ -172,16 +172,39 @@ async def test_get_contents_repo_not_found(client):
 async def test_delete_file(client, test_user, test_token, test_repo_with_init):
     """DELETE /repos/{owner}/{repo}/contents/{path} deletes a file."""
     owner, repo_name, _ = test_repo_with_init
+    before = await client.get(f"{API}/repos/{owner}/{repo_name}/contents/README.md")
+    assert before.status_code == 200
+    blob_sha = before.json()["sha"]
+
     resp = await client.request(
         "DELETE",
         f"{API}/repos/{owner}/{repo_name}/contents/README.md",
-        json={"message": "Delete README", "sha": "abc123"},
+        json={"message": "Delete README", "sha": blob_sha},
         headers=auth_headers(test_token),
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["content"] is None
-    assert "commit" in data
+    assert data["commit"]["message"] == "Delete README"
+    assert len(data["commit"]["sha"]) == 40
+
+    after = await client.get(f"{API}/repos/{owner}/{repo_name}/contents/README.md")
+    assert after.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_file_rejects_mismatched_sha(
+    client, test_user, test_token, test_repo_with_init
+):
+    """DELETE /repos/{owner}/{repo}/contents/{path} rejects stale blob SHAs."""
+    owner, repo_name, _ = test_repo_with_init
+    resp = await client.request(
+        "DELETE",
+        f"{API}/repos/{owner}/{repo_name}/contents/README.md",
+        json={"message": "Delete README", "sha": "0" * 40},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio

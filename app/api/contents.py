@@ -228,16 +228,66 @@ async def create_or_update_file(
 async def delete_file(
     owner: str, repo: str, path: str, body: dict, user: AuthUser, db: DbSession,
 ):
-    """Delete a file (stub -- returns 200 with commit info)."""
+    """Delete a file."""
     repository = await get_repo_or_404(owner, repo, db)
     await require_project_access(repository, user, db, DEVELOPER)
     message = body.get("message", f"Delete {path}")
-    sha = body.get("sha", "")
+    expected_sha = body.get("sha")
+    branch = body.get("branch") or repository.default_branch
+
+    if not repository.disk_path or not os.path.isdir(repository.disk_path):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    try:
+        blob_sha = (await _git(repository.disk_path, "rev-parse", f"{branch}:{path}")).strip()
+        obj_type = (await _git(repository.disk_path, "cat-file", "-t", blob_sha)).strip()
+    except RuntimeError:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if obj_type != "blob":
+        raise HTTPException(status_code=422, detail="path does not point to a file")
+
+    if expected_sha and expected_sha != blob_sha:
+        raise HTTPException(status_code=409, detail="sha does not match")
+
+    try:
+        parent_sha = (await _git(repository.disk_path, "rev-parse", branch)).strip()
+        tree_sha = (await _git(repository.disk_path, "rev-parse", f"{branch}^{{tree}}")).strip()
+        tree_info = await _git(repository.disk_path, "ls-tree", "-r", tree_sha)
+    except RuntimeError:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    lines = [
+        line
+        for line in tree_info.strip().splitlines()
+        if line and not line.endswith(f"\t{path}")
+    ]
+    tree_input = ("\n".join(lines) + "\n") if lines else ""
+    new_tree_sha = (
+        await _git(repository.disk_path, "mktree", input_data=tree_input.encode())
+    ).strip()
+    commit_sha = (
+        await _git(
+            repository.disk_path,
+            "commit-tree",
+            new_tree_sha,
+            "-m",
+            message,
+            "-p",
+            parent_sha,
+        )
+    ).strip()
+    await _git(repository.disk_path, "update-ref", f"refs/heads/{branch}", commit_sha)
+
+    api = f"{BASE}/api/v4"
 
     return {
         "content": None,
         "commit": {
-            "sha": "0" * 40,
+            "sha": commit_sha,
+            "node_id": _make_node_id("Commit", hash(commit_sha) % 10**8),
+            "url": f"{api}/repos/{owner}/{repo}/git/commits/{commit_sha}",
+            "html_url": f"{BASE}/{owner}/{repo}/commit/{commit_sha}",
             "message": message,
         },
     }
