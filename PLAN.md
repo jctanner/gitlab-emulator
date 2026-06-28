@@ -308,8 +308,10 @@ Done when:
   GraphQL issue/comment/reaction mutations use Reporter or higher, and GraphQL
   merge request mutations use Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
-- Production security hardening. This emulator is for controlled integration
-  testing environments.
+- Production security hardening. Baseline browser security headers are enabled
+  across API, admin, web, and error responses. The emulator is still intended
+  for controlled integration testing environments rather than open production
+  exposure.
 
 ## High-Level Outcome
 

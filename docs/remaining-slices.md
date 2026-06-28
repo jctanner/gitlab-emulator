@@ -351,4 +351,6 @@ Done when:
   GraphQL issue/comment/reaction mutations use Reporter or higher, and GraphQL
   merge request mutations use Developer or higher.
 - Complete long-tail `glab` command coverage beyond the smoke workflows above.
-- Production security hardening.
+- Production security hardening. Baseline browser security headers are enabled
+  across API, admin, web, and error responses; broader hardening remains
+  environment-specific.

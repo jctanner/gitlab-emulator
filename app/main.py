@@ -94,8 +94,10 @@ def create_app() -> FastAPI:
     from app.middleware.rate_limit import RateLimitMiddleware
     from app.middleware.api_version import ApiVersionMiddleware
     from app.middleware.etag import ETagMiddleware
+    from app.middleware.security_headers import SecurityHeadersMiddleware
     from app.middleware.error_handler import register_error_handlers
 
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(ApiVersionMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(ETagMiddleware)
