@@ -162,6 +162,18 @@ def _diff_entry_from_raw(line: str) -> dict | None:
     }
 
 
+async def _raw_diff_entries(repo_path: str, *revs: str) -> list[dict]:
+    output = await _git(repo_path, "diff", "--raw", "-r", "-M", *revs)
+    diffs = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        entry = _diff_entry_from_raw(line)
+        if entry is not None:
+            diffs.append(entry)
+    return diffs
+
+
 @router.get("/projects/{project_ref:path}/repository/commits")
 async def list_repository_commits(
     project_ref: str,
@@ -215,6 +227,50 @@ async def list_repository_commits(
         except ValueError:
             continue
     return paginated_json(commits, request, page, per_page, total)
+
+
+@router.get("/projects/{project_ref:path}/repository/compare")
+async def compare_repository_refs(
+    project_ref: str,
+    db: DbSession,
+    current_user: CurrentUser,
+    from_ref: str = Query(..., alias="from"),
+    to: str = Query(...),
+):
+    """Compare two refs with a GitLab-shaped response."""
+    project = await _get_project_or_404(project_ref, db, current_user)
+    repo_path = _ensure_repo(project)
+    base_sha = await _resolve_commit(repo_path, unquote(from_ref))
+    head_sha = await _resolve_commit(repo_path, unquote(to))
+    same_ref = base_sha == head_sha
+
+    commit = await _read_commit(project, head_sha)
+    commits: list[dict] = []
+    diffs: list[dict] = []
+    if not same_ref:
+        try:
+            output = await _git(
+                repo_path,
+                "log",
+                f"--format={_COMMIT_FORMAT}",
+                f"{base_sha}..{head_sha}",
+            )
+            for record in output.split("\x1e"):
+                if not record.strip():
+                    continue
+                commits.append(_commit_json(project, record))
+            diffs = await _raw_diff_entries(repo_path, base_sha, head_sha)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=404, detail="404 Commit Not Found") from exc
+
+    return {
+        "commit": commit,
+        "commits": commits,
+        "diffs": diffs,
+        "compare_timeout": False,
+        "compare_same_ref": same_ref,
+        "web_url": f"{settings.BASE_URL}/{project.full_name}/-/compare/{base_sha}...{head_sha}",
+    }
 
 
 @router.get("/projects/{project_ref:path}/repository/commits/{sha}")

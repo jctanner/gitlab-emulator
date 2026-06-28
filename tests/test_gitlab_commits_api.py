@@ -272,6 +272,88 @@ async def test_get_repository_commit_diff_marks_deleted_files(client, test_token
 
 
 @pytest.mark.asyncio
+async def test_compare_repository_refs(client, test_token):
+    project = await _create_project_with_file_commits(
+        client, test_token, "commits-compare-project"
+    )
+
+    resp = await client.get(
+        f"{API}/projects/{project['id']}/repository/compare",
+        params={
+            "from": project["create_commit_id"],
+            "to": project["update_commit_id"],
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["commit"]["id"] == project["update_commit_id"]
+    assert [commit["id"] for commit in data["commits"]] == [
+        project["update_commit_id"]
+    ]
+    assert data["compare_timeout"] is False
+    assert data["compare_same_ref"] is False
+    assert data["web_url"].endswith(
+        f"/-/compare/{project['create_commit_id']}...{project['update_commit_id']}"
+    )
+    assert data["diffs"] == [
+        {
+            "old_path": "docs/commit-api.txt",
+            "new_path": "docs/commit-api.txt",
+            "a_mode": "100644",
+            "b_mode": "100644",
+            "diff": "",
+            "new_file": False,
+            "renamed_file": False,
+            "deleted_file": False,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_compare_repository_refs_by_encoded_project_path(client, test_token):
+    project = await _create_project_with_file_commits(
+        client, test_token, "commits-compare-path-project"
+    )
+
+    resp = await client.get(
+        f"{API}/projects/testuser%2Fcommits-compare-path-project/repository/compare",
+        params={
+            "from": project["create_commit_id"],
+            "to": project["update_commit_id"],
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["commit"]["id"] == project["update_commit_id"]
+
+
+@pytest.mark.asyncio
+async def test_compare_repository_refs_same_ref(client, test_token):
+    project = await _create_project_with_file_commits(
+        client, test_token, "commits-compare-same-project"
+    )
+
+    resp = await client.get(
+        f"{API}/projects/{project['id']}/repository/compare",
+        params={
+            "from": project["update_commit_id"],
+            "to": project["update_commit_id"],
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["commit"]["id"] == project["update_commit_id"]
+    assert data["commits"] == []
+    assert data["diffs"] == []
+    assert data["compare_same_ref"] is True
+
+
+@pytest.mark.asyncio
 async def test_get_repository_commit_not_found(client, test_token):
     project = await client.post(
         f"{API}/projects",

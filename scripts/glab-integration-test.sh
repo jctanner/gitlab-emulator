@@ -586,6 +586,14 @@ assert_json_field "glab api commit stats" "$commit_stats" '.stats.total >= 0'
 commit_filtered=$(glab_api "projects/$PROJECT_ID/repository/commits?ref_name=main&path=smoke.txt&with_stats=true")
 assert_json_field "glab api commit filters" "$commit_filtered" 'length >= 1 and .[0].stats.total >= 0'
 
+previous_sha=$(echo "$commits_json" | jq -r '.[1].id // empty')
+if [ -n "$previous_sha" ]; then
+    compare_json=$(glab_api "projects/$PROJECT_ID/repository/compare?from=$previous_sha&to=$HEAD_SHA")
+    assert_json_field "glab api repository compare" "$compare_json" ".commit.id == \"$HEAD_SHA\" and .compare_same_ref == false and (.commits | length) >= 1"
+else
+    fail "glab api repository compare: no previous commit available"
+fi
+
 status_create=$(curl -sk -X POST \
     -H "PRIVATE-TOKEN: $TOKEN" \
     -H "Content-Type: application/json" \

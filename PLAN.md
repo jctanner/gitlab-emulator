@@ -79,6 +79,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   persisted runner payloads and validated through the official runner VM.
 - GitLab-shaped commit status create/list routes exist for project commits and
   are included in client-VM `glab api` smoke validation.
+- GitLab-shaped repository compare returns commit, commits, diffs, timeout, and
+  same-ref fields for project IDs and encoded project paths.
 - Project-scoped CI/CD variables can be created, listed, read, updated, and
   deleted through GitLab-shaped project variable APIs. Environment-scope
   filtering, key validation, and hidden write-only read behavior are covered by
