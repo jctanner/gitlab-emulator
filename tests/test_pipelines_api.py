@@ -828,6 +828,35 @@ compile:
     assert {"key": "LOCAL", "value": "two", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
 
 
+async def test_create_pipeline_rejects_unsupported_gitlab_ci_execution_keyword(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+deploy_downstream:
+  trigger:
+    project: group/downstream
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add unsupported ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+    )
+    assert resp.status_code == 400
+    assert "unsupported GitLab CI keyword" in resp.text
+    assert "trigger" in resp.text
+
+
 async def test_pipeline_variables_merge_with_yaml_and_job_precedence(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

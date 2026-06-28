@@ -281,6 +281,35 @@ unit:
             raise AssertionError("expected ValueError")
 
 
+def test_parse_gitlab_ci_rejects_unsupported_execution_keywords():
+    for keyword, content in {
+        "trigger": """
+deploy_downstream:
+  trigger:
+    project: group/downstream
+""",
+        "parallel": """
+matrix_job:
+  parallel: 3
+  script: echo matrix
+""",
+        "services": """
+db_job:
+  services:
+    - postgres:16
+  script: echo db
+""",
+    }.items():
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            message = str(exc)
+            assert "unsupported GitLab CI keyword" in message
+            assert keyword in message
+        else:
+            raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_applies_common_ref_filters():
     jobs = parse_gitlab_ci(
         """

@@ -62,13 +62,15 @@ and cache APIs for controlled integration testing.
 - stale running jobs are exposed in pipeline/CI Lab diagnostics; recovery is
   manual through the CI Lab requeue action or, for GitLab-shaped clients,
   cancel followed by retry
+- unsupported execution-affecting CI syntax such as bridge `trigger` jobs,
+  `parallel` expansion, and `services` fails pipeline creation with a clear
+  400 response instead of being silently ignored
 
 ## Remaining CI Work
 
 ### YAML Semantics
 
 - deeper pipeline event behavior
-- clearer unsupported-syntax behavior
 
 ### Runner Coordinator
 

@@ -35,6 +35,11 @@ DEFAULT_INHERITABLE_KEYS = {
     "tags",
 }
 MAX_EXTENDS_DEPTH = 11
+UNSUPPORTED_JOB_KEYS = {
+    "parallel": "parallel job expansion is not supported",
+    "services": "service containers are not supported",
+    "trigger": "bridge/downstream pipeline trigger jobs are not supported",
+}
 
 
 @dataclass
@@ -510,6 +515,19 @@ def _resolve_job_config(
     return config
 
 
+def _unsupported_job_keys(name: str, config: dict) -> None:
+    unsupported = [
+        f"{key} ({UNSUPPORTED_JOB_KEYS[key]})"
+        for key in sorted(UNSUPPORTED_JOB_KEYS)
+        if key in config
+    ]
+    if unsupported:
+        raise ValueError(
+            f"Job {name} uses unsupported GitLab CI keyword(s): "
+            + ", ".join(unsupported)
+        )
+
+
 def parse_gitlab_ci(
     content: str,
     ref: str = "main",
@@ -561,6 +579,7 @@ def parse_gitlab_ci(
             _resolve_job_config(str(name), parsed, resolved=resolved_configs),
             default,
         )
+        _unsupported_job_keys(str(name), config)
         if "script" not in config:
             continue
         inherited_global_variables = _global_variables_for_job(config, global_variables)
