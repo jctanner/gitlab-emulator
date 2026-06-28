@@ -1,6 +1,8 @@
 """Strawberry GraphQL types for GitLab repositories."""
 
+import asyncio
 from datetime import datetime
+import os
 from typing import Annotated, Optional, Union
 
 import strawberry
@@ -104,6 +106,38 @@ def ref_from_branch(branch) -> Ref:
     return Ref(name=branch.name, prefix="refs/heads/")
 
 
+def ref_from_tag_name(name: str) -> Ref:
+    """Convert a git tag name to a Ref Strawberry type."""
+    return Ref(name=name, prefix="refs/tags/")
+
+
+async def _git_lines(repo_path: str, *args: str) -> list[str]:
+    """Run a read-only git command against a bare repository."""
+    env = {**os.environ, "GIT_DIR": repo_path}
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return []
+    return [line for line in stdout.decode().splitlines() if line.strip()]
+
+
+async def _ref_names(repo_path: str, ref_prefix: str) -> list[str]:
+    if not repo_path or not os.path.isdir(repo_path):
+        return []
+    return await _git_lines(
+        repo_path,
+        "for-each-ref",
+        "--format=%(refname:short)",
+        ref_prefix,
+    )
+
+
 @strawberry.type
 class Repository:
     """A GitLab repository."""
@@ -135,6 +169,7 @@ class Repository:
     _homepage: strawberry.Private[Optional[str]] = None
     _has_discussions: strawberry.Private[bool] = False
     _is_in_organization: strawberry.Private[bool] = False
+    _disk_path: strawberry.Private[Optional[str]] = None
 
     @strawberry.field
     def id(self) -> strawberry.ID:
@@ -702,6 +737,29 @@ class Repository:
         before: Optional[str] = None,
         ref_prefix: str = "refs/heads/",
     ) -> Connection[Ref]:
+        if ref_prefix == "refs/tags/":
+            refs = [
+                ref_from_tag_name(name)
+                for name in await _ref_names(self._disk_path or "", "refs/tags/")
+            ]
+            return build_connection(
+                refs, lambda ref: ref, len(refs),
+                first=first, after=after, last=last, before=before,
+            )
+        if ref_prefix != "refs/heads/":
+            return build_connection(
+                [], lambda ref: ref, 0,
+                first=first, after=after, last=last, before=before,
+            )
+
+        branch_names = await _ref_names(self._disk_path or "", "refs/heads/")
+        if branch_names:
+            refs = [Ref(name=name, prefix="refs/heads/") for name in branch_names]
+            return build_connection(
+                refs, lambda ref: ref, len(refs),
+                first=first, after=after, last=last, before=before,
+            )
+
         from app.models.branch import Branch
         db = info.context["db"]
         result = await db.execute(
@@ -753,4 +811,5 @@ def repository_from_model(repo) -> Repository:
         _homepage=getattr(repo, 'homepage', None),
         _has_discussions=getattr(repo, 'has_discussions', False),
         _is_in_organization=getattr(repo, 'owner_type', 'User') == 'Organization',
+        _disk_path=repo.disk_path,
     )

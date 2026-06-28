@@ -381,7 +381,8 @@ Done when:
   comments. Pull request `reviewDecision` now reflects active submitted
   approvals and change requests, and pull request diff stat fields resolve from
   git diffs. Pull request commit connections list the actual commits between
-  base and head. The broader schema remains an incremental parity area.
+  base and head. Repository `refs(refPrefix:)` distinguishes branch and tag
+  refs. The broader schema remains an incremental parity area.
 - Full GitLab UI parity.
 - Full GitLab authorization parity across all endpoints. The MVP CI
   variable/secret, pipeline-variable, repository write, Git object/ref write,

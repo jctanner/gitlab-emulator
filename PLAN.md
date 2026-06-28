@@ -312,8 +312,9 @@ Done when:
   issue connections support `filterBy.mentioned` for issue bodies and comments,
   while pull request `reviewDecision` reflects active approvals and change
   requests, pull request diff stat fields resolve from git diffs, and pull
-  request commit connections list the actual commits between base and head. The
-  broader schema remains an incremental parity area.
+  request commit connections list the actual commits between base and head.
+  Repository `refs(refPrefix:)` distinguishes branch and tag refs. The broader
+  schema remains an incremental parity area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI

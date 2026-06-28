@@ -117,6 +117,77 @@ async def test_graphql_repository_latest_release(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_refs_filter_branches_and_tags(
+    client, test_user, test_token
+):
+    """Repository refs honors branch and tag ref prefixes."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-refs", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    branch_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/branches",
+        json={"branch": "feature", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert branch_resp.status_code == 201
+
+    tag_resp = await client.post(
+        f"{API}/projects/{project['id']}/repository/tags",
+        json={"tag_name": "v1.0.0", "ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert tag_resp.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-refs") {
+                    branchRefs: refs(refPrefix: "refs/heads/", first: 10) {
+                      totalCount
+                      nodes { name prefix id }
+                    }
+                    tagRefs: refs(refPrefix: "refs/tags/", first: 10) {
+                      totalCount
+                      nodes { name prefix id }
+                    }
+                    unsupportedRefs: refs(refPrefix: "refs/merge-requests/", first: 10) {
+                      totalCount
+                      nodes { name }
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["branchRefs"]["totalCount"] == 2
+    assert [node["name"] for node in repo["branchRefs"]["nodes"]] == [
+        "feature",
+        "main",
+    ]
+    assert {node["prefix"] for node in repo["branchRefs"]["nodes"]} == {"refs/heads/"}
+    assert repo["tagRefs"] == {
+        "totalCount": 1,
+        "nodes": [
+            {"name": "v1.0.0", "prefix": "refs/tags/", "id": "refs/tags/v1.0.0"}
+        ],
+    }
+    assert repo["unsupportedRefs"] == {"totalCount": 0, "nodes": []}
+
+
+@pytest.mark.asyncio
 async def test_graphql_user(client, test_user, test_token):
     """Query user returns user details."""
     resp = await client.post(
