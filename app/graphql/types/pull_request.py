@@ -1,7 +1,9 @@
 """Strawberry GraphQL types for GitLab pull requests."""
 
+import asyncio
 from datetime import datetime
 from enum import Enum
+import os
 from typing import Annotated, Optional
 
 import strawberry
@@ -81,6 +83,54 @@ class Commit:
     message: str = ""
 
 
+async def _git_lines(repo_path: str, *args: str) -> list[str]:
+    """Run a read-only git command against a bare repository."""
+    env = {**os.environ, "GIT_DIR": repo_path}
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return []
+    return [line for line in stdout.decode().splitlines() if line.strip()]
+
+
+async def _pull_request_diff_stats(
+    info: Info, repo_id: int, base_sha: str, head_sha: str
+) -> tuple[int, int, int]:
+    if not repo_id or not base_sha or not head_sha:
+        return 0, 0, 0
+
+    from app.models.repository import Repository as RepoModel
+
+    db = info.context["db"]
+    result = await db.execute(select(RepoModel).where(RepoModel.id == repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo or not repo.disk_path or not os.path.isdir(repo.disk_path):
+        return 0, 0, 0
+
+    additions = 0
+    deletions = 0
+    changed_files = 0
+    lines = await _git_lines(repo.disk_path, "diff", "--numstat", base_sha, head_sha)
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        added, deleted = parts[0], parts[1]
+        if added.isdigit():
+            additions += int(added)
+        if deleted.isdigit():
+            deletions += int(deleted)
+        changed_files += 1
+
+    return additions, deletions, changed_files
+
+
 @strawberry.type
 class PullRequest:
     """A GitLab pull request."""
@@ -128,16 +178,25 @@ class PullRequest:
         return self.state in (PRState.CLOSED, PRState.MERGED)
 
     @strawberry.field
-    def additions(self) -> int:
-        return 0
+    async def additions(self, info: Info) -> int:
+        additions, _, _ = await _pull_request_diff_stats(
+            info, self._repo_id, self._base_sha, self._head_sha
+        )
+        return additions
 
     @strawberry.field
-    def deletions(self) -> int:
-        return 0
+    async def deletions(self, info: Info) -> int:
+        _, deletions, _ = await _pull_request_diff_stats(
+            info, self._repo_id, self._base_sha, self._head_sha
+        )
+        return deletions
 
     @strawberry.field
-    def changed_files(self) -> int:
-        return 0
+    async def changed_files(self, info: Info) -> int:
+        _, _, changed_files = await _pull_request_diff_stats(
+            info, self._repo_id, self._base_sha, self._head_sha
+        )
+        return changed_files
 
     @strawberry.field
     def head_ref_oid(self) -> str:
