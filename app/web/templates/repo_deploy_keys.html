@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Deploy keys - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "deploy_keys" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Deploy keys</div>
+    <div class="Subhead-description">Grant repository access to SSH public keys used by deploy systems.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">Add deploy key</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/deploy_keys">
+            <div class="form-group">
+                <div class="form-group-header"><label for="deploy-key-title">Title</label></div>
+                <div class="form-group-body"><input id="deploy-key-title" class="form-control input-block" name="title" required></div>
+            </div>
+            <div class="form-group">
+                <div class="form-group-header"><label for="deploy-key-value">Key</label></div>
+                <div class="form-group-body">
+                    <textarea id="deploy-key-value" class="form-control input-block" name="key" rows="4" required></textarea>
+                </div>
+            </div>
+            <div class="form-checkbox">
+                <label><input type="checkbox" name="read_only" value="1" checked> Read-only</label>
+            </div>
+            <button class="btn btn-primary mt-2" type="submit">Add deploy key</button>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project deploy keys</h3></div>
+    {% if deploy_keys %}
+    {% for deploy_key in deploy_keys %}
+    <div class="Box-row">
+        <div class="d-flex flex-justify-between flex-wrap" style="gap:12px;">
+            <div>
+                <div class="text-bold">{{ deploy_key.title }}</div>
+                <div class="color-fg-muted">
+                    {% if deploy_key.read_only %}Read-only{% else %}Read/write{% endif %}
+                    {% if deploy_key.verified %} · Verified{% endif %}
+                </div>
+            </div>
+            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/deploy_keys/{{ deploy_key.id }}/delete"
+                  onsubmit="return confirm('Remove deploy key {{ deploy_key.title }}?');">
+                <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+            </form>
+        </div>
+        <pre class="mt-2 mb-0 color-bg-subtle p-2 overflow-auto"><code>{{ deploy_key.key }}</code></pre>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No deploy keys yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -403,6 +403,58 @@ async def test_ui_project_secrets_management(client, test_user):
 
 
 @pytest.mark.asyncio
+async def test_ui_project_deploy_keys_management(client, test_user):
+    """The project UI can create and delete deploy keys."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-deploy-keys", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    keys_page = await client.get("/ui/testuser/ui-deploy-keys/-/deploy_keys")
+    assert keys_page.status_code == 200
+    assert "Deploy keys" in keys_page.text
+    assert "Add deploy key" in keys_page.text
+    assert (
+        'href="/ui/testuser/ui-deploy-keys/-/deploy_keys">Deploy keys</a>'
+        in keys_page.text
+    )
+
+    deploy_key = (
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7uiwebdeploykey"
+        " gitlab-emulator@test"
+    )
+    add_key = await client.post(
+        "/ui/testuser/ui-deploy-keys/-/deploy_keys",
+        data={
+            "title": "Production deploy",
+            "key": deploy_key,
+            "read_only": "1",
+        },
+        follow_redirects=False,
+    )
+    assert add_key.status_code in (302, 303)
+
+    keys_page = await client.get("/ui/testuser/ui-deploy-keys/-/deploy_keys")
+    assert keys_page.status_code == 200
+    assert "Production deploy" in keys_page.text
+    assert "Read-only" in keys_page.text
+    assert deploy_key in keys_page.text
+
+    delete_key = await client.post(
+        "/ui/testuser/ui-deploy-keys/-/deploy_keys/1/delete",
+        follow_redirects=False,
+    )
+    assert delete_key.status_code in (302, 303)
+    keys_page = await client.get("/ui/testuser/ui-deploy-keys/-/deploy_keys")
+    assert "No deploy keys yet." in keys_page.text
+    assert deploy_key not in keys_page.text
+
+
+@pytest.mark.asyncio
 async def test_ui_project_members_management(client, db_session, test_user):
     """The project UI can create, update, and delete direct project members."""
     member, _ = await _create_user_and_token(db_session, "ui-project-member")

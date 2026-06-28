@@ -39,6 +39,7 @@ from app.git.bare_repo import (
 )
 from app.models.comment import IssueComment
 from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
+from app.models.deploy_key import DeployKey
 from app.models.issue import Issue
 from app.models.label import Label
 from app.models.milestone import Milestone
@@ -1849,6 +1850,114 @@ async def repo_release_delete(
         await db.commit()
     return RedirectResponse(
         url=f"/ui/{owner}/{repo.name}/-/releases?message={urlencode({'x': 'Release deleted.'})[2:]}",
+        status_code=302,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repository deploy keys
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/deploy_keys", response_class=HTMLResponse)
+async def repo_deploy_keys_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage repository deploy keys."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    deploy_keys = (
+        await db.execute(
+            select(DeployKey)
+            .where(DeployKey.repo_id == repo.id)
+            .order_by(DeployKey.created_at.desc(), DeployKey.id.desc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_deploy_keys.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            deploy_keys=deploy_keys,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/deploy_keys", response_class=HTMLResponse)
+async def repo_deploy_key_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    title: str = Form(...),
+    key: str = Form(...),
+    read_only: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a repository deploy key from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/deploy_keys"
+    title_value = title.strip()
+    key_value = key.strip()
+    if not title_value:
+        return RedirectResponse(url=f"{redirect}?error=Title%20is%20required.", status_code=302)
+    if not key_value:
+        return RedirectResponse(url=f"{redirect}?error=Key%20is%20required.", status_code=302)
+    deploy_key = DeployKey(
+        repo_id=repo.id,
+        title=title_value,
+        key=key_value,
+        read_only=_bool_form(read_only),
+        verified=True,
+    )
+    db.add(deploy_key)
+    await db.commit()
+    return RedirectResponse(
+        url=f"{redirect}?message={urlencode({'x': 'Deploy key added.'})[2:]}",
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/deploy_keys/{key_id}/delete", response_class=HTMLResponse)
+async def repo_deploy_key_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    key_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a repository deploy key from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    deploy_key = (
+        await db.execute(
+            select(DeployKey).where(DeployKey.id == key_id, DeployKey.repo_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if deploy_key is not None:
+        await db.delete(deploy_key)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/deploy_keys?message={urlencode({'x': 'Deploy key removed.'})[2:]}",
         status_code=302,
     )
 

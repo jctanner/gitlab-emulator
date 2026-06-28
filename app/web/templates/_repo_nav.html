@@ -132,9 +132,12 @@
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables">CI/CD variables</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_secrets' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/secrets">Secrets</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'deploy_keys' %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/deploy_keys">Deploy keys</a>
             {% else %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">CI/CD variables</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Secrets</span>
+            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Deploy keys</span>
             {% endif %}
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Security policies</span>
         </div>
