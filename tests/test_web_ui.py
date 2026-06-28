@@ -13,7 +13,9 @@ def _ui_session(client, username: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ui_explore_lists_repositories_by_default_with_pagination(client, test_user):
+async def test_ui_explore_lists_repositories_by_default_with_pagination(
+    client, test_user
+):
     """Explore lists repositories without requiring a search query."""
     _ui_session(client, test_user.login)
 
@@ -74,7 +76,10 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
         follow_redirects=False,
     )
     assert rename_repo.status_code in (302, 303)
-    assert rename_repo.headers["location"] == "/ui/testuser/ui-source-renamed/settings?saved=1"
+    assert (
+        rename_repo.headers["location"]
+        == "/ui/testuser/ui-source-renamed/settings?saved=1"
+    )
 
     renamed_page = await client.get("/ui/testuser/ui-source-renamed")
     assert renamed_page.status_code == 200
@@ -91,7 +96,10 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
         follow_redirects=False,
     )
     assert create_file.status_code in (302, 303)
-    assert create_file.headers["location"] == "/ui/testuser/ui-source-renamed/blob/main/src/app.py"
+    assert (
+        create_file.headers["location"]
+        == "/ui/testuser/ui-source-renamed/blob/main/src/app.py"
+    )
 
     blob = await client.get("/ui/testuser/ui-source-renamed/blob/main/src/app.py")
     assert blob.status_code == 200
@@ -154,7 +162,9 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
     assert '<span class="gl-sidebar-link disabled">' in work_item.text
     assert "Issue boards</span>" in work_item.text
     assert "Repository graph</span>" in work_item.text
-    assert 'href="/ui/testuser/ui-source-renamed/branches">Branches</a>' in work_item.text
+    assert (
+        'href="/ui/testuser/ui-source-renamed/branches">Branches</a>' in work_item.text
+    )
     assert 'href="/ui/testuser/ui-source-renamed/-/jobs">Jobs</a>' in work_item.text
 
     edit_file = await client.post(
@@ -194,7 +204,9 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
 
 
 @pytest.mark.asyncio
-async def test_ui_repo_settings_update_ci_security_controls(client, test_user):
+async def test_ui_repo_settings_update_ci_security_controls(
+    client, test_user, test_token
+):
     """Repository settings can update project CI security controls."""
     _ui_session(client, test_user.login)
 
@@ -217,7 +229,10 @@ async def test_ui_repo_settings_update_ci_security_controls(client, test_user):
         follow_redirects=False,
     )
     assert update_settings.status_code in (302, 303)
-    assert update_settings.headers["location"] == "/ui/testuser/ui-ci-security/settings?saved=1"
+    assert (
+        update_settings.headers["location"]
+        == "/ui/testuser/ui-ci-security/settings?saved=1"
+    )
 
     settings_page = await client.get("/ui/testuser/ui-ci-security/settings?saved=1")
     assert settings_page.status_code == 200
@@ -232,6 +247,7 @@ async def test_ui_repo_settings_update_ci_security_controls(client, test_user):
             "variables": [{"key": "CUSTOM", "value": "blocked"}],
             "job": {"name": "blocked", "script": ["echo blocked"]},
         },
+        headers={"Authorization": f"token {test_token}"},
     )
     assert create_pipeline.status_code == 400
 
@@ -252,7 +268,10 @@ async def test_ui_project_ci_variables_management(client, test_user):
     assert variables_page.status_code == 200
     assert "CI/CD variables" in variables_page.text
     assert "Add variable" in variables_page.text
-    assert 'href="/ui/testuser/ui-ci-vars/-/variables">CI/CD variables</a>' in variables_page.text
+    assert (
+        'href="/ui/testuser/ui-ci-vars/-/variables">CI/CD variables</a>'
+        in variables_page.text
+    )
 
     create_variable = await client.post(
         "/ui/testuser/ui-ci-vars/-/variables",
@@ -323,7 +342,9 @@ async def test_ui_project_secrets_management(client, test_user):
     assert secrets_page.status_code == 200
     assert "Secrets" in secrets_page.text
     assert "Add secret" in secrets_page.text
-    assert 'href="/ui/testuser/ui-ci-secrets/-/secrets">Secrets</a>' in secrets_page.text
+    assert (
+        'href="/ui/testuser/ui-ci-secrets/-/secrets">Secrets</a>' in secrets_page.text
+    )
 
     create_secret = await client.post(
         "/ui/testuser/ui-ci-secrets/-/secrets",
@@ -505,7 +526,9 @@ ui_job:
         follow_redirects=False,
     )
     assert cancel_job.status_code in (302, 303)
-    assert cancel_job.headers["location"].startswith(f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}")
+    assert cancel_job.headers["location"].startswith(
+        f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}"
+    )
 
     canceled_page = await client.get(cancel_job.headers["location"])
     assert canceled_page.status_code == 200

@@ -19,7 +19,11 @@ async def test_runner_registration_exchanges_registration_token(client, db_sessi
             "description": "test-runner",
             "tag_list": "docker,linux",
             "run_untagged": False,
-            "info": {"name": "persisted-runner", "version": "19.0.1", "executor": "docker"},
+            "info": {
+                "name": "persisted-runner",
+                "version": "19.0.1",
+                "executor": "docker",
+            },
         },
     )
 
@@ -27,7 +31,9 @@ async def test_runner_registration_exchanges_registration_token(client, db_sessi
     assert resp.json()["id"] == 1
     assert resp.json()["token"] == RUNNER_TOKEN
 
-    result = await db_session.execute(select(CiRunner).where(CiRunner.token == RUNNER_TOKEN))
+    result = await db_session.execute(
+        select(CiRunner).where(CiRunner.token == RUNNER_TOKEN)
+    )
     runner = result.scalar_one()
     assert runner.description == "test-runner"
     assert runner.tags == ["docker", "linux"]
@@ -82,14 +88,20 @@ async def test_runner_request_no_job_returns_204(client, db_session):
         json={
             "token": RUNNER_TOKEN,
             "system_id": "runner-system-1",
-            "info": {"name": "polling-runner", "version": "19.0.1", "executor": "docker"},
+            "info": {
+                "name": "polling-runner",
+                "version": "19.0.1",
+                "executor": "docker",
+            },
         },
     )
 
     assert resp.status_code == 204
     assert "X-GitLab-Last-Update" in resp.headers
 
-    result = await db_session.execute(select(CiRunner).where(CiRunner.token == RUNNER_TOKEN))
+    result = await db_session.execute(
+        select(CiRunner).where(CiRunner.token == RUNNER_TOKEN)
+    )
     runner = result.scalar_one()
     assert runner.last_contact_at is not None
     assert runner.last_poll_at is not None
@@ -112,7 +124,9 @@ async def test_runner_verify_updates_persisted_runner(client, db_session):
     )
     assert verify.status_code == 200
 
-    result = await db_session.execute(select(CiRunner).where(CiRunner.token == RUNNER_TOKEN))
+    result = await db_session.execute(
+        select(CiRunner).where(CiRunner.token == RUNNER_TOKEN)
+    )
     runner = result.scalar_one()
     assert runner.last_verify_at is not None
     assert runner.system_id == "verify-system"
@@ -126,7 +140,11 @@ async def test_runner_inspection_endpoints(client, test_token):
             "token": REGISTRATION_TOKEN,
             "description": "inspect-runner",
             "tag_list": "docker,vm",
-            "info": {"name": "inspect-runner", "version": "19.0.1", "executor": "docker"},
+            "info": {
+                "name": "inspect-runner",
+                "version": "19.0.1",
+                "executor": "docker",
+            },
         },
     )
     assert register.status_code == 201
@@ -156,6 +174,7 @@ async def test_runner_inspection_endpoints(client, test_token):
             "ref": "main",
             "job": {"name": "inspect_job", "script": ["echo inspect"]},
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline.status_code == 201
     request = await client.post(

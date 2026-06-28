@@ -313,7 +313,8 @@ Done when:
   GraphQL issue/comment/reaction mutations use Reporter or higher, and GraphQL
   merge request mutations use Developer or higher. CI trigger token management
   requires Maintainer or higher; pipeline schedules and pipeline/job
-  cancel/retry/play controls require Developer or higher.
+  cancel/retry/play controls require Developer or higher. Direct API pipeline
+  creation requires Developer or higher.
 - Complete long-tail `glab` coverage beyond the smoke workflows.
 - Production security hardening. Baseline browser security headers are enabled
   across API, admin, web, and error responses. Admin bootstrap user/token

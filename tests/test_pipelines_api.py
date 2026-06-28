@@ -40,6 +40,7 @@ async def test_create_pipeline_with_one_job(client, test_token):
                 "script": ["echo persisted"],
             },
         },
+        headers=auth_headers(test_token),
     )
 
     assert resp.status_code == 201
@@ -48,7 +49,9 @@ async def test_create_pipeline_with_one_job(client, test_token):
     assert pipeline["status"] == "pending"
     assert pipeline["ref"] == "main"
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     assert jobs.json()[0]["name"] == "smoke"
     assert jobs.json()[0]["status"] == "pending"
@@ -83,7 +86,9 @@ async def test_pipeline_security_warnings_are_stored_and_diagnosed(client, test_
         "mutable_image_ref",
         "predefined_variable_override",
     }
-    assert all(warning["strict_mode"] is False for warning in pipeline["security_warnings"])
+    assert all(
+        warning["strict_mode"] is False for warning in pipeline["security_warnings"]
+    )
 
     diagnostics = await client.get(
         f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/diagnostics"
@@ -111,6 +116,7 @@ async def test_strict_security_mode_blocks_unsafe_pipeline(client, test_token):
                 "script": ["echo blocked"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 400
     assert "strict security mode" in resp.text
@@ -171,7 +177,7 @@ async def test_pipeline_variable_security_gate_blocks_and_allows_owner(
             "job": {"name": "vars", "script": ["echo vars"]},
         },
     )
-    assert anonymous.status_code == 400
+    assert anonymous.status_code == 401
 
     developer_denied = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
@@ -237,12 +243,33 @@ async def test_ci_management_actions_require_project_roles(
         )
         assert member.status_code == 201
 
+    pipeline_create_denied = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {"name": "reporter_role_gate", "script": ["echo denied"]},
+        },
+        headers=auth_headers(reporter_token),
+    )
+    assert pipeline_create_denied.status_code == 403
+
+    pipeline_create_allowed = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {"name": "developer_role_gate", "script": ["echo allowed"]},
+        },
+        headers=auth_headers(developer_token),
+    )
+    assert pipeline_create_allowed.status_code == 201
+
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={
             "ref": "main",
             "job": {"name": "role_gate", "script": ["echo role gate"]},
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -300,6 +327,7 @@ async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
                 "script": ["echo cancel"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -311,7 +339,9 @@ async def test_cancel_pipeline_marks_pending_jobs_canceled(client, test_token):
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "canceled"
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     assert jobs.json()[0]["status"] == "canceled"
 
@@ -328,6 +358,7 @@ async def test_retry_job_requeues_failed_job_for_runner(client, test_token):
                 "script": ["exit 1"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -384,7 +415,9 @@ async def test_retry_job_requeues_failed_job_for_runner(client, test_token):
     assert next_request.json()["token"] != job_token
 
 
-async def test_pipeline_diagnostics_marks_stale_running_job(client, test_token, db_session):
+async def test_pipeline_diagnostics_marks_stale_running_job(
+    client, test_token, db_session
+):
     project = await _create_project(client, test_token)
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
@@ -396,6 +429,7 @@ async def test_pipeline_diagnostics_marks_stale_running_job(client, test_token, 
                 "script": ["sleep 600"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -408,7 +442,9 @@ async def test_pipeline_diagnostics_marks_stale_running_job(client, test_token, 
     assert request.status_code == 201
     job_id = request.json()["id"]
 
-    result = await db_session.execute(select(PipelineJob).where(PipelineJob.id == job_id))
+    result = await db_session.execute(
+        select(PipelineJob).where(PipelineJob.id == job_id)
+    )
     job = result.scalar_one()
     job.started_at = datetime.now(timezone.utc) - timedelta(minutes=31)
     await db_session.commit()
@@ -452,6 +488,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -477,7 +514,9 @@ unit:
     assert retry.status_code == 200
     assert retry.json()["status"] == "pending"
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     assert {job["name"]: job["status"] for job in jobs.json()} == {
         "compile": "pending",
@@ -512,7 +551,11 @@ path_smoke:
     )
     assert write.status_code == 201
 
-    created = await client.post(f"{API}/projects/{project_ref}/pipeline", json={"ref": "main"})
+    created = await client.post(
+        f"{API}/projects/{project_ref}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
     assert created.status_code == 201
     pipeline = created.json()
     assert pipeline["project_id"] == project_id
@@ -532,7 +575,9 @@ path_smoke:
     assert latest.status_code == 200
     assert latest.json()["id"] == pipeline["id"]
 
-    jobs = await client.get(f"{API}/projects/{project_ref}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project_ref}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     job = jobs.json()[0]
     assert job["name"] == "path_smoke"
@@ -550,7 +595,9 @@ path_smoke:
     assert trace.text == ""
 
 
-async def test_download_job_artifacts_by_encoded_project_path_and_ref(client, test_token):
+async def test_download_job_artifacts_by_encoded_project_path_and_ref(
+    client, test_token
+):
     project = await client.post(
         f"{API}/projects",
         json={"name": "ci-artifact-path-project", "initialize_with_readme": True},
@@ -572,6 +619,7 @@ async def test_download_job_artifacts_by_encoded_project_path_and_ref(client, te
                 "artifacts_paths": ["out/result.txt"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -640,6 +688,7 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
                 "artifacts_paths": ["out/result.txt"],
             },
         },
+        headers=auth_headers(test_token),
     )
     pipeline = pipeline_resp.json()
 
@@ -656,7 +705,9 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
     assert payload["job_info"]["pipeline_id"] == pipeline["id"]
     assert payload["job_info"]["project_id"] == project["id"]
     assert payload["allow_git_fetch"] is True
-    assert payload["git_info"]["repo_url"].startswith("http://gitlab-ci-token:gljt-persisted-")
+    assert payload["git_info"]["repo_url"].startswith(
+        "http://gitlab-ci-token:gljt-persisted-"
+    )
     assert payload["git_info"]["repo_url"].endswith("@testserver/testuser/ci-repo.git")
     assert payload["inputs"] == []
     variables = {item["key"]: item["value"] for item in payload["variables"]}
@@ -733,13 +784,17 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
     )
     assert artifact_upload.status_code == 201
 
-    job_after_artifact = await client.get(f"{API}/projects/{project['id']}/jobs/{job_id}")
+    job_after_artifact = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}"
+    )
     assert job_after_artifact.status_code == 200
     artifacts = job_after_artifact.json()["artifacts"]
     assert artifacts[0]["filename"] == f"job-{job_id}-artifacts.zip"
     assert artifacts[0]["size"] == len(archive)
 
-    artifact_download = await client.get(f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts")
+    artifact_download = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts"
+    )
     assert artifact_download.status_code == 200
     assert artifact_download.content == archive
 
@@ -774,6 +829,7 @@ artifact_metadata:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -809,6 +865,7 @@ async def test_expired_artifact_upload_is_not_downloadable(client, test_token):
                 },
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -830,13 +887,17 @@ async def test_expired_artifact_upload_is_not_downloadable(client, test_token):
     )
     assert artifact_upload.status_code == 201
 
-    job_after_artifact = await client.get(f"{API}/projects/{project['id']}/jobs/{job_id}")
+    job_after_artifact = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}"
+    )
     artifact = job_after_artifact.json()["artifacts"][0]
     assert artifact["file_type"] == "metadata"
     assert artifact["file_format"] == "gzip"
     assert artifact["expire_at"] is not None
 
-    artifact_download = await client.get(f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts")
+    artifact_download = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts"
+    )
     assert artifact_download.status_code == 404
 
 
@@ -882,12 +943,15 @@ compile:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
     pipeline = resp.json()
     assert pipeline["sha"] == commit_sha
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     data = jobs.json()
     assert [job["name"] for job in data] == ["compile", "unit"]
@@ -903,8 +967,22 @@ compile:
     assert payload["job_info"]["name"] == "compile"
     assert payload["steps"][0]["script"] == ["echo before", "echo build"]
     assert payload["artifacts"][0]["paths"] == ["out/report.txt"]
-    assert {"key": "GLOBAL", "value": "one", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
-    assert {"key": "LOCAL", "value": "two", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
+    assert {
+        "key": "GLOBAL",
+        "value": "one",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
+    assert {
+        "key": "LOCAL",
+        "value": "two",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
 
 
 async def test_create_pipeline_rejects_unsupported_gitlab_ci_execution_keyword(
@@ -930,6 +1008,7 @@ deploy_downstream:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 400
     assert "unsupported GitLab CI keyword" in resp.text
@@ -962,12 +1041,15 @@ job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 400
     assert "workflow rules skipped pipeline" in resp.text
 
 
-async def test_pipeline_variables_merge_with_yaml_and_job_precedence(client, test_token):
+async def test_pipeline_variables_merge_with_yaml_and_job_precedence(
+    client, test_token
+):
     project = await _create_project(client, test_token)
     ci_yaml = """
 variables:
@@ -1026,7 +1108,9 @@ vars:
     assert variables["CI_PROJECT_PATH"] == "testuser/ci-repo"
 
 
-async def test_project_variables_reach_runner_payload_with_precedence(client, test_token):
+async def test_project_variables_reach_runner_payload_with_precedence(
+    client, test_token
+):
     project = await _create_project(client, test_token)
     ci_yaml = """
 variables:
@@ -1137,6 +1221,7 @@ protected_probe:
     unprotected_pipeline = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert unprotected_pipeline.status_code == 201
     unprotected_request = await client.post(
@@ -1166,6 +1251,7 @@ protected_probe:
     protected_pipeline = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert protected_pipeline.status_code == 201
     protected_request = await client.post(
@@ -1227,6 +1313,7 @@ review_job:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -1312,10 +1399,13 @@ secret_probe:
     pipeline_resp = await client.post(
         f"{API}/projects/{project_id}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
-    jobs = await client.get(f"{API}/projects/{project_id}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project_id}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     job_payload = jobs.json()[0]
     secret_metadata = {item["key"]: item for item in job_payload["secret_metadata"]}
@@ -1370,12 +1460,16 @@ secret_probe:
     }
 
     access_events = (
-        await db_session.execute(
-            select(CiSecretAccessEvent).where(
-                CiSecretAccessEvent.pipeline_id == pipeline["id"]
+        (
+            await db_session.execute(
+                select(CiSecretAccessEvent).where(
+                    CiSecretAccessEvent.pipeline_id == pipeline["id"]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(access_events) == 2
     assert {event.environment for event in access_events} == {"production"}
     assert {event.job_id for event in access_events} == {request.json()["id"]}
@@ -1406,6 +1500,7 @@ secret_probe:
     missing = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert missing.status_code == 400
     assert "DATABASE_PASSWORD" in missing.text
@@ -1413,13 +1508,18 @@ secret_probe:
     secret = await client.post(
         f"{API}/projects/{project['id']}/secrets",
         headers=auth_headers(test_token),
-        json={"name": "DATABASE_PASSWORD", "value": "protected-secret", "protected": True},
+        json={
+            "name": "DATABASE_PASSWORD",
+            "value": "protected-secret",
+            "protected": True,
+        },
     )
     assert secret.status_code == 201
 
     unprotected = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert unprotected.status_code == 400
 
@@ -1433,6 +1533,7 @@ secret_probe:
     protected = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert protected.status_code == 201
 
@@ -1486,10 +1587,14 @@ precedence_probe:
     assert write.status_code == 201
 
     groups = (
-        await db_session.execute(
-            select(Group).where(Group.login.in_(["ci-parent", "ci-parent/child"]))
+        (
+            await db_session.execute(
+                select(Group).where(Group.login.in_(["ci-parent", "ci-parent/child"]))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     group_ids = {group.login: group.id for group in groups}
     db_session.add_all(
         [
@@ -1548,6 +1653,7 @@ precedence_probe:
     pipeline_resp = await client.post(
         f"{API}/projects/{project.json()['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201, pipeline_resp.text
 
@@ -1681,6 +1787,7 @@ metadata_probe:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -1731,6 +1838,7 @@ redaction_probe:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -1789,6 +1897,7 @@ secret_redaction:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -2033,6 +2142,7 @@ compile:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
 
@@ -2047,8 +2157,22 @@ compile:
     assert payload["image"]["name"] == "python:3.12-alpine"
     assert payload["steps"][0]["script"] == ["echo before", "echo compile"]
     assert payload["artifacts"][0]["paths"] == ["inherited.txt"]
-    assert {"key": "BASE", "value": "one", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
-    assert {"key": "LOCAL", "value": "two", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
+    assert {
+        "key": "BASE",
+        "value": "one",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
+    assert {
+        "key": "LOCAL",
+        "value": "two",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
 
 
 async def test_extends_default_and_inherit_reach_runner_payload(client, test_token):
@@ -2099,6 +2223,7 @@ compile:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
 
@@ -2119,7 +2244,9 @@ compile:
     assert variables["LOCAL"] == "two"
 
 
-async def test_create_pipeline_from_gitlab_ci_yaml_with_local_include(client, test_token):
+async def test_create_pipeline_from_gitlab_ci_yaml_with_local_include(
+    client, test_token
+):
     project = await _create_project(client, test_token)
     include_yaml = """
 .base:
@@ -2172,11 +2299,14 @@ root_job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
     pipeline = resp.json()
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     assert [job["name"] for job in jobs.json()] == ["included_job", "root_job"]
 
@@ -2205,7 +2335,14 @@ root_job:
     assert payload["job_info"]["name"] == "root_job"
     assert payload["image"]["name"] == "python:3.12-alpine"
     assert payload["steps"][0]["script"] == ["echo included before", "echo root"]
-    assert {"key": "INCLUDED", "value": "included", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
+    assert {
+        "key": "INCLUDED",
+        "value": "included",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
 
 
 async def test_gitlab_ci_local_include_root_config_wins(client, test_token):
@@ -2253,6 +2390,7 @@ conflict:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
 
@@ -2328,6 +2466,7 @@ include:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
 
@@ -2341,7 +2480,14 @@ include:
     assert payload["job_info"]["name"] == "nested_job"
     assert payload["image"]["name"] == "python:3.12-alpine"
     assert payload["steps"][0]["script"] == ["echo nested", "echo nested job"]
-    assert {"key": "NESTED", "value": "nested", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
+    assert {
+        "key": "NESTED",
+        "value": "nested",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
 
 
 async def test_gitlab_ci_supports_project_includes(client, test_token):
@@ -2402,11 +2548,14 @@ root_job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
     pipeline = resp.json()
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     assert [job["name"] for job in jobs.json()] == ["root_job", "template_job"]
 
@@ -2419,8 +2568,18 @@ root_job:
     payload = request.json()
     assert payload["job_info"]["name"] == "root_job"
     assert payload["image"]["name"] == "python:3.12-alpine"
-    assert payload["steps"][0]["script"] == ["echo project include", "echo root project include"]
-    assert {"key": "FROM_PROJECT", "value": "template", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
+    assert payload["steps"][0]["script"] == [
+        "echo project include",
+        "echo root project include",
+    ]
+    assert {
+        "key": "FROM_PROJECT",
+        "value": "template",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
 
 
 async def test_gitlab_ci_supports_remote_includes(client, test_token, monkeypatch):
@@ -2462,6 +2621,7 @@ remote_job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
 
@@ -2475,7 +2635,14 @@ remote_job:
     assert payload["job_info"]["name"] == "remote_job"
     assert payload["image"]["name"] == "python:3.12-alpine"
     assert payload["steps"][0]["script"] == ["echo remote before", "echo remote job"]
-    assert {"key": "FROM_REMOTE", "value": "remote", "public": True, "file": False, "masked": False, "raw": False} in payload["variables"]
+    assert {
+        "key": "FROM_REMOTE",
+        "value": "remote",
+        "public": True,
+        "file": False,
+        "masked": False,
+        "raw": False,
+    } in payload["variables"]
 
 
 async def test_gitlab_ci_rejects_disallowed_remote_include_host(client, test_token):
@@ -2502,6 +2669,7 @@ job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 400
     assert "remote include host is not allowed" in resp.text
@@ -2532,6 +2700,7 @@ template_job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
 
@@ -2543,7 +2712,10 @@ template_job:
     assert request.status_code == 201
     payload = request.json()
     assert payload["job_info"]["name"] == "template_job"
-    assert payload["steps"][0]["script"] == ["echo bash template before", "echo template job"]
+    assert payload["steps"][0]["script"] == [
+        "echo bash template before",
+        "echo template job",
+    ]
 
 
 async def test_raw_file_endpoint_serves_repository_content(client, test_token):
@@ -2601,6 +2773,7 @@ async def test_gitlab_ci_rejects_circular_local_includes(client, test_token):
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 400
     assert "Circular CI include detected: first.yml" in resp.text
@@ -2630,6 +2803,7 @@ job:
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert resp.status_code == 400
     assert "CI include not found: missing.yml" in resp.text
@@ -2666,6 +2840,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -2730,6 +2905,7 @@ compile_b:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -2781,6 +2957,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     pipeline = pipeline_resp.json()
 
@@ -2798,7 +2975,9 @@ unit:
     )
     assert fail.status_code == 200
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     statuses = {job["name"]: job["status"] for job in jobs.json()}
     assert statuses == {"compile": "failed", "unit": "skipped"}
@@ -2811,7 +2990,9 @@ unit:
     assert blocked.status_code == 204
 
 
-async def test_runner_allows_needs_to_bypass_incomplete_same_stage_peer(client, test_token):
+async def test_runner_allows_needs_to_bypass_incomplete_same_stage_peer(
+    client, test_token
+):
     project = await _create_project(client, test_token)
     ci_yaml = """
 stages:
@@ -2848,6 +3029,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -2887,7 +3069,9 @@ unit:
     assert next_job.status_code == 201
     assert next_job.json()["job_info"]["name"] == "unit"
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     unit = next(job for job in jobs.json() if job["name"] == "unit")
     assert unit["needs"] == ["compile_a"]
 
@@ -2919,6 +3103,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -2931,7 +3116,9 @@ unit:
     assert request.status_code == 201
     assert request.json()["job_info"]["name"] == "unit"
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     unit = jobs.json()[0]
     assert unit["needs"] == ["missing_compile"]
 
@@ -2963,6 +3150,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 400
     assert "needs missing job" in pipeline_resp.text
@@ -2996,6 +3184,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 400
     assert "duplicate needs" in pipeline_resp.text
@@ -3024,6 +3213,7 @@ unit:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 400
     assert "cannot need itself" in pipeline_resp.text
@@ -3062,6 +3252,7 @@ late:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 400
     assert "future-stage job" in pipeline_resp.text
@@ -3099,6 +3290,7 @@ second:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -3148,6 +3340,7 @@ consume_true:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -3163,7 +3356,10 @@ consume_true:
     archive = b"fake artifact zip"
     upload = await client.post(
         f"{API}/jobs/{compile_payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
-        headers={"JOB-TOKEN": compile_payload["token"], "Content-Type": "application/zip"},
+        headers={
+            "JOB-TOKEN": compile_payload["token"],
+            "Content-Type": "application/zip",
+        },
         content=archive,
     )
     assert upload.status_code == 201
@@ -3264,6 +3460,7 @@ consume:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -3346,16 +3543,21 @@ fallback_rule:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     assert [job["name"] for job in jobs.json()] == ["main_only"]
 
 
-async def test_pipeline_rules_if_exists_changes_and_manual_from_gitlab_ci_yaml(client, test_token):
+async def test_pipeline_rules_if_exists_changes_and_manual_from_gitlab_ci_yaml(
+    client, test_token
+):
     project = await _create_project(client, test_token)
     ci_yaml = """
 variables:
@@ -3428,11 +3630,14 @@ never_job:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     by_name = {job["name"]: job for job in jobs.json()}
     assert sorted(by_name) == [
@@ -3468,11 +3673,14 @@ manual_review:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     job = jobs.json()[0]
     assert job["name"] == "manual_review"
@@ -3514,11 +3722,14 @@ async def test_non_manual_job_play_is_rejected(client, test_token):
                 "script": ["echo regular"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     assert jobs.status_code == 200
     job = jobs.json()[0]
     assert job["status"] == "pending"
@@ -3554,6 +3765,7 @@ tagged:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -3579,7 +3791,9 @@ tagged:
     assert match.status_code == 201
     assert match.json()["job_info"]["name"] == "tagged"
 
-    jobs = await client.get(f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs")
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
     tagged = jobs.json()[0]
     assert tagged["tag_list"] == ["docker", "linux"]
 
@@ -3619,6 +3833,7 @@ tagged:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 
@@ -3676,6 +3891,7 @@ tagged:
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
         json={"ref": "main"},
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
     pipeline = pipeline_resp.json()
@@ -3708,6 +3924,7 @@ async def test_runner_can_decline_untagged_jobs(client, test_token):
                 "script": ["echo untagged"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 

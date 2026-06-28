@@ -1206,7 +1206,10 @@ async def create_pipeline(
     current_user: CurrentUser,
 ):
     """Create a minimal pipeline from a direct job or `.gitlab-ci.yml`."""
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Requires authentication")
     project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
     pipeline = await _create_pipeline(
         project.id,
         body,
