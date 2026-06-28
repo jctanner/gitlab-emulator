@@ -321,8 +321,27 @@ class Repository:
         return build_connection(languages, lambda language: language, len(languages))
 
     @strawberry.field
-    def watchers(self) -> Connection[GitLabUser]:
-        return empty_connection()
+    async def watchers(
+        self,
+        info: Info,
+        first: Optional[int] = 30,
+        after: Optional[str] = None,
+        last: Optional[int] = None,
+        before: Optional[str] = None,
+    ) -> Connection[GitLabUser]:
+        from app.models.repository import StarredRepo
+
+        db = info.context["db"]
+        result = await db.execute(
+            select(StarredRepo)
+            .where(StarredRepo.repo_id == self.database_id)
+            .order_by(StarredRepo.created_at.asc(), StarredRepo.id.asc())
+        )
+        users = [star.user for star in result.scalars().all() if star.user]
+        return build_connection(
+            users, user_from_model, len(users),
+            first=first, after=after, last=last, before=before,
+        )
 
     @strawberry.field
     def funding_links(self) -> list[FundingLink]:

@@ -314,8 +314,9 @@ Done when:
   requests, pull request diff stat fields resolve from git diffs, and pull
   request commit connections list the actual commits between base and head.
   Repository `refs(refPrefix:)` distinguishes branch and tag refs, and
-  repository language/topic connections resolve from stored project metadata.
-  The broader schema remains an incremental parity area.
+  repository language/topic and watcher connections resolve from stored project
+  metadata and star data. The broader schema remains an incremental parity
+  area.
 - Full GitLab UI parity. The current CI Lab is intentionally an admin/debug
   surface.
 - Full GitLab authorization parity across all endpoints. The MVP CI

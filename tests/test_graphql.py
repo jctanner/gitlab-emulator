@@ -251,6 +251,54 @@ async def test_graphql_repository_languages_and_topics(
 
 
 @pytest.mark.asyncio
+async def test_graphql_repository_watchers(client, db_session, test_user, test_token):
+    """Repository watchers resolves users who starred the repository."""
+    watcher, watcher_token = await _create_user_and_token(
+        db_session, "gql-repo-watcher"
+    )
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-watchers", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+
+    star_resp = await client.put(
+        f"{API}/user/starred/testuser/gql-watchers",
+        headers=auth_headers(watcher_token),
+    )
+    assert star_resp.status_code == 204
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  repository(owner: "testuser", name: "gql-watchers") {
+                    stargazerCount
+                    watchers(first: 10) {
+                      totalCount
+                      nodes { login }
+                    }
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    repo = data["data"]["repository"]
+    assert repo["stargazerCount"] == 1
+    assert repo["watchers"] == {
+        "totalCount": 1,
+        "nodes": [{"login": watcher.login}],
+    }
+
+
+@pytest.mark.asyncio
 async def test_graphql_user(client, test_user, test_token):
     """Query user returns user details."""
     resp = await client.post(
