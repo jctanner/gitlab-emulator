@@ -69,8 +69,10 @@ Already working:
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve
-  artifact name, exclude, untracked, when, and expire_in values; uploaded
-  artifacts store type/format/expiry metadata and expired artifacts return 404
+  artifact name, paths, exclude, untracked, when, and expire_in values;
+  artifact name/path/exclude/expire_in metadata expands merged CI variables;
+  uploaded artifacts store type/format/expiry metadata and expired artifacts
+  return 404
 - CI `include` support is implemented for local files, nested local files,
   `include:project`, controlled `include:remote`, and built-in templates:
   pipeline creation resolves included files before parsing, supports

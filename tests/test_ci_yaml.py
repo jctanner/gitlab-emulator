@@ -121,6 +121,43 @@ test:
     }
 
 
+def test_parse_gitlab_ci_expands_variables_in_artifact_metadata():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  DIST_DIR: dist
+  ARTIFACT_NAME: "$CI_COMMIT_REF_NAME-package"
+
+artifact_probe:
+  variables:
+    EXCLUDE_DIR: tmp
+  script:
+    - echo artifacts
+  artifacts:
+    name: "$ARTIFACT_NAME"
+    paths:
+      - "$DIST_DIR/*.zip"
+    exclude:
+      - "$EXCLUDE_DIR/**"
+    expire_in: "$EXPIRY"
+""",
+        ref="release-1",
+        variables={"EXPIRY": "2 weeks"},
+    )
+
+    assert jobs[0].artifacts_paths == ["dist/*.zip"]
+    assert jobs[0].artifacts == {
+        "name": "release-1-package",
+        "untracked": False,
+        "paths": ["dist/*.zip"],
+        "exclude": ["tmp/**"],
+        "when": "on_success",
+        "expire_in": "2 weeks",
+        "artifact_type": "archive",
+        "artifact_format": "zip",
+    }
+
+
 def test_parse_gitlab_ci_preserves_variable_metadata():
     jobs = parse_gitlab_ci(
         """

@@ -16,8 +16,9 @@ directory-style `rules:exists` patterns ending in `/`, mapping-form
 branch/tag/source-aware legacy `only`/`except` ref filters, cache
 glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
 cache `key:files_commits`, cache path/key/policy/when/fallback-key variable
-expansion, clear rejection of unsupported cache entry options and invalid cache
-policy/when values, richer
+expansion, artifact name/path/exclude/expire_in variable expansion, clear
+rejection of unsupported cache entry options and invalid cache policy/when
+values, richer
 `needs`, including clear rejection of unsupported `needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries, clear rejection of unsupported cross-ref

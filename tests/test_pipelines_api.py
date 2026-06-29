@@ -905,18 +905,23 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
 async def test_artifact_metadata_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
+variables:
+  ARTIFACT_NAME: "$CI_COMMIT_REF_NAME-artifacts"
+  OUTPUT_DIR: out
+  EXCLUDE_DIR: tmp
+
 artifact_metadata:
   image: alpine:3.20
   script:
     - echo metadata
   artifacts:
-    name: custom-artifacts
+    name: "$ARTIFACT_NAME"
     paths:
-      - out/
+      - "$OUTPUT_DIR/"
     exclude:
-      - out/tmp/
+      - "$OUTPUT_DIR/$EXCLUDE_DIR/"
     when: always
-    expire_in: 1 week
+    expire_in: "$ARTIFACT_TTL"
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
@@ -931,7 +936,10 @@ artifact_metadata:
 
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
-        json={"ref": "main"},
+        json={
+            "ref": "main",
+            "variables": [{"key": "ARTIFACT_TTL", "value": "1 week"}],
+        },
         headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
@@ -943,7 +951,7 @@ artifact_metadata:
     )
     assert request.status_code == 201
     artifact = request.json()["artifacts"][0]
-    assert artifact["name"] == "custom-artifacts"
+    assert artifact["name"] == "main-artifacts"
     assert artifact["paths"] == ["out/"]
     assert artifact["exclude"] == ["out/tmp/"]
     assert artifact["when"] == "always"

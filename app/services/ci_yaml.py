@@ -323,19 +323,22 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
     return entries
 
 
-def _artifact_config(value: Any) -> dict:
+def _artifact_config(value: Any, variables: dict[str, str] | None = None) -> dict:
     if not isinstance(value, dict):
         return {}
-    paths = _string_list(value.get("paths"))
+    variables = variables or {}
+    paths = _expand_string_list(value.get("paths"), variables)
     if not paths and not value.get("untracked"):
         return {}
+    name = _expand_ci_variables(str(value.get("name") or "artifacts"), variables)
+    expire_in = _expand_ci_variables(str(value.get("expire_in") or ""), variables)
     return {
-        "name": str(value.get("name") or "artifacts"),
+        "name": name,
         "untracked": bool(value.get("untracked", False)),
         "paths": paths,
-        "exclude": _string_list(value.get("exclude")),
+        "exclude": _expand_string_list(value.get("exclude"), variables),
         "when": str(value.get("when") or "on_success"),
-        "expire_in": str(value.get("expire_in") or ""),
+        "expire_in": expire_in,
         "artifact_type": "archive",
         "artifact_format": "zip",
     }
@@ -1018,10 +1021,17 @@ def parse_gitlab_ci(
             "CI_COMMIT_REF_NAME": ref,
             **variables,
         }
+        artifact_variables = {
+            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+            "CI_COMMIT_REF_NAME": ref,
+            **pipeline_variables,
+            **variables,
+        }
         before = _string_list(config.get("before_script", global_before))
         script = _string_list(config.get("script"))
         after = _string_list(config.get("after_script", global_after))
-        artifact_config = _artifact_config(config.get("artifacts"))
+        artifact_config = _artifact_config(config.get("artifacts"), artifact_variables)
         artifact_paths = artifact_config.get("paths", [])
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
         cache = (
