@@ -346,8 +346,10 @@ def _needs(value: Any) -> list[dict] | None:
     if isinstance(value, str):
         return [{"job": value, "optional": False, "artifacts": True}]
     if isinstance(value, dict):
-        if value.get("project") or value.get("pipeline"):
-            raise ValueError("Cross-project and pipeline needs are not supported")
+        if value.get("project"):
+            return [_cross_project_need_entry(value)]
+        if value.get("pipeline"):
+            return [_pipeline_need_entry(value)]
         if value.get("job"):
             return _need_entries_from_mapping(value)
         raise ValueError("needs entries must define a job")
@@ -359,13 +361,48 @@ def _needs(value: Any) -> list[dict] | None:
                 continue
             if not isinstance(item, dict):
                 raise ValueError("needs entries must be strings or mappings")
-            if item.get("project") or item.get("pipeline"):
-                raise ValueError("Cross-project and pipeline needs are not supported")
+            if item.get("project"):
+                parsed.append(_cross_project_need_entry(item))
+                continue
+            if item.get("pipeline"):
+                parsed.append(_pipeline_need_entry(item))
+                continue
             if not item.get("job"):
                 raise ValueError("needs entries must define a job")
             parsed.extend(_need_entries_from_mapping(item))
         return parsed
     raise ValueError("needs must be a string, mapping, or list")
+
+
+def _cross_project_need_entry(value: dict) -> dict:
+    if not value.get("job"):
+        raise ValueError("needs:project entries must define a job")
+    if not value.get("ref"):
+        raise ValueError("needs:project entries must define a ref")
+    artifacts = bool(value.get("artifacts", True))
+    if not artifacts:
+        raise ValueError("needs:project entries must use artifacts: true")
+    return {
+        "project": str(value["project"]),
+        "job": str(value["job"]),
+        "ref": str(value["ref"]),
+        "optional": bool(value.get("optional", False)),
+        "artifacts": artifacts,
+    }
+
+
+def _pipeline_need_entry(value: dict) -> dict:
+    if not value.get("job"):
+        raise ValueError("needs:pipeline entries must define a job")
+    artifacts = bool(value.get("artifacts", True))
+    if not artifacts:
+        raise ValueError("needs:pipeline entries must use artifacts: true")
+    return {
+        "pipeline": str(value["pipeline"]),
+        "job": str(value["job"]),
+        "optional": bool(value.get("optional", False)),
+        "artifacts": artifacts,
+    }
 
 
 def _need_entries_from_mapping(value: dict) -> list[dict]:

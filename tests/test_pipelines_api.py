@@ -54,6 +54,16 @@ async def _create_project(client, test_token):
     return resp.json()
 
 
+async def _create_named_project(client, test_token, name):
+    resp = await client.post(
+        f"{API}/user/repos",
+        json={"name": name, "auto_init": True},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
 async def test_create_pipeline_with_one_job(client, test_token):
     project = await _create_project(client, test_token)
 
@@ -5647,6 +5657,185 @@ consume:
     assert [item["name"] for item in consume.json()["dependencies"]] == [
         "compile_b",
         "compile_a",
+    ]
+
+
+async def test_needs_project_populates_runner_artifact_payload(client, test_token):
+    upstream = await _create_named_project(client, test_token, "artifact-source")
+    upstream_pipeline = await client.post(
+        f"{API}/projects/{upstream['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {
+                "name": "package",
+                "stage": "build",
+                "script": ["echo package"],
+                "artifacts_paths": ["dist/app.tar"],
+            },
+        },
+        headers=auth_headers(test_token),
+    )
+    assert upstream_pipeline.status_code == 201
+
+    package = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert package.status_code == 201
+    package_payload = package.json()
+    assert package_payload["job_info"]["name"] == "package"
+    archive = b"cross project artifact"
+    upload = await client.post(
+        f"{API}/jobs/{package_payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
+        headers={
+            "JOB-TOKEN": package_payload["token"],
+            "Content-Type": "application/zip",
+        },
+        content=archive,
+    )
+    assert upload.status_code == 201
+    finish = await client.put(
+        f"{API}/jobs/{package_payload['id']}",
+        headers={"JOB-TOKEN": package_payload["token"]},
+        json={"token": package_payload["token"], "state": "success", "exit_code": 0},
+    )
+    assert finish.status_code == 200
+
+    downstream = await _create_named_project(client, test_token, "artifact-consumer")
+    ci_yaml = """
+consume:
+  needs:
+    - project: testuser/artifact-source
+      job: package
+      ref: main
+      artifacts: true
+  script:
+    - echo consume
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/artifact-consumer/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add cross project needs ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{downstream['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    consume = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume.status_code == 201
+    assert consume.json()["job_info"]["name"] == "consume"
+    assert consume.json()["dependencies"] == [
+        {
+            "id": package_payload["id"],
+            "token": package_payload["token"],
+            "name": "package",
+            "artifacts_file": {
+                "filename": f"job-{package_payload['id']}-artifacts.zip",
+                "size": len(archive),
+            },
+        }
+    ]
+
+
+async def test_needs_pipeline_job_populates_runner_artifact_payload(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    upstream_pipeline = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {
+                "name": "package",
+                "stage": "build",
+                "script": ["echo package"],
+                "artifacts_paths": ["dist/app.tar"],
+            },
+        },
+        headers=auth_headers(test_token),
+    )
+    assert upstream_pipeline.status_code == 201
+
+    package = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert package.status_code == 201
+    package_payload = package.json()
+    archive = b"pipeline artifact"
+    upload = await client.post(
+        f"{API}/jobs/{package_payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
+        headers={
+            "JOB-TOKEN": package_payload["token"],
+            "Content-Type": "application/zip",
+        },
+        content=archive,
+    )
+    assert upload.status_code == 201
+    finish = await client.put(
+        f"{API}/jobs/{package_payload['id']}",
+        headers={"JOB-TOKEN": package_payload["token"]},
+        json={"token": package_payload["token"], "state": "success", "exit_code": 0},
+    )
+    assert finish.status_code == 200
+
+    ci_yaml = f"""
+consume:
+  needs:
+    - pipeline: "{upstream_pipeline.json()['id']}"
+      job: package
+      artifacts: true
+  script:
+    - echo consume
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add pipeline needs ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code in {200, 201}
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    consume = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume.status_code == 201
+    assert consume.json()["job_info"]["name"] == "consume"
+    assert consume.json()["dependencies"] == [
+        {
+            "id": package_payload["id"],
+            "token": package_payload["token"],
+            "name": "package",
+            "artifacts_file": {
+                "filename": f"job-{package_payload['id']}-artifacts.zip",
+                "size": len(archive),
+            },
+        }
     ]
 
 

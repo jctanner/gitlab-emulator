@@ -482,12 +482,15 @@ runner cache adapter configuration points at MinIO/S3 by default, and the
 official runner has validated cache upload/restore plus dependency artifact
 download across two-stage pipelines. Image and service container Docker/
 Kubernetes executor option maps are parsed, persisted, and translated to the
-official runner `executor_opts` payload shape.
+official runner `executor_opts` payload shape. `needs:project` and
+`needs:pipeline:job` now resolve successful stored artifact jobs into official
+runner dependency payloads.
 
 Missing behavior for fuller GitLab CI execution:
 
 - broader `.gitlab-ci.yml` support such as richer `needs` edge cases beyond
-  current validation and same-pipeline `needs:parallel:matrix` expansion,
+  current same-pipeline validation, same-pipeline `needs:parallel:matrix`
+  expansion, and stored-artifact `needs:project` / `needs:pipeline:job`,
   plus remaining long-tail `rules`, `extends`, and `include` semantics beyond
   the current local/project/remote/template include coverage, including
   list-valued remote/template entries

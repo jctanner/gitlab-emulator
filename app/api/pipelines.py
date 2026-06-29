@@ -663,18 +663,35 @@ def _need_items(needs: list | None) -> list[dict]:
         if isinstance(need, str):
             items.append({"job": need, "optional": False, "artifacts": True})
         elif isinstance(need, dict) and need.get("job"):
-            items.append(
-                {
-                    "job": str(need["job"]),
-                    "optional": bool(need.get("optional", False)),
-                    "artifacts": bool(need.get("artifacts", True)),
-                }
-            )
+            item = {
+                "job": str(need["job"]),
+                "optional": bool(need.get("optional", False)),
+                "artifacts": bool(need.get("artifacts", True)),
+            }
+            if need.get("project"):
+                item["project"] = str(need["project"])
+            if need.get("pipeline"):
+                item["pipeline"] = str(need["pipeline"])
+            if need.get("ref"):
+                item["ref"] = str(need["ref"])
+            items.append(item)
     return items
 
 
 def _need_names(needs: list | None) -> list[str]:
     return [item["job"] for item in _need_items(needs)]
+
+
+def _is_external_need(need: dict) -> bool:
+    return bool(need.get("project") or need.get("pipeline"))
+
+
+def _need_key(need: dict) -> tuple:
+    if need.get("project"):
+        return ("project", need.get("project"), need.get("ref"), need["job"])
+    if need.get("pipeline"):
+        return ("pipeline", need.get("pipeline"), need["job"])
+    return ("job", need["job"])
 
 
 def _aware_utc(value: datetime | None) -> datetime | None:
@@ -749,19 +766,20 @@ def _validate_job_needs(parsed_jobs: list[ParsedCiJob]) -> None:
     jobs_by_name = {job.name: job for job in parsed_jobs}
     for job in parsed_jobs:
         needs = _need_items(job.needs)
-        seen: set[str] = set()
+        seen: set[tuple] = set()
         duplicate_names: list[str] = []
         for item in needs:
-            if item["job"] in seen:
+            key = _need_key(item)
+            if key in seen:
                 duplicate_names.append(item["job"])
-            seen.add(item["job"])
+            seen.add(key)
         if duplicate_names:
             names = ", ".join(sorted(set(duplicate_names)))
             raise HTTPException(
                 status_code=400,
                 detail=f"Job {job.name} has duplicate needs: {names}",
             )
-        if job.name in seen:
+        if ("job", job.name) in seen:
             raise HTTPException(
                 status_code=400,
                 detail=f"Job {job.name} cannot need itself",
@@ -769,7 +787,9 @@ def _validate_job_needs(parsed_jobs: list[ParsedCiJob]) -> None:
         missing = [
             item["job"]
             for item in needs
-            if item["job"] not in jobs_by_name and not item["optional"]
+            if not _is_external_need(item)
+            and item["job"] not in jobs_by_name
+            and not item["optional"]
         ]
         if missing:
             names = ", ".join(missing)
@@ -780,7 +800,8 @@ def _validate_job_needs(parsed_jobs: list[ParsedCiJob]) -> None:
         future_stage = [
             item["job"]
             for item in needs
-            if item["job"] in jobs_by_name
+            if not _is_external_need(item)
+            and item["job"] in jobs_by_name
             and jobs_by_name[item["job"]].stage_index > job.stage_index
         ]
         if future_stage:

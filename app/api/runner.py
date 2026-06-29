@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import DbSession
 from app.config import settings
 from app.models.ci import CiRunner, JobArtifact, JobTrace, Pipeline, PipelineJob
+from app.models.project import Project
 from app.services.ci_redaction import redact_trace_text
 from app.services.delayed_jobs import promote_due_delayed_jobs
 
@@ -418,6 +419,8 @@ def explain_job_scheduling(
                 )
             if job.needs is not None:
                 for need in _need_items(job.needs):
+                    if _is_external_need(need):
+                        continue
                     peer = jobs_by_name.get(need["job"])
                     if peer is None:
                         if need["optional"]:
@@ -828,23 +831,94 @@ def _need_items(needs: list | None) -> list[dict]:
         if isinstance(need, str):
             items.append({"job": need, "optional": False, "artifacts": True})
         elif isinstance(need, dict) and need.get("job"):
-            items.append(
-                {
-                    "job": str(need["job"]),
-                    "optional": bool(need.get("optional", False)),
-                    "artifacts": bool(need.get("artifacts", True)),
-                }
-            )
+            item = {
+                "job": str(need["job"]),
+                "optional": bool(need.get("optional", False)),
+                "artifacts": bool(need.get("artifacts", True)),
+            }
+            if need.get("project"):
+                item["project"] = str(need["project"])
+            if need.get("pipeline"):
+                item["pipeline"] = str(need["pipeline"])
+            if need.get("ref"):
+                item["ref"] = str(need["ref"])
+            items.append(item)
     return items
 
 
-def _dependencies_payload(job: PipelineJob) -> list[dict]:
+def _is_external_need(need: dict) -> bool:
+    return bool(need.get("project") or need.get("pipeline"))
+
+
+def _artifact_dependency_payload(peer: PipelineJob) -> dict | None:
+    if not peer.artifacts:
+        return None
+    artifact = peer.artifacts[0]
+    if _artifact_is_expired(artifact):
+        return None
+    if not artifact.filename:
+        return None
+    return {
+        "id": peer.id,
+        "token": peer.job_token,
+        "name": peer.name,
+        "artifacts_file": {
+            "filename": artifact.filename,
+            "size": artifact.size or 0,
+        },
+    }
+
+
+async def _cross_project_dependency(need: dict, db: DbSession) -> dict | None:
+    result = await db.execute(
+        select(PipelineJob)
+        .join(Pipeline, PipelineJob.pipeline_id == Pipeline.id)
+        .join(Project, PipelineJob.project_id == Project.id)
+        .options(selectinload(PipelineJob.artifacts))
+        .where(
+            Project.full_name == need["project"],
+            Pipeline.ref == need["ref"],
+            Pipeline.status == "success",
+            PipelineJob.name == need["job"],
+            PipelineJob.status == "success",
+        )
+        .order_by(Pipeline.id.desc(), PipelineJob.id.desc())
+        .limit(1)
+    )
+    peer = result.scalar_one_or_none()
+    return _artifact_dependency_payload(peer) if peer is not None else None
+
+
+async def _pipeline_dependency(need: dict, db: DbSession) -> dict | None:
+    try:
+        pipeline_id = int(str(need["pipeline"]))
+    except ValueError:
+        return None
+    result = await db.execute(
+        select(PipelineJob)
+        .options(selectinload(PipelineJob.artifacts))
+        .where(
+            PipelineJob.pipeline_id == pipeline_id,
+            PipelineJob.name == need["job"],
+            PipelineJob.status == "success",
+        )
+        .order_by(PipelineJob.id.desc())
+        .limit(1)
+    )
+    peer = result.scalar_one_or_none()
+    return _artifact_dependency_payload(peer) if peer is not None else None
+
+
+async def _dependencies_payload(job: PipelineJob, db: DbSession) -> list[dict]:
     if job.dependencies is not None:
         dependency_names = [str(name) for name in job.dependencies]
+        external_needs = []
     elif job.needs is not None:
+        needs = [need for need in _need_items(job.needs) if need.get("artifacts", True)]
         dependency_names = [
-            need["job"] for need in _need_items(job.needs) if need.get("artifacts", True)
+            need["job"] for need in needs if not _is_external_need(need)
         ]
+        external_needs = [need for need in needs if _is_external_need(need)]
     else:
         dependency_names = [
             peer.name
@@ -854,30 +928,26 @@ def _dependencies_payload(job: PipelineJob) -> list[dict]:
             )
             if peer.stage_index < job.stage_index
         ]
-    if not dependency_names:
+        external_needs = []
+    if not dependency_names and not external_needs:
         return []
     peers_by_name = {peer.name: peer for peer in job.pipeline.jobs}
     dependencies: list[dict] = []
     for needed_name in dependency_names:
         peer = peers_by_name.get(needed_name)
-        if peer is None or not peer.artifacts:
+        if peer is None:
             continue
-        artifact = peer.artifacts[0]
-        if _artifact_is_expired(artifact):
-            continue
-        if not artifact.filename:
-            continue
-        dependencies.append(
-            {
-                "id": peer.id,
-                "token": peer.job_token,
-                "name": peer.name,
-                "artifacts_file": {
-                    "filename": artifact.filename,
-                    "size": artifact.size or 0,
-                },
-            }
+        payload = _artifact_dependency_payload(peer)
+        if payload is not None:
+            dependencies.append(payload)
+    for need in external_needs:
+        payload = (
+            await _cross_project_dependency(need, db)
+            if need.get("project")
+            else await _pipeline_dependency(need, db)
         )
+        if payload is not None:
+            dependencies.append(payload)
     return dependencies
 
 
@@ -927,7 +997,7 @@ def _artifact_is_expired(artifact: JobArtifact) -> bool:
     return bool(artifact.expire_at and artifact.expire_at <= now)
 
 
-def _build_persisted_job_payload(job: PipelineJob) -> dict:
+async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
     pipeline = job.pipeline
     project = job.project
     base_url = settings.BASE_URL.rstrip("/")
@@ -1011,7 +1081,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
         "artifacts": _artifact_payload(job),
         "cache": _cache_payload(job.cache),
         "credentials": [],
-        "dependencies": _dependencies_payload(job),
+        "dependencies": await _dependencies_payload(job, db),
         "features": {
             "trace_sections": True,
             "token_mask_prefixes": ["gljt-"],
@@ -1098,7 +1168,8 @@ def _job_has_required_failure_dependency(job: PipelineJob) -> bool:
     if job.needs is not None:
         peers = {peer.name: peer for peer in job.pipeline.jobs}
         return any(
-            (peer := peers.get(need["job"])) is not None
+            not _is_external_need(need)
+            and (peer := peers.get(need["job"])) is not None
             and peer.status == "failed"
             and not _failed_job_is_allowed(peer)
             for need in _need_items(job.needs)
@@ -1115,6 +1186,8 @@ def _job_dependencies_are_terminal(job: PipelineJob) -> bool:
     if job.needs is not None:
         peers = {peer.name: peer for peer in job.pipeline.jobs}
         for need in _need_items(job.needs):
+            if _is_external_need(need):
+                continue
             peer = peers.get(need["job"])
             if peer is None:
                 if need["optional"]:
@@ -1137,6 +1210,8 @@ def _job_stage_is_unblocked(job: PipelineJob) -> bool:
     if job.needs is not None:
         peers = {peer.name: peer for peer in job.pipeline.jobs}
         for need in _need_items(job.needs):
+            if _is_external_need(need):
+                continue
             peer = peers.get(need["job"])
             if peer is None:
                 if need["optional"]:
@@ -1215,7 +1290,11 @@ def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     first_failed_stage = min(failed_stage_indexes)
     now = datetime.now(timezone.utc)
     for job in pipeline.jobs:
-        needed_names = {need["job"] for need in _need_items(job.needs)}
+        needed_names = {
+            need["job"]
+            for need in _need_items(job.needs)
+            if not _is_external_need(need)
+        }
         needs_failed_job = bool(needed_names & failed_job_names)
         job_runs_after_failure = _job_runs_after_failure(job)
         if (
@@ -1413,7 +1492,7 @@ async def request_job(
         import json
 
         return Response(
-            content=json.dumps(_build_persisted_job_payload(persisted_job)),
+            content=json.dumps(await _build_persisted_job_payload(persisted_job, db)),
             media_type="application/json",
             status_code=status.HTTP_201_CREATED,
             headers=_last_update_headers(),

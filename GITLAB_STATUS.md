@@ -50,10 +50,11 @@ harness architecture.
   `needs` forms to unlock from dependency completion instead of pure stage
   gating, `needs: []` can run immediately, optional missing needs do not block,
   missing required needs, duplicate needs, self-needs, and future-stage needs
-  are rejected, unsupported cross-project/pipeline needs are rejected,
-  `needs:parallel:matrix` selects expanded same-pipeline matrix jobs,
-  `needs:artifacts` feeds official runner dependency downloads in declared
-  needs order, and pipeline creation applies `rules`, `only`, and `except`
+  are rejected, `needs:parallel:matrix` selects expanded same-pipeline matrix
+  jobs, `needs:project` and `needs:pipeline:job` resolve successful stored
+  artifact jobs into official runner dependency payloads, `needs:artifacts`
+  feeds official runner dependency downloads in declared needs order, and
+  pipeline creation applies `rules`, `only`, and `except`
   filters. Current
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
   boolean expressions, unary negation, null and empty-string variable

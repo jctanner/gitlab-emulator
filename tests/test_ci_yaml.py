@@ -321,6 +321,39 @@ unit:
     assert unit.needs == [{"job": "compile", "optional": False, "artifacts": False}]
 
 
+def test_parse_gitlab_ci_preserves_external_artifact_needs():
+    jobs = parse_gitlab_ci(
+        """
+unit:
+  needs:
+    - project: group/project
+      job: build
+      ref: main
+      artifacts: true
+    - pipeline: "123"
+      job: package
+      artifacts: true
+  script: echo test
+"""
+    )
+
+    assert jobs[0].needs == [
+        {
+            "project": "group/project",
+            "job": "build",
+            "ref": "main",
+            "optional": False,
+            "artifacts": True,
+        },
+        {
+            "pipeline": "123",
+            "job": "package",
+            "optional": False,
+            "artifacts": True,
+        },
+    ]
+
+
 def test_parse_gitlab_ci_preserves_dependencies():
     jobs = parse_gitlab_ci(
         """
@@ -378,13 +411,23 @@ unit:
   needs:
     - project: group/project
       job: build
+      artifacts: true
   script: echo test
 """,
         """
 unit:
   needs:
     - pipeline: other
+      artifacts: true
+  script: echo test
+""",
+        """
+unit:
+  needs:
+    - project: group/project
       job: build
+      ref: main
+      artifacts: false
   script: echo test
 """,
         """

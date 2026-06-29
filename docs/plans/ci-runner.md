@@ -32,8 +32,9 @@ and cache APIs for controlled integration testing.
 - minimal `needs`
 - optional missing `needs`
 - missing required `needs` validation
-- duplicate, self, future-stage, and unsupported cross-project/pipeline needs
-  validation
+- duplicate, self, and future-stage same-pipeline needs validation
+- `needs:project` and `needs:pipeline:job` artifact dependency lookup against
+  successful stored jobs
 - `needs:artifacts`
 - `needs:artifacts` dependency payloads follow declared needs order
 - job `dependencies` artifact selection, including `dependencies: []` and
