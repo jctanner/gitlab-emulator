@@ -143,6 +143,7 @@ async def test_gitlab_project_api_project_supports_live_clone_push_fetch(
     await _run_git("config", "user.name", "Test User", cwd=worktree)
     await _run_git("config", "user.email", "test@test.com", cwd=worktree)
     await _run_git("config", "commit.gpgsign", "false", cwd=worktree)
+    before_sha = await _run_git("rev-parse", "HEAD", cwd=worktree)
     (worktree / "feature.txt").write_text("created through live git\n")
     (worktree / ".gitlab-ci.yml").write_text(
         """
@@ -178,6 +179,7 @@ api_job:
         pipeline for pipeline in pipelines.json() if pipeline["source"] == "push"
     )
     assert push_pipeline["ref"] == "main"
+    assert push_pipeline["before_sha"] == before_sha.strip()
 
     jobs = await client.get(
         f"{API}/projects/{resp.json()['id']}/pipelines/{push_pipeline['id']}/jobs",
@@ -185,3 +187,11 @@ api_job:
     )
     assert jobs.status_code == 200
     assert [job["name"] for job in jobs.json()] == ["push_job"]
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": "glrt-emulator-runner-token"},
+        json={"token": "glrt-emulator-runner-token"},
+    )
+    assert request.status_code == 201
+    assert request.json()["git_info"]["before_sha"] == before_sha.strip()

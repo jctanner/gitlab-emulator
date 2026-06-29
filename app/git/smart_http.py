@@ -214,6 +214,10 @@ async def _create_push_pipelines(
                 db,
                 source="push",
                 actor=user,
+                before_sha=before_branches.get(
+                    branch_name,
+                    "0000000000000000000000000000000000000000",
+                ),
             )
         except Exception:
             # GitLab accepts pushes even when no pipeline is created because

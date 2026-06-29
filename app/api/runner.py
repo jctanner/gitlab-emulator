@@ -949,7 +949,8 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
             "repo_object_format": "sha1",
             "ref": pipeline.ref,
             "sha": pipeline.sha,
-            "before_sha": "0000000000000000000000000000000000000000",
+            "before_sha": pipeline.before_sha
+            or "0000000000000000000000000000000000000000",
             "ref_type": "branch",
             "refspecs": [
                 f"+refs/heads/{pipeline.ref}:refs/remotes/origin/{pipeline.ref}"

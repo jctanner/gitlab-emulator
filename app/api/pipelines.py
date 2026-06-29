@@ -596,6 +596,8 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "iid": pipeline.iid,
         "project_id": pipeline.project_id,
         "sha": pipeline.sha,
+        "before_sha": pipeline.before_sha
+        or "0000000000000000000000000000000000000000",
         "ref": pipeline.ref,
         "name": pipeline.name,
         "status": pipeline.status,
@@ -943,6 +945,7 @@ async def _create_pipeline(
     *,
     source: str = "api",
     actor=None,
+    before_sha: str | None = None,
 ) -> Pipeline:
     """Create a persisted pipeline from a direct job or `.gitlab-ci.yml`."""
     project = await _get_project(project_id, db)
@@ -1082,6 +1085,7 @@ async def _create_pipeline(
         iid=(max_iid or 0) + 1,
         ref=body.ref,
         sha=sha,
+        before_sha=before_sha,
         name=pipeline_name,
         status="pending",
         source=source,

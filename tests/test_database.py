@@ -36,5 +36,6 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         result = await conn.execute(text("PRAGMA table_info(pipelines)"))
         pipeline_columns = {row[1] for row in result.fetchall()}
         assert "name" in pipeline_columns
+        assert "before_sha" in pipeline_columns
 
     await test_engine.dispose()
