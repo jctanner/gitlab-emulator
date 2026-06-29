@@ -7,6 +7,7 @@ supports registration, no-job polling, and persisted pipeline job execution.
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -1772,10 +1773,49 @@ def _cache_storage_path(project_id: int, cache_key: str) -> str:
     return os.path.join(settings.DATA_DIR, "caches", str(project_id), f"{digest}.zip")
 
 
+def _sanitize_cache_key(cache_key: str) -> str:
+    """Mirror GitLab Runner cache key normalization before storage lookup."""
+    if cache_key == "":
+        return ""
+    normalized = (
+        cache_key.replace("%2f", "/")
+        .replace("%2F", "/")
+        .replace("%2e", ".")
+        .replace("%2E", ".")
+        .replace("\\", "/")
+    )
+    cleaned = posixpath.normpath("/" + normalized)
+    parts = [] if cleaned == "/" else cleaned[1:].split("/")
+    while parts:
+        parts[-1] = parts[-1].rstrip()
+        if parts[-1]:
+            break
+        parts.pop()
+    sanitized = "/".join(parts)
+    if not sanitized:
+        raise ValueError(f"cache key {cache_key!r} could not be sanitized")
+    return sanitized
+
+
+def _cache_key_or_400(cache_key: str) -> str:
+    try:
+        return _sanitize_cache_key(cache_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _cache_keys_with_fallbacks(cache_key: str, fallback_keys: str | None) -> list[str]:
-    keys = [cache_key]
+    keys = [_cache_key_or_400(cache_key)]
     if fallback_keys:
-        keys.extend(key.strip() for key in fallback_keys.split(",") if key.strip())
+        for key in fallback_keys.split(","):
+            if not key.strip():
+                continue
+            try:
+                sanitized = _sanitize_cache_key(key)
+            except ValueError:
+                continue
+            if sanitized not in keys:
+                keys.append(sanitized)
     return keys
 
 
@@ -1835,8 +1875,9 @@ async def download_project_cache(
 )
 async def upload_project_cache(project_id: int, cache_key: str, request: Request):
     """Store a cache archive for a project/cache key."""
-    storage_path = _cache_storage_path(project_id, cache_key)
+    sanitized_key = _cache_key_or_400(cache_key)
+    storage_path = _cache_storage_path(project_id, sanitized_key)
     os.makedirs(os.path.dirname(storage_path), exist_ok=True)
     with open(storage_path, "wb") as cache_file:
         cache_file.write(await request.body())
-    return {"message": "201 Created", "key": cache_key}
+    return {"message": "201 Created", "key": sanitized_key}

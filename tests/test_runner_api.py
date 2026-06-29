@@ -383,6 +383,54 @@ async def test_project_cache_download_uses_fallback_keys(client):
     assert download.content == cache
 
 
+async def test_project_cache_keys_are_sanitized_like_gitlab_runner(client):
+    cache = b"normalized cache zip"
+
+    upload = await client.put(
+        f"{API}/projects/1/cache/foo/bar/../cache/ ",
+        content=cache,
+        headers={"Content-Type": "application/zip"},
+    )
+
+    assert upload.status_code == 201
+    assert upload.json()["key"] == "foo/cache"
+
+    download = await client.get(f"{API}/projects/1/cache/foo/cache")
+    assert download.status_code == 200
+    assert download.content == cache
+    assert download.headers["x-gitlab-cache-key"] == "foo/cache"
+
+
+async def test_project_cache_fallback_keys_are_sanitized(client):
+    cache = b"sanitized fallback cache zip"
+
+    upload = await client.put(
+        f"{API}/projects/1/cache/fallback_key",
+        content=cache,
+        headers={"Content-Type": "application/zip"},
+    )
+    assert upload.status_code == 201
+
+    download = await client.get(
+        f"{API}/projects/1/cache/missing?fallback_keys=missing-secondary,fallback_key/%20/%20%5C%20%20%5C"
+    )
+
+    assert download.status_code == 200
+    assert download.content == cache
+    assert download.headers["x-gitlab-cache-key"] == "fallback_key"
+
+
+async def test_project_cache_rejects_unsanitizable_primary_key(client):
+    upload = await client.put(
+        f"{API}/projects/1/cache/%20",
+        content=b"bad cache",
+        headers={"Content-Type": "application/zip"},
+    )
+
+    assert upload.status_code == 400
+    assert "could not be sanitized" in upload.text
+
+
 async def test_project_cache_missing_returns_404(client):
     resp = await client.get(f"{API}/projects/1/cache/missing")
     assert resp.status_code == 404

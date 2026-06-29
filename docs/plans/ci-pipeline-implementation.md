@@ -493,6 +493,8 @@ Implemented:
 - parse and persist job hook metadata and expose runner `hooks` payloads
 - include GitLab Runner-shaped cache entries in persisted runner job payloads
 - store and serve cache archives through project cache endpoints
+- normalize cache archive keys with GitLab Runner-style separator, traversal,
+  and trailing-whitespace sanitization before storage and fallback lookup
 - run a MinIO S3-compatible cache service in the server VM compose stack
 - configure the runner VM registration helper for GitLab Runner's S3 cache
   adapter by default
@@ -505,9 +507,10 @@ Still needed:
 
 - support remaining richer cache edge cases beyond current variable-expanded
   paths, list, repository-derived prefix/files/files_commits keys,
-  fallback-key, policy, `when`, `untracked`, `unprotect`, clear unsupported
-  option rejection, and MinIO/S3 validation coverage; GitLab Runner supports
-  S3/GCS/Azure distributed cache adapters, not an arbitrary HTTP cache endpoint
+  fallback-key, cache archive key sanitization, policy, `when`, `untracked`,
+  `unprotect`, clear unsupported option rejection, and MinIO/S3 validation
+  coverage; GitLab Runner supports S3/GCS/Azure distributed cache adapters, not
+  an arbitrary HTTP cache endpoint
 
 ## Done Criteria
 

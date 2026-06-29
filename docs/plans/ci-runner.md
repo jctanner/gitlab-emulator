@@ -78,7 +78,8 @@ and cache APIs for controlled integration testing.
 - runner list and per-runner job inspection endpoints return GitLab-style
   pagination headers
 - cache metadata and archive upload/download endpoints
-- cache key prefix/files parsing and emulator cache fallback-key lookup
+- cache key prefix/files parsing, GitLab Runner-style cache archive key
+  sanitization, and emulator cache fallback-key lookup
 - MinIO-backed official runner cache upload/restore validation
 - structured global/default/job `image:` metadata for `entrypoint` and
   `pull_policy` in official-runner-shaped payloads
