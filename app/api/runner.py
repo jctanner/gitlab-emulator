@@ -204,6 +204,7 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "tag": False,
         "coverage": job.coverage,
         "allow_failure": bool(job.allow_failure),
+        "allow_failure_exit_codes": job.allow_failure_exit_codes or [],
         "created_at": _iso_utc(job.created_at),
         "scheduled_at": _iso_utc(job.scheduled_at),
         "started_at": _iso_utc(job.started_at),
@@ -432,7 +433,7 @@ def explain_job_scheduling(
                             }
                         )
                     elif peer.status == "failed" and (
-                        peer.allow_failure or job_runs_after_failure
+                        _failed_job_is_allowed(peer) or job_runs_after_failure
                     ):
                         continue
                     elif peer.status not in {"success", "skipped", "manual"}:
@@ -452,7 +453,7 @@ def explain_job_scheduling(
                 for peer in jobs:
                     if (
                         peer.status == "failed"
-                        and (peer.allow_failure or job_runs_after_failure)
+                        and (_failed_job_is_allowed(peer) or job_runs_after_failure)
                         and peer.stage_index < job.stage_index
                     ):
                         continue
@@ -1005,7 +1006,7 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     blocking_statuses = [
         job.status
         for job in pipeline.jobs
-        if not (job.status == "failed" and job.allow_failure)
+        if not _failed_job_is_allowed(job)
     ]
     now = datetime.now(timezone.utc)
     if not statuses:
@@ -1053,19 +1054,30 @@ def _job_runs_after_failure(job: PipelineJob) -> bool:
     return (job.when or "on_success") in {"always", "on_failure"}
 
 
+def _failed_job_is_allowed(job: PipelineJob) -> bool:
+    if job.status != "failed":
+        return False
+    if job.allow_failure:
+        return True
+    if job.exit_code is None:
+        return False
+    allowed_codes = [int(code) for code in (job.allow_failure_exit_codes or [])]
+    return int(job.exit_code) in allowed_codes
+
+
 def _job_has_required_failure_dependency(job: PipelineJob) -> bool:
     if job.needs is not None:
         peers = {peer.name: peer for peer in job.pipeline.jobs}
         return any(
             (peer := peers.get(need["job"])) is not None
             and peer.status == "failed"
-            and not peer.allow_failure
+            and not _failed_job_is_allowed(peer)
             for need in _need_items(job.needs)
         )
     return any(
         peer.stage_index < job.stage_index
         and peer.status == "failed"
-        and not peer.allow_failure
+        and not _failed_job_is_allowed(peer)
         for peer in job.pipeline.jobs
     )
 
@@ -1102,14 +1114,19 @@ def _job_stage_is_unblocked(job: PipelineJob) -> bool:
                     continue
                 return False
             status = peer.status
-            if status == "failed" and (peer.allow_failure or job_runs_after_failure):
+            if status == "failed" and (
+                _failed_job_is_allowed(peer) or job_runs_after_failure
+            ):
                 continue
             if status not in {"success", "skipped", "manual"}:
                 return False
         return True
     return all(
         peer.status in {"success", "skipped", "manual"}
-        or (peer.status == "failed" and (peer.allow_failure or job_runs_after_failure))
+        or (
+            peer.status == "failed"
+            and (_failed_job_is_allowed(peer) or job_runs_after_failure)
+        )
         for peer in job.pipeline.jobs
         if peer.stage_index < job.stage_index
     )
@@ -1157,12 +1174,12 @@ def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     failed_stage_indexes = [
         job.stage_index
         for job in pipeline.jobs
-        if job.status == "failed" and not job.allow_failure
+        if job.status == "failed" and not _failed_job_is_allowed(job)
     ]
     failed_job_names = {
         job.name
         for job in pipeline.jobs
-        if job.status == "failed" and not job.allow_failure
+        if job.status == "failed" and not _failed_job_is_allowed(job)
     }
     if not failed_stage_indexes:
         return

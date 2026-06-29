@@ -95,6 +95,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "allow_failure_exit_codes",
+        "allow_failure_exit_codes JSON DEFAULT '[]'",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "retry_config",
         "retry_config JSON DEFAULT '{}'",
     )

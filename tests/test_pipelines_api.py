@@ -4621,21 +4621,31 @@ unit:
     assert by_name["unit"]["status"] == "success"
 
 
-async def test_allow_failure_exit_codes_rejects_pipeline(client, test_token):
+async def test_allow_failure_exit_codes_gate_failed_jobs(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
+stages:
+  - build
+  - test
+
 optional_compile:
+  stage: build
   allow_failure:
     exit_codes:
       - 137
   script:
     - exit 137
+
+unit:
+  stage: test
+  script:
+    - echo test
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
         json={
-            "message": "add unsupported allow failure ci",
+            "message": "add allow failure exit codes ci",
             "content": base64.b64encode(ci_yaml.encode()).decode(),
             "branch": "main",
         },
@@ -4647,8 +4657,103 @@ optional_compile:
         json={"ref": "main"},
         headers=auth_headers(test_token),
     )
-    assert pipeline_resp.status_code == 400
-    assert "allow_failure exit_codes is not supported" in pipeline_resp.text
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first.status_code == 201
+    first_payload = first.json()
+    assert first_payload["job_info"]["name"] == "optional_compile"
+    assert first_payload["steps"][0]["allow_failure"] is False
+
+    fail_allowed = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={"token": first_payload["token"], "state": "failed", "exit_code": 137},
+    )
+    assert fail_allowed.status_code == 200
+
+    second = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert second.status_code == 201
+    second_payload = second.json()
+    assert second_payload["job_info"]["name"] == "unit"
+
+    complete = await client.put(
+        f"{API}/jobs/{second_payload['id']}",
+        headers={"JOB-TOKEN": second_payload["token"]},
+        json={"token": second_payload["token"], "state": "success", "exit_code": 0},
+    )
+    assert complete.status_code == 200
+
+    pipeline_after = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert pipeline_after.status_code == 200
+    assert pipeline_after.json()["status"] == "success"
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["optional_compile"]["status"] == "failed"
+    assert by_name["optional_compile"]["allow_failure"] is False
+    assert by_name["optional_compile"]["allow_failure_exit_codes"] == [137]
+    assert by_name["unit"]["status"] == "success"
+
+    ci_yaml_blocking = ci_yaml.replace("exit 137", "exit 42")
+    rewrite = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "make allow failure exit code mismatch",
+            "content": base64.b64encode(ci_yaml_blocking.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert rewrite.status_code == 200
+    blocking_pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert blocking_pipeline_resp.status_code == 201
+    blocking_pipeline = blocking_pipeline_resp.json()
+
+    blocking_first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert blocking_first.status_code == 201
+    blocking_payload = blocking_first.json()
+    assert blocking_payload["job_info"]["name"] == "optional_compile"
+    fail_blocking = await client.put(
+        f"{API}/jobs/{blocking_payload['id']}",
+        headers={"JOB-TOKEN": blocking_payload["token"]},
+        json={"token": blocking_payload["token"], "state": "failed", "exit_code": 42},
+    )
+    assert fail_blocking.status_code == 200
+
+    no_next_job = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert no_next_job.status_code == 204
+    blocking_pipeline_after = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{blocking_pipeline['id']}"
+    )
+    assert blocking_pipeline_after.status_code == 200
+    assert blocking_pipeline_after.json()["status"] == "failed"
 
 
 async def test_runner_allows_needs_to_bypass_incomplete_same_stage_peer(

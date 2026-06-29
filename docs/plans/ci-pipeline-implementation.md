@@ -56,9 +56,9 @@ Already working:
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
   variables, and `workflow:name` is expanded, persisted on the pipeline, and
-  exposed in pipeline API responses. Boolean `allow_failure` is supported for
-  jobs and rules, while
-  unsupported `allow_failure:exit_codes` is rejected clearly. Current
+  exposed in pipeline API responses. Boolean `allow_failure` and
+  `allow_failure:exit_codes` matching against runner-reported exit codes are
+  supported for jobs and rules. Current
   `only`/`except` support covers scalar/list branch, tag, and pipeline-source
   refs including common source aliases, glob-style ref patterns, plus
   mapping-form `refs`, `variables`, and `changes`. Rules can evaluate common

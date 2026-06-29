@@ -120,6 +120,7 @@ class ParsedCiJob:
     when: str = "on_success"
     start_in_seconds: int | None = None
     allow_failure: bool = False
+    allow_failure_exit_codes: list[int] = field(default_factory=list)
     retry: dict = field(default_factory=dict)
     timeout_seconds: int | None = None
     interruptible: bool = False
@@ -547,13 +548,48 @@ class _RuleDecision:
     when: str = "on_success"
     start_in: str | None = None
     allow_failure: bool | None = None
+    allow_failure_exit_codes: list[int] | None = None
     variables: dict[str, dict] = field(default_factory=dict)
 
 
-def _allow_failure_setting(value: Any) -> bool:
+def _allow_failure_config(value: Any) -> tuple[bool, list[int]]:
     if isinstance(value, dict):
-        raise ValueError("allow_failure exit_codes is not supported")
-    return bool(value)
+        unsupported = set(value) - {"exit_codes"}
+        if unsupported:
+            names = ", ".join(sorted(str(item) for item in unsupported))
+            raise ValueError(f"allow_failure option(s) not supported: {names}")
+        raw_codes = value.get("exit_codes")
+        if raw_codes is None:
+            raise ValueError("allow_failure exit_codes is required")
+        if isinstance(raw_codes, list):
+            codes = raw_codes
+        else:
+            codes = [raw_codes]
+        parsed_codes: list[int] = []
+        for code in codes:
+            try:
+                parsed = int(code)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"allow_failure exit code is not supported: {code}"
+                ) from exc
+            if parsed < 0 or parsed > 255:
+                raise ValueError(
+                    f"allow_failure exit code must be between 0 and 255: {parsed}"
+                )
+            parsed_codes.append(parsed)
+        if not parsed_codes:
+            raise ValueError("allow_failure exit_codes cannot be empty")
+        return False, parsed_codes
+    return bool(value), []
+
+
+def _allow_failure_setting(value: Any) -> bool:
+    return _allow_failure_config(value)[0]
+
+
+def _allow_failure_exit_codes_setting(value: Any) -> list[int]:
+    return _allow_failure_config(value)[1]
 
 
 def _when_setting(value: Any) -> str:
@@ -903,13 +939,18 @@ def _job_rule_decision(
             when = _when_setting(rule.get("when"))
             rule_variables = _variable_entries(rule.get("variables"))
             allow_failure = rule.get("allow_failure")
+            allow_failure_enabled = None
+            allow_failure_exit_codes = None
+            if allow_failure is not None:
+                allow_failure_enabled, allow_failure_exit_codes = _allow_failure_config(
+                    allow_failure
+                )
             return _RuleDecision(
                 included=when != "never",
                 when=when,
                 start_in=rule.get("start_in"),
-                allow_failure=_allow_failure_setting(allow_failure)
-                if allow_failure is not None
-                else None,
+                allow_failure=allow_failure_enabled,
+                allow_failure_exit_codes=allow_failure_exit_codes,
                 variables=rule_variables,
             )
         return _RuleDecision(included=False)
@@ -940,6 +981,14 @@ def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
     if "allow_failure" in config:
         return _allow_failure_setting(config["allow_failure"])
     return "rules" not in config and decision.when == "manual"
+
+
+def _allow_failure_exit_codes(config: dict, decision: _RuleDecision) -> list[int]:
+    if decision.allow_failure_exit_codes is not None:
+        return decision.allow_failure_exit_codes
+    if "allow_failure" in config:
+        return _allow_failure_exit_codes_setting(config["allow_failure"])
+    return []
 
 
 def _workflow_rule_decision(
@@ -1326,6 +1375,7 @@ def parse_gitlab_ci(
                 when=decision.when,
                 start_in_seconds=_delayed_start_in_seconds(config, decision),
                 allow_failure=_allow_failure(config, decision),
+                allow_failure_exit_codes=_allow_failure_exit_codes(config, decision),
                 retry=_retry_config(config.get("retry")),
                 timeout_seconds=_timeout_seconds(config.get("timeout")),
                 interruptible=bool(config.get("interruptible", False)),

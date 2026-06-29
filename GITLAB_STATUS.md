@@ -56,10 +56,10 @@ harness architecture.
   boolean expressions, unary negation, null and empty-string variable
   comparisons, regex match/non-match operators, `exists`, commit-local
   `changes`, `when: never`, `when: always`, `when: on_failure`, persisted
-  non-runnable `manual` jobs, boolean `allow_failure`, and matched
-  workflow-level variables. Unsupported `allow_failure:exit_codes` is rejected
-  clearly instead of being treated as unconditional allow-failure, and
-  unsupported delayed jobs are rejected clearly instead of running
+  non-runnable `manual` jobs, boolean `allow_failure`,
+  `allow_failure:exit_codes` matching against runner-reported exit codes, and
+  matched workflow-level variables. Unsupported delayed jobs are rejected
+  clearly instead of running
   immediately. Legacy `only`/`except` filters are
   branch/tag/source-aware, and tag-ref pipelines expose `CI_COMMIT_TAG` while
   branch-ref pipelines expose `CI_COMMIT_BRANCH`.

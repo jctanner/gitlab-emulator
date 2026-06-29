@@ -693,6 +693,17 @@ def _elapsed_seconds(start: datetime | None, end: datetime | None) -> int | None
     return max(0, int((finished - started).total_seconds()))
 
 
+def _failed_job_is_allowed(job: PipelineJob) -> bool:
+    if job.status != "failed":
+        return False
+    if job.allow_failure:
+        return True
+    if job.exit_code is None:
+        return False
+    allowed_codes = [int(code) for code in (job.allow_failure_exit_codes or [])]
+    return int(job.exit_code) in allowed_codes
+
+
 def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
     job.status = "scheduled" if (job.when or "on_success") == "delayed" else "pending"
     job.job_token = f"gljt-persisted-{secrets.token_urlsafe(24)}"
@@ -849,6 +860,7 @@ def _job_json(job: PipelineJob) -> dict:
         "coverage_regex": job.coverage_regex,
         "environment": job.environment,
         "allow_failure": bool(job.allow_failure),
+        "allow_failure_exit_codes": job.allow_failure_exit_codes or [],
         "created_at": _fmt_dt(job.created_at),
         "scheduled_at": _fmt_dt(job.scheduled_at),
         "started_at": _fmt_dt(job.started_at),
@@ -885,7 +897,7 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     blocking_statuses = [
         job.status
         for job in pipeline.jobs
-        if not (job.status == "failed" and job.allow_failure)
+        if not _failed_job_is_allowed(job)
     ]
     now = datetime.now(timezone.utc)
 
@@ -1182,6 +1194,7 @@ async def _create_pipeline(
             when=parsed_job.when,
             scheduled_at=job_scheduled_at,
             allow_failure=parsed_job.allow_failure,
+            allow_failure_exit_codes=parsed_job.allow_failure_exit_codes,
             retry_config=parsed_job.retry,
             timeout_seconds=parsed_job.timeout_seconds,
             interruptible=parsed_job.interruptible,

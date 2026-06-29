@@ -24,6 +24,7 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         assert "image_config" in columns
         assert "services" in columns
         assert "dependencies" in columns
+        assert "allow_failure_exit_codes" in columns
         assert "retry_config" in columns
         assert "retry_attempt" in columns
         assert "timeout_seconds" in columns
