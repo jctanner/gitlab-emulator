@@ -131,6 +131,7 @@ async def test_upload_pack_allows_pipeline_job_token_for_private_repo(client, te
                 "script": ["test -f README.md"],
             },
         },
+        headers=auth_headers(test_token),
     )
     assert pipeline_resp.status_code == 201
 

@@ -89,8 +89,11 @@ and cache APIs for controlled integration testing.
 
 ### YAML Semantics
 
-- deeper pipeline event behavior beyond current API, trigger, schedule, and
-  merge request event support
+- current event support covers API, push, trigger, schedule, and merge request
+  event pipelines; the MVP now creates `source=push` pipelines after successful
+  Git Smart HTTP and SSH branch pushes when `.gitlab-ci.yml` is present and
+  workflow rules include the pushed branch
+- deeper pipeline event behavior beyond those MVP paths remains future work
 
 ### Runner Coordinator
 

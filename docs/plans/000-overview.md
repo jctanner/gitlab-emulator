@@ -114,8 +114,10 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 - Project and group CI/CD secrets have emulator CRUD APIs backed by
   `ci_secrets`; secret values are write-only on API reads, and access-event
   storage exists for the later job delivery slice.
-- Minimal pipeline trigger token APIs and pipeline schedule APIs exist. Trigger
-  tokens can create `source=trigger` pipelines, and schedule `play` can create
+- Minimal pipeline trigger token APIs, push-created pipelines, and pipeline
+  schedule APIs exist. Successful Git Smart HTTP and SSH branch pushes create
+  `source=push` pipelines when `.gitlab-ci.yml` is present, trigger tokens can
+  create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path.
   Pipeline schedule CRUD, manual Play, next-run calculation, and automatic
   cron materialization of due schedules are implemented through the persisted

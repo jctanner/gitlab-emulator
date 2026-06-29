@@ -144,8 +144,23 @@ async def test_gitlab_project_api_project_supports_live_clone_push_fetch(
     await _run_git("config", "user.email", "test@test.com", cwd=worktree)
     await _run_git("config", "commit.gpgsign", "false", cwd=worktree)
     (worktree / "feature.txt").write_text("created through live git\n")
-    await _run_git("add", "feature.txt", cwd=worktree)
-    await _run_git("commit", "-m", "add feature", cwd=worktree)
+    (worktree / ".gitlab-ci.yml").write_text(
+        """
+push_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+  script:
+    - echo pushed
+
+api_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
+"""
+    )
+    await _run_git("add", "feature.txt", ".gitlab-ci.yml", cwd=worktree)
+    await _run_git("commit", "-m", "add feature and ci", cwd=worktree)
 
     authed_url = f"{live_server.replace('http://', f'http://testuser:{test_token}@')}/testuser/live-git-project.git"
     await _run_git("push", authed_url, "main", cwd=worktree)
@@ -153,3 +168,20 @@ async def test_gitlab_project_api_project_supports_live_clone_push_fetch(
     fetched = tmp_path / "fetched"
     await _run_git("clone", clone_url, str(fetched))
     assert (fetched / "feature.txt").read_text() == "created through live git\n"
+
+    pipelines = await client.get(
+        f"{API}/projects/{resp.json()['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert pipelines.status_code == 200
+    push_pipeline = next(
+        pipeline for pipeline in pipelines.json() if pipeline["source"] == "push"
+    )
+    assert push_pipeline["ref"] == "main"
+
+    jobs = await client.get(
+        f"{API}/projects/{resp.json()['id']}/pipelines/{push_pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["push_job"]

@@ -207,6 +207,17 @@ if HAS_ASYNCSSH:
                 process.stderr.write(b"Authentication required for push.\n")
                 process.exit(1)
                 return
+        before_map = {}
+        if git_cmd == "git-receive-pack":
+            try:
+                from app.git.bare_repo import get_branches as get_disk_branches
+
+                before_branches = await get_disk_branches(disk_path)
+                before_map = {
+                    branch["name"]: branch["sha"] for branch in before_branches
+                }
+            except Exception:
+                before_map = {}
 
         # Run the git command
         env = os.environ.copy()
@@ -286,25 +297,38 @@ if HAS_ASYNCSSH:
             pass
         process.exit(exit_code)
 
-        # Post-push: update pushed_at, sync branches, and trigger indexing
+        # Post-push: update pushed_at, sync branches, trigger pipelines, and index
         if git_cmd == "git-receive-pack" and exit_code == 0:
             try:
                 from datetime import datetime, timezone
                 from app.database import async_session
                 from app.services.index_service import index_repository
-                from app.git.smart_http import _sync_branches_to_db
+                from app.git.smart_http import (
+                    _create_push_pipelines,
+                    _sync_branches_to_db,
+                )
 
                 async with async_session() as db:
                     from sqlalchemy import select
                     from app.models.repository import Repository as RepoModel
+                    from app.models.user import User as UserModel
                     result = await db.execute(
                         select(RepoModel).where(RepoModel.id == repo.id)
                     )
                     fresh_repo = result.scalar_one_or_none()
+                    user = None
+                    if user_info is not None:
+                        user_result = await db.execute(
+                            select(UserModel).where(UserModel.id == user_info[0])
+                        )
+                        user = user_result.scalar_one_or_none()
                     if fresh_repo:
                         fresh_repo.pushed_at = datetime.now(timezone.utc)
                         await db.commit()
                         await _sync_branches_to_db(db, fresh_repo)
+                        await _create_push_pipelines(
+                            db, fresh_repo, user, before_map
+                        )
                         await index_repository(db, fresh_repo)
             except Exception:
                 pass

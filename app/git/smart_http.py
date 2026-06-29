@@ -190,6 +190,37 @@ async def _sync_branches_to_db(
     await db.commit()
 
 
+async def _create_push_pipelines(
+    db: AsyncSession,
+    repository: Repository,
+    user: User | None,
+    before_branches: dict[str, str],
+) -> None:
+    """Create source=push pipelines for branches changed by a successful push."""
+    from app.api.pipelines import CreatePipelineRequest, _create_pipeline
+
+    after_branches = await get_disk_branches(repository.disk_path)
+    after_map = {branch["name"]: branch["sha"] for branch in after_branches}
+    changed = [
+        (name, sha)
+        for name, sha in sorted(after_map.items())
+        if before_branches.get(name) != sha
+    ]
+    for branch_name, sha in changed:
+        try:
+            await _create_pipeline(
+                repository.id,
+                CreatePipelineRequest(ref=branch_name, sha=sha),
+                db,
+                source="push",
+                actor=user,
+            )
+        except Exception:
+            # GitLab accepts pushes even when no pipeline is created because
+            # CI config is absent, workflow rules skip, or CI syntax is invalid.
+            await db.rollback()
+
+
 async def _stream_git_command(
     args: list[str],
     repo_path: str,
@@ -331,6 +362,8 @@ async def git_receive_pack(
         raise HTTPException(status_code=404, detail="Repository not found on disk")
 
     input_data = await request.body()
+    before_branches = await get_disk_branches(repo_path)
+    before_map = {branch["name"]: branch["sha"] for branch in before_branches}
 
     # Run receive-pack
     stdout, stderr = await _run_git_command(
@@ -350,6 +383,11 @@ async def git_receive_pack(
         await _sync_branches_to_db(db, repository)
     except Exception:
         pass  # Don't fail the push if branch sync fails
+
+    try:
+        await _create_push_pipelines(db, repository, user, before_map)
+    except Exception:
+        pass  # Don't fail the push if pipeline creation fails
 
     # Trigger search indexing in the background
     try:
