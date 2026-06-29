@@ -5301,19 +5301,30 @@ late:
     assert "future-stage job" in pipeline_resp.text
 
 
-async def test_needs_parallel_matrix_rejects_pipeline(client, test_token):
+async def test_needs_parallel_matrix_expands_to_matrix_jobs(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
+stages:
+  - build
+  - test
+
 compile:
+  stage: build
+  parallel:
+    matrix:
+      - OS: [linux, mac]
+        RUBY: ["3.2", "3.3"]
   script:
     - echo compile
 
 unit:
+  stage: test
   needs:
     - job: compile
       parallel:
         matrix:
           - OS: linux
+            RUBY: ["3.2", "3.3"]
   script:
     - echo test
 """
@@ -5321,7 +5332,7 @@ unit:
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
         json={
-            "message": "add unsupported needs parallel ci",
+            "message": "add needs parallel ci",
             "content": base64.b64encode(ci_yaml.encode()).decode(),
             "branch": "main",
         },
@@ -5333,8 +5344,18 @@ unit:
         json={"ref": "main"},
         headers=auth_headers(test_token),
     )
-    assert pipeline_resp.status_code == 400
-    assert "needs parallel matrix is not supported" in pipeline_resp.text
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["unit"]["needs"] == [
+        "compile [linux, 3.2]",
+        "compile [linux, 3.3]",
+    ]
 
 
 async def test_same_stage_needs_are_allowed(client, test_token):

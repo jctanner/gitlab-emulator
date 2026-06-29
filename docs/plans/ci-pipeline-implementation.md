@@ -432,8 +432,10 @@ Implemented:
 - let `needs: []` jobs run immediately
 - support `needs: [{ job: ..., optional: true }]` for missing optional jobs
 - reject pipelines with missing required `needs` references
-- reject duplicate needs, self-needs, future-stage needs, unsupported
-  cross-project/pipeline needs, and unsupported `needs:parallel:matrix`
+- reject duplicate needs, self-needs, future-stage needs, and unsupported
+  cross-project/pipeline needs
+- support `needs:parallel:matrix` for selecting expanded same-pipeline matrix
+  jobs
 - support `needs: [{ job: ..., artifacts: true|false }]` artifact dependency
   payloads for official runner downloads
 - preserve declared needs order in official runner dependency payloads

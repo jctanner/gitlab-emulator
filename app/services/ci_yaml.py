@@ -140,6 +140,10 @@ def _string_list(value: Any) -> list[str]:
     return [str(value)]
 
 
+def _matrix_suffix(values: list[Any]) -> str:
+    return "[" + ", ".join(str(value) for value in values) + "]"
+
+
 def _variables(value: Any) -> dict[str, str]:
     return {key: str(entry["value"]) for key, entry in _variable_entries(value).items()}
 
@@ -320,16 +324,8 @@ def _needs(value: Any) -> list[dict] | None:
     if isinstance(value, dict):
         if value.get("project") or value.get("pipeline"):
             raise ValueError("Cross-project and pipeline needs are not supported")
-        if value.get("parallel"):
-            raise ValueError("needs parallel matrix is not supported")
         if value.get("job"):
-            return [
-                {
-                    "job": str(value["job"]),
-                    "optional": bool(value.get("optional", False)),
-                    "artifacts": bool(value.get("artifacts", True)),
-                }
-            ]
+            return _need_entries_from_mapping(value)
         raise ValueError("needs entries must define a job")
     if isinstance(value, list):
         parsed: list[dict] = []
@@ -341,19 +337,42 @@ def _needs(value: Any) -> list[dict] | None:
                 raise ValueError("needs entries must be strings or mappings")
             if item.get("project") or item.get("pipeline"):
                 raise ValueError("Cross-project and pipeline needs are not supported")
-            if item.get("parallel"):
-                raise ValueError("needs parallel matrix is not supported")
             if not item.get("job"):
                 raise ValueError("needs entries must define a job")
-            parsed.append(
-                {
-                    "job": str(item["job"]),
-                    "optional": bool(item.get("optional", False)),
-                    "artifacts": bool(item.get("artifacts", True)),
-                }
-            )
+            parsed.extend(_need_entries_from_mapping(item))
         return parsed
     raise ValueError("needs must be a string, mapping, or list")
+
+
+def _need_entries_from_mapping(value: dict) -> list[dict]:
+    job_name = str(value["job"])
+    optional = bool(value.get("optional", False))
+    artifacts = bool(value.get("artifacts", True))
+    parallel = value.get("parallel")
+    if parallel is None:
+        return [{"job": job_name, "optional": optional, "artifacts": artifacts}]
+    if not isinstance(parallel, dict) or set(parallel) - {"matrix"}:
+        raise ValueError("needs parallel value is not supported")
+    matrix = parallel.get("matrix")
+    if not isinstance(matrix, list) or not matrix:
+        raise ValueError("needs parallel matrix must be a non-empty list")
+    entries: list[dict] = []
+    for entry in matrix:
+        if not isinstance(entry, dict) or not entry:
+            raise ValueError("needs parallel matrix entries must be mappings")
+        values_by_key = [
+            values if isinstance(values, list) else [values]
+            for values in entry.values()
+        ]
+        for values in product(*values_by_key):
+            entries.append(
+                {
+                    "job": f"{job_name} {_matrix_suffix(list(values))}",
+                    "optional": optional,
+                    "artifacts": artifacts,
+                }
+            )
+    return entries
 
 
 def _dependencies(value: Any) -> list[str] | None:
@@ -703,8 +722,7 @@ def _parallel_expansions(value: Any) -> list[tuple[str | None, dict[str, dict]]]
                     key: _metadata_variable(value)
                     for key, value in zip(keys, values, strict=True)
                 }
-                suffix = ", ".join(str(value) for value in values)
-                expansions.append((f"[{suffix}]", matrix_values))
+                expansions.append((_matrix_suffix(list(values)), matrix_values))
         if len(expansions) > 200:
             raise ValueError("parallel matrix cannot expand beyond 200 jobs")
         return expansions

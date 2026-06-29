@@ -402,9 +402,13 @@ unit:
             raise AssertionError("expected ValueError")
 
 
-def test_parse_gitlab_ci_rejects_needs_parallel_matrix():
+def test_parse_gitlab_ci_expands_needs_parallel_matrix():
     content = """
 compile:
+  parallel:
+    matrix:
+      - OS: [linux, mac]
+        RUBY: ["3.2", "3.3"]
   script: echo compile
 
 unit:
@@ -413,14 +417,15 @@ unit:
       parallel:
         matrix:
           - OS: linux
+            RUBY: ["3.2", "3.3"]
   script: echo unit
 """
-    try:
-        parse_gitlab_ci(content)
-    except ValueError as exc:
-        assert "needs parallel matrix is not supported" in str(exc)
-    else:
-        raise AssertionError("expected ValueError")
+    jobs = parse_gitlab_ci(content)
+    by_name = {job.name: job for job in jobs}
+    assert [need["job"] for need in by_name["unit"].needs] == [
+        "compile [linux, 3.2]",
+        "compile [linux, 3.3]",
+    ]
 
 
 def test_parse_gitlab_ci_preserves_bridge_trigger_jobs():

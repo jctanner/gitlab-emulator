@@ -84,8 +84,8 @@ and cache APIs for controlled integration testing.
 - bridge `trigger` jobs create same-emulator downstream
   `source=parent_pipeline` pipelines and expose the downstream pipeline ID on
   the bridge job; integer `parallel` and `parallel:matrix` jobs expand into
-  per-node persisted jobs, while `needs:parallel:matrix` remains out of scope
-  for the MVP
+  per-node persisted jobs, and same-pipeline `needs:parallel:matrix` expands
+  to the selected matrix job names
 
 ## Remaining CI Work
 
