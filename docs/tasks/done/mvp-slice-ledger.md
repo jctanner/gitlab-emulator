@@ -38,7 +38,7 @@ remote/template entries and `include:rules` filtering, cross-project/ref
 `rules:exists` path lookups, `rules:changes:compare_to` comparison-ref diffs,
 trigger tokens, bridge `trigger` jobs creating same-emulator downstream
 `source=parent_pipeline` pipelines, push-created `source=push` pipelines after
-successful Git Smart HTTP and SSH branch pushes, pipeline schedules,
+successful Git Smart HTTP and SSH branch and tag pushes, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.

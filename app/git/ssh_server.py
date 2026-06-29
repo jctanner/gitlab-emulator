@@ -240,12 +240,9 @@ if HAS_ASYNCSSH:
         before_map = {}
         if git_cmd == "git-receive-pack":
             try:
-                from app.git.bare_repo import get_branches as get_disk_branches
+                from app.git.smart_http import _push_ref_snapshot
 
-                before_branches = await get_disk_branches(disk_path)
-                before_map = {
-                    branch["name"]: branch["sha"] for branch in before_branches
-                }
+                before_map = await _push_ref_snapshot(disk_path)
             except Exception:
                 before_map = {}
 

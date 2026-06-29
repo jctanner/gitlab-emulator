@@ -168,9 +168,15 @@ async def test_gitlab_project_api_project_supports_live_clone_push_fetch(
         """
 push_job:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
   script:
     - echo pushed
+
+tag_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == "v1.0.0"'
+  script:
+    - echo tagged
 
 api_job:
   rules:
@@ -214,6 +220,28 @@ api_job:
     )
     assert request.status_code == 201
     assert request.json()["git_info"]["before_sha"] == before_sha.strip()
+
+    await _run_git("tag", "v1.0.0", cwd=worktree)
+    await _run_git("push", authed_url, "v1.0.0", cwd=worktree)
+
+    tag_pipelines = await client.get(
+        f"{API}/projects/{resp.json()['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert tag_pipelines.status_code == 200
+    tag_pipeline = next(
+        pipeline
+        for pipeline in tag_pipelines.json()
+        if pipeline["source"] == "push" and pipeline["ref"] == "v1.0.0"
+    )
+    assert tag_pipeline["before_sha"] == "0000000000000000000000000000000000000000"
+
+    tag_jobs = await client.get(
+        f"{API}/projects/{resp.json()['id']}/pipelines/{tag_pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert tag_jobs.status_code == 200
+    assert [job["name"] for job in tag_jobs.json()] == ["tag_job"]
 
 
 @pytest.mark.asyncio

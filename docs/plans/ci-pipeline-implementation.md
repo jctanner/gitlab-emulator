@@ -463,6 +463,8 @@ Implemented:
   template includes, including list-valued include entries, before parsing
 - merge pipeline-level, top-level YAML, and job-level YAML variables with
   runner-facing metadata for raw, masked/public, and file variables
+- create `source=push` pipelines from successful Git Smart HTTP and SSH branch
+  and tag pushes when the pushed ref contains `.gitlab-ci.yml`
 - create `source=trigger` pipelines from project trigger tokens
 - create `source=schedule` pipelines from manually played pipeline schedules
 - create `source=merge_request_event` pipelines when merge requests are opened

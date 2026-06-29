@@ -29,6 +29,7 @@ from app.models.repository import Repository
 from app.models.user import User
 from app.api.deps import get_current_user
 from app.git.bare_repo import get_branches as get_disk_branches
+from app.git.bare_repo import get_tags as get_disk_tags
 from app.services.permissions import DEVELOPER, REPORTER, project_access_level
 
 router = APIRouter()
@@ -426,19 +427,20 @@ async def _create_push_pipelines(
     db: AsyncSession,
     repository: Repository,
     user: User | None,
-    before_branches: dict[str, str],
+    before_refs: dict[str, dict[str, str]],
 ) -> None:
-    """Create source=push pipelines for branches changed by a successful push."""
+    """Create source=push pipelines for refs changed by a successful push."""
     from app.api.pipelines import CreatePipelineRequest, _create_pipeline
 
+    before_branches = before_refs.get("branches", {})
     after_branches = await get_disk_branches(repository.disk_path)
     after_map = {branch["name"]: branch["sha"] for branch in after_branches}
-    changed = [
+    changed_branches = [
         (name, sha)
         for name, sha in sorted(after_map.items())
         if before_branches.get(name) != sha
     ]
-    for branch_name, sha in changed:
+    for branch_name, sha in changed_branches:
         try:
             await _create_pipeline(
                 repository.id,
@@ -455,6 +457,38 @@ async def _create_push_pipelines(
             # GitLab accepts pushes even when no pipeline is created because
             # CI config is absent, workflow rules skip, or CI syntax is invalid.
             await db.rollback()
+
+    before_tags = before_refs.get("tags", {})
+    after_tags = await get_disk_tags(repository.disk_path)
+    after_tag_map = {tag["name"]: tag["sha"] for tag in after_tags}
+    changed_tags = [
+        tag_name
+        for tag_name, sha in sorted(after_tag_map.items())
+        if before_tags.get(tag_name) != sha
+    ]
+    for tag_name in changed_tags:
+        try:
+            await _create_pipeline(
+                repository.id,
+                CreatePipelineRequest(ref=tag_name),
+                db,
+                source="push",
+                actor=user,
+                before_sha=before_tags.get(tag_name, ZERO_SHA),
+            )
+        except Exception:
+            # CI config may be absent or skip tag pipelines; the push still
+            # succeeds, matching GitLab's behavior.
+            await db.rollback()
+
+
+async def _push_ref_snapshot(repo_path: str) -> dict[str, dict[str, str]]:
+    branches = await get_disk_branches(repo_path)
+    tags = await get_disk_tags(repo_path)
+    return {
+        "branches": {branch["name"]: branch["sha"] for branch in branches},
+        "tags": {tag["name"]: tag["sha"] for tag in tags},
+    }
 
 
 async def _stream_git_command(
@@ -610,8 +644,7 @@ async def git_receive_pack(
                 "Pragma": "no-cache",
             },
         )
-    before_branches = await get_disk_branches(repo_path)
-    before_map = {branch["name"]: branch["sha"] for branch in before_branches}
+    before_map = await _push_ref_snapshot(repo_path)
 
     hook_state = await _install_request_pre_receive_hook(db, repository, user)
     try:

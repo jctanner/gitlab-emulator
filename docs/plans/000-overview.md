@@ -121,9 +121,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   `ci_secrets`; secret values are write-only on API reads, and access-event
   storage exists for the later job delivery slice.
 - Minimal pipeline trigger token APIs, push-created pipelines, and pipeline
-  schedule APIs exist. Successful Git Smart HTTP and SSH branch pushes create
-  `source=push` pipelines when `.gitlab-ci.yml` is present, trigger tokens can
-  create `source=trigger` pipelines, and schedule `play` can create
+  schedule APIs exist. Successful Git Smart HTTP and SSH branch and tag pushes
+  create `source=push` pipelines when `.gitlab-ci.yml` is present, trigger
+  tokens can create `source=trigger` pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path. Bridge
   `trigger` jobs create same-emulator downstream `source=parent_pipeline`
   pipelines and expose their downstream pipeline IDs on the bridge job.
@@ -132,8 +132,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   job/runner path.
 - Job scheduling is runner-poll based: persisted `pending` jobs become
   eligible according to stage order, `needs`, manual state, runner tags,
-  runner pause/lock state, and `run_untagged`. Delayed/timer jobs are not
-  modeled yet and are rejected clearly instead of being queued silently.
+  runner pause/lock state, and `run_untagged`. Delayed jobs are promoted by the
+  background delayed-job worker when their `start_in` timers mature.
 - GitLab-style pipeline/job cancel and retry REST endpoints exist. Retry
   requeues persisted jobs through the existing runner coordinator.
 - GitLab-style manual job play exists for persisted manual jobs. Play moves
