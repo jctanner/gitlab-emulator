@@ -3217,6 +3217,20 @@ vars:
         },
     )
     assert resp.status_code == 201
+    pipeline = resp.json()
+
+    pipeline_variables = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/variables",
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_variables.status_code == 200
+    variables_by_key = {
+        item["key"]: item for item in pipeline_variables.json()
+    }
+    assert variables_by_key["FROM_PIPELINE"]["value"] == "pipeline"
+    assert variables_by_key["PIPELINE_ONLY"]["value"] == "pipeline"
+    assert variables_by_key["SHARED"]["value"] == "pipeline"
+    assert variables_by_key["CI_COMMIT_REF_NAME"]["value"] == "pipeline-ref"
 
     request = await client.post(
         f"{API}/jobs/request",
@@ -4265,6 +4279,23 @@ api_only:
     assert play_resp.status_code == 201
     pipeline = play_resp.json()
     assert pipeline["source"] == "schedule"
+
+    pipeline_variables = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/variables",
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_variables.status_code == 200
+    assert pipeline_variables.json() == [
+        {
+            "key": "SCHEDULE_VAR",
+            "value": "from-schedule",
+            "variable_type": "env_var",
+            "file": False,
+            "masked": False,
+            "raw": False,
+            "public": None,
+        }
+    ]
 
     get_resp = await client.get(
         f"{API}/projects/{project['id']}/pipeline_schedules/{schedule['id']}",

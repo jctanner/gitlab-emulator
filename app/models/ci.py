@@ -33,6 +33,7 @@ class Pipeline(Base):
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")
     source: Mapped[str] = mapped_column(String, default="api")
+    variables: Mapped[list] = mapped_column(JSON, default=list)
     security_warnings: Mapped[list] = mapped_column(JSON, default=list)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

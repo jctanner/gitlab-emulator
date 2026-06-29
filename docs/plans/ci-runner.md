@@ -61,6 +61,8 @@ and cache APIs for controlled integration testing.
 - pipeline-level variables, top-level YAML variables, and job-level YAML
   variables merged into official runner job payloads with documented precedence
   and metadata for raw, masked/public, and file variables
+- project pipeline APIs expose persisted request variables for pipeline event
+  sources without exposing resolved project/group secrets
 - project trigger tokens and trigger-created `source=trigger` pipelines
 - project pipeline schedules and manually played `source=schedule` pipelines
 - job `rules:if` can match `CI_PIPELINE_SOURCE` for API, trigger, and

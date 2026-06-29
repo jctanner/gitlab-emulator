@@ -1061,6 +1061,18 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
     }
 
 
+def _pipeline_variable_json(variable: dict) -> dict:
+    return {
+        "key": str(variable.get("key", "")),
+        "value": str(variable.get("value", "")),
+        "variable_type": str(variable.get("variable_type") or "env_var"),
+        "file": bool(variable.get("file", False)),
+        "masked": bool(variable.get("masked", False)),
+        "raw": bool(variable.get("raw", False)),
+        "public": variable.get("public"),
+    }
+
+
 def _trigger_json(trigger: PipelineTrigger) -> dict:
     owner = trigger.owner
     return {
@@ -1759,6 +1771,7 @@ async def _create_pipeline(
         name=pipeline_name,
         status="pending",
         source=source,
+        variables=[variable.model_dump() for variable in body.variables],
         security_warnings=security_warnings,
     )
     db.add(pipeline)
@@ -2244,6 +2257,16 @@ async def get_pipeline(
         project_ref, pipeline_id, db, current_user, enforce_read_access=True
     )
     return _pipeline_json(pipeline)
+
+
+@router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/variables")
+async def get_pipeline_variables(
+    project_ref: str, pipeline_id: int, db: DbSession, current_user: CurrentUser
+):
+    pipeline = await _get_pipeline_for_project_ref(
+        project_ref, pipeline_id, db, current_user, enforce_read_access=True
+    )
+    return [_pipeline_variable_json(variable) for variable in pipeline.variables or []]
 
 
 async def _get_pipeline_for_project_ref(

@@ -69,6 +69,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         "before_sha VARCHAR",
     )
     await ensure_column(
+        "pipelines",
+        "variables",
+        "variables JSON DEFAULT '[]'",
+    )
+    await ensure_column(
         "pipeline_jobs",
         "secret_metadata",
         "secret_metadata JSON DEFAULT '[]'",

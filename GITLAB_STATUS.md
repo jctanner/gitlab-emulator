@@ -80,7 +80,9 @@ harness architecture.
   variables are merged into persisted runner job payloads with GitLab-style
   metadata for raw, masked/public, and file variables. Local tests validate the
   precedence and metadata payloads, and the official runner VM has validated the
-  resulting values and file variables in a real job trace.
+  resulting values and file variables in a real job trace. Project pipeline
+  APIs expose persisted pipeline request variables for API, trigger, schedule,
+  and manual pipeline sources.
 - Minimal pipeline triggers and schedules exist. Project trigger tokens can be
   created, listed, deleted, and used to create `source=trigger` pipelines.
   Bridge `trigger` jobs can create same-emulator downstream
