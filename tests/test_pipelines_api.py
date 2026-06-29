@@ -1386,6 +1386,79 @@ compound_timeout:
     assert payload["steps"][0]["timeout"] == 5400
 
 
+async def test_default_runtime_metadata_reaches_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+default:
+  retry: 1
+  timeout: 1 hour
+  interruptible: true
+
+defaulted:
+  image: alpine:3.20
+  script:
+    - echo defaulted
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add default runtime ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    job = jobs.json()[0]
+    assert job["retry"] == {"max": 1, "when": []}
+    assert job["timeout"] == 3600
+    assert job["interruptible"] is True
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["runner_info"]["timeout"] == 3600
+    assert payload["steps"][0]["timeout"] == 3600
+
+    update = await client.put(
+        f"{API}/jobs/{payload['id']}",
+        headers={"JOB-TOKEN": payload["token"]},
+        json={
+            "token": payload["token"],
+            "state": "failed",
+            "failure_reason": "script_failure",
+            "exit_code": 1,
+        },
+    )
+    assert update.status_code == 200
+
+    retried_jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert retried_jobs.status_code == 200
+    assert retried_jobs.json()[0]["status"] == "pending"
+    assert retried_jobs.json()[0]["retry_attempt"] == 1
+
+
 async def test_cache_variables_expand_in_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

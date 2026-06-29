@@ -51,6 +51,7 @@ and cache APIs for controlled integration testing.
 - controlled `include:remote` entries resolved from allowlisted HTTP(S) hosts
 - built-in GitLab-style template includes for local testing
 - local `extends` with multi-parent merge, `default:` inheritance,
+  including runtime defaults for `retry`, `timeout`, and `interruptible`,
   `inherit: default`, `inherit: variables`, and depth/error guards
 - pipeline-level variables, top-level YAML variables, and job-level YAML
   variables merged into official runner job payloads with documented precedence

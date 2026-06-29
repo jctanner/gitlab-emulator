@@ -32,8 +32,11 @@ DEFAULT_INHERITABLE_KEYS = {
     "before_script",
     "cache",
     "image",
+    "interruptible",
+    "retry",
     "services",
     "tags",
+    "timeout",
 }
 MAX_EXTENDS_DEPTH = 11
 UNSUPPORTED_JOB_KEYS = {

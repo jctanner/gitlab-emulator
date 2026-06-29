@@ -1227,6 +1227,38 @@ metadata_job:
     assert jobs[0].coverage == "/Coverage: \\d+\\.\\d+%/"
 
 
+def test_parse_gitlab_ci_inherits_runtime_metadata_from_default():
+    jobs = parse_gitlab_ci(
+        """
+default:
+  retry: 1
+  timeout: 1 hour
+  interruptible: true
+
+defaulted:
+  script:
+    - echo defaulted
+
+override:
+  retry:
+    max: 2
+    when: script_failure
+  timeout: 30 minutes
+  interruptible: false
+  script:
+    - echo override
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["defaulted"].retry == {"max": 1, "when": []}
+    assert by_name["defaulted"].timeout_seconds == 3600
+    assert by_name["defaulted"].interruptible is True
+    assert by_name["override"].retry == {"max": 2, "when": ["script_failure"]}
+    assert by_name["override"].timeout_seconds == 1800
+    assert by_name["override"].interruptible is False
+
+
 def test_parse_gitlab_ci_rejects_unsupported_retry_and_timeout_values():
     invalid_retry_content = """
 bad_retry:
