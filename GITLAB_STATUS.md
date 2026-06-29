@@ -152,6 +152,8 @@ harness architecture.
   report artifacts into GitLab-shaped suite and test case counts.
 - Dotenv report artifacts from successful upstream dependency jobs are parsed
   and injected into downstream runner job variables.
+- Pipeline API payloads expose aggregate coverage from completed jobs that
+  matched their configured coverage regex.
 - YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
   are parsed, variable-expanded, persisted, and exposed in official-runner
   `hooks` payloads.

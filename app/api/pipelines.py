@@ -1042,6 +1042,19 @@ async def _read_gitlab_ci_with_includes(
 
 
 def _pipeline_json(pipeline: Pipeline) -> dict:
+    coverage_values = []
+    for job in getattr(pipeline, "__dict__", {}).get("jobs") or []:
+        if job.coverage is None:
+            continue
+        try:
+            coverage_values.append(float(job.coverage))
+        except (TypeError, ValueError):
+            continue
+    coverage = (
+        f"{sum(coverage_values) / len(coverage_values):g}"
+        if coverage_values
+        else None
+    )
     return {
         "id": pipeline.id,
         "iid": pipeline.iid,
@@ -1053,6 +1066,7 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "name": pipeline.name,
         "status": pipeline.status,
         "source": pipeline.source,
+        "coverage": coverage,
         "security_warnings": pipeline.security_warnings or [],
         "created_at": _fmt_dt(pipeline.created_at),
         "updated_at": _fmt_dt(pipeline.updated_at),
@@ -2351,6 +2365,7 @@ async def list_pipelines(
     )
     query = (
         select(Pipeline)
+        .options(selectinload(Pipeline.jobs))
         .where(Pipeline.project_id == project.id)
         .order_by(Pipeline.id.desc())
     )
@@ -2377,7 +2392,11 @@ async def get_latest_pipeline(
     project = await _get_project_ref(
         project_ref, db, current_user, enforce_read_access=True
     )
-    query = select(Pipeline).where(Pipeline.project_id == project.id)
+    query = (
+        select(Pipeline)
+        .options(selectinload(Pipeline.jobs))
+        .where(Pipeline.project_id == project.id)
+    )
     if ref:
         query = query.where(Pipeline.ref == ref)
     result = await db.execute(query.order_by(Pipeline.id.desc()).limit(1))

@@ -2316,6 +2316,27 @@ metadata_job:
     assert isinstance(completed_job["queued_duration"], int)
     assert completed_job["queued_duration"] >= 0
 
+    completed_pipeline_resp = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert completed_pipeline_resp.status_code == 200
+    assert completed_pipeline_resp.json()["coverage"] == "87.5"
+
+    latest_pipeline_resp = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/latest",
+        headers=auth_headers(test_token),
+    )
+    assert latest_pipeline_resp.status_code == 200
+    assert latest_pipeline_resp.json()["coverage"] == "87.5"
+
+    pipeline_list_resp = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_list_resp.status_code == 200
+    assert pipeline_list_resp.json()[0]["coverage"] == "87.5"
+
 
 async def test_compound_timeout_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)

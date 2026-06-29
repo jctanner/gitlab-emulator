@@ -139,6 +139,8 @@ and cache APIs for controlled integration testing.
   report artifacts into GitLab-shaped suite and test case counts
 - dotenv report artifacts from successful upstream dependency jobs are parsed
   and injected into downstream runner job variables
+- pipeline API payloads expose aggregate coverage from completed jobs that
+  matched their configured coverage regex
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 
