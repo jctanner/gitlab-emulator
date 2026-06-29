@@ -429,6 +429,24 @@ def explain_job_scheduling(
                 reasons.append(reason)
                 blockers.append({"type": "run_untagged", "reason": reason})
 
+            resource_blocker = _resource_group_blocker(job)
+            if resource_blocker is not None:
+                blocked = True
+                reason = (
+                    f"resource group `{job.resource_group}` is held by running "
+                    f"job `{resource_blocker.name}`"
+                )
+                reasons.append(reason)
+                blockers.append(
+                    {
+                        "type": "resource_group",
+                        "resource_group": job.resource_group,
+                        "job": resource_blocker.name,
+                        "job_id": resource_blocker.id,
+                        "reason": reason,
+                    }
+                )
+
             if not blocked:
                 reasons.append("eligible for the next runner poll")
         elif job.status == "running":
@@ -1004,6 +1022,21 @@ def _runner_can_run_job(job: PipelineJob, body: JobRequest, runner: CiRunner) ->
     return job_tags.issubset(runner_tags)
 
 
+def _resource_group_blocker(job: PipelineJob) -> PipelineJob | None:
+    resource_group = job.resource_group
+    if not resource_group or not job.pipeline:
+        return None
+    for peer in job.pipeline.jobs:
+        if (
+            peer.id != job.id
+            and peer.project_id == job.project_id
+            and peer.resource_group == resource_group
+            and peer.status == "running"
+        ):
+            return peer
+    return None
+
+
 def _skip_jobs_after_failed_stage(pipeline: Pipeline) -> None:
     failed_stage_indexes = [
         job.stage_index
@@ -1203,7 +1236,7 @@ async def request_job(
     for candidate in result.scalars().all():
         if _job_stage_is_unblocked(candidate) and _runner_can_run_job(
             candidate, body, runner
-        ):
+        ) and _resource_group_blocker(candidate) is None:
             persisted_job = candidate
             break
     if persisted_job is not None:

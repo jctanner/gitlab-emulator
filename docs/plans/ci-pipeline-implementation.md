@@ -80,6 +80,8 @@ Already working:
   to populate the job API `coverage` field
 - failed jobs with matching `retry` metadata are automatically requeued until
   their configured retry attempt limit is reached
+- jobs with the same `resource_group` in a project are serialized during runner
+  assignment; diagnostics expose the running job that holds the resource group
 - CI `include` support is implemented for local files, nested local files,
   `include:project`, controlled `include:remote`, and built-in templates:
   pipeline creation resolves included files before parsing, supports
@@ -340,7 +342,7 @@ Still needed:
 
 - remaining long-tail `rules` / `only` / `except` edge cases
 - implement deeper execution semantics for parsed runtime metadata, including
-  interruptible cancellation behavior and resource-group serialization
+  interruptible cancellation behavior
 
 ## Slice 7: Repository Checkout
 

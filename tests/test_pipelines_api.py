@@ -603,6 +603,81 @@ retry_me:
     assert terminal_job["retry_attempt"] == 1
 
 
+async def test_resource_group_serializes_runner_assignment(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+deploy_one:
+  resource_group: production
+  script:
+    - echo one
+
+deploy_two:
+  resource_group: production
+  script:
+    - echo two
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add resource group ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    first_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first_request.status_code == 201
+    first_payload = first_request.json()
+    assert first_payload["job_info"]["name"] == "deploy_one"
+
+    blocked_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert blocked_request.status_code == 204
+
+    diagnostics = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/diagnostics",
+        headers=auth_headers(test_token),
+    )
+    assert diagnostics.status_code == 200
+    deploy_two = next(
+        job for job in diagnostics.json()["jobs"] if job["job_name"] == "deploy_two"
+    )
+    assert deploy_two["blocked"] is True
+    assert deploy_two["blockers"][0]["type"] == "resource_group"
+    assert deploy_two["blockers"][0]["job"] == "deploy_one"
+
+    update = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={"token": first_payload["token"], "state": "success"},
+    )
+    assert update.status_code == 200
+
+    second_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert second_request.status_code == 201
+    assert second_request.json()["job_info"]["name"] == "deploy_two"
+
+
 async def test_pipeline_diagnostics_marks_stale_running_job(
     client, test_token, db_session
 ):
