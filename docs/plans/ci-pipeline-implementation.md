@@ -45,9 +45,8 @@ Already working:
   commit-local `changes`,
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
   directory-style `rules:exists` patterns ending in `/`, bare-directory path
-  matching for `rules:changes` and legacy `only`/`except:changes`, clear
-  rejection of
-  unsupported cross-project `rules:exists` project/ref options, accepted
+  matching for `rules:changes` and legacy `only`/`except:changes`,
+  cross-project/ref `rules:exists` path lookups, accepted
   `rules:changes:compare_to` syntax evaluated against emulator-local changed
   paths, `when: never`,
   `when: always`, `when: on_failure`, persisted non-runnable `manual` jobs,

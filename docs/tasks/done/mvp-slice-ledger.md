@@ -32,8 +32,8 @@ structured global/default/job `image:` metadata for `entrypoint` and
 `pull_policy` in job APIs and runner payloads, richer
 `needs`, including same-pipeline `needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
-remote/template entries, clear rejection of unsupported cross-ref
-`rules:exists` project/ref options, accepted `rules:changes:compare_to`,
+remote/template entries, cross-project/ref `rules:exists` path lookups,
+accepted `rules:changes:compare_to`,
 trigger tokens, bridge `trigger` jobs creating same-emulator downstream
 `source=parent_pipeline` pipelines, push-created `source=push` pipelines after
 successful Git Smart HTTP and SSH branch pushes, pipeline schedules,

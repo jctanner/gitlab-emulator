@@ -67,7 +67,7 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   grouped boolean `if` expressions, unary negation, null/empty checks, and regex
   match/non-match operators including variable-backed regex patterns and common
   regex flags,
-  `exists`/`changes` path-object rules,
+  `exists`/`changes` path-object rules including project/ref `rules:exists`,
   variable-expanded rule path patterns, branch/tag/source-aware
   `only`/`except` filters including common source aliases, glob-style refs, and
   mapping forms, workflow/rule-level variables, boolean `allow_failure`

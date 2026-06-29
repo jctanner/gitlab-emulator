@@ -4079,6 +4079,75 @@ root_job:
     } in payload["variables"]
 
 
+async def test_gitlab_ci_rules_exists_supports_project_ref(client, test_token):
+    project = await _create_project(client, test_token)
+    template_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "rules-template", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert template_resp.status_code == 201
+    template = template_resp.json()
+
+    template_write = await client.post(
+        f"{API}/projects/{template['id']}/repository/files/templates%2Fdeploy.yml",
+        headers=auth_headers(test_token),
+        json={
+            "branch": "main",
+            "commit_message": "add rules exists target",
+            "content": "deploy: true\n",
+        },
+    )
+    assert template_write.status_code == 201
+
+    ci_yaml = """
+exists_project:
+  script:
+    - echo project exists
+  rules:
+    - exists:
+        project: testuser/rules-template
+        ref: main
+        paths:
+          - templates/deploy.yml
+
+missing_project:
+  script:
+    - echo missing
+  rules:
+    - exists:
+        project: testuser/rules-template
+        ref: main
+        paths:
+          - templates/missing.yml
+"""
+    root_write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add rules exists project ref ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert root_write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+    pipeline = resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["exists_project"]
+
+
 async def test_gitlab_ci_supports_remote_includes(client, test_token, monkeypatch):
     from app.api import pipelines
 

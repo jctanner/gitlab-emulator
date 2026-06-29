@@ -1321,7 +1321,7 @@ changes_compare_to:
     assert [job.name for job in jobs] == ["changes_compare_to"]
 
 
-def test_parse_gitlab_ci_rejects_unsupported_rules_path_options():
+def test_parse_gitlab_ci_supports_rules_exists_project_ref_options():
     exists_content = """
 exists_project:
   script: echo exists
@@ -1332,14 +1332,23 @@ exists_project:
         paths:
           - template.yml
 """
+    jobs = parse_gitlab_ci(
+        exists_content,
+        existing_paths=set(),
+        existing_path_sets={("group/templates", "main"): {"template.yml"}},
+    )
+    assert [job.name for job in jobs] == ["exists_project"]
+
     try:
-        parse_gitlab_ci(exists_content, existing_paths={"template.yml"})
-        assert False, "Expected unsupported rules:exists options to fail"
+        parse_gitlab_ci(
+            exists_content,
+            existing_paths=set(),
+            existing_path_sets={("group/templates", "main"): {"other.yml"}},
+        )
     except ValueError as exc:
-        message = str(exc)
-        assert "rules:exists option(s) not supported" in message
-        assert "project" in message
-        assert "ref" in message
+        assert "does not define any runnable jobs" in str(exc)
+    else:
+        raise AssertionError("expected empty pipeline ValueError")
 
 
 def test_parse_gitlab_ci_marks_manual_jobs():

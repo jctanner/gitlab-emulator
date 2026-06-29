@@ -192,6 +192,14 @@ def _simple_variable_values(entries: dict[str, dict]) -> dict[str, str]:
     return {key: str(entry.get("value", "")) for key, entry in entries.items()}
 
 
+def _expand_ci_rule_value(value: str, variables: dict[str, str]) -> str:
+    expanded = value
+    for key, variable_value in variables.items():
+        expanded = expanded.replace(f"${{{key}}}", variable_value)
+        expanded = expanded.replace(f"${key}", variable_value)
+    return expanded
+
+
 async def _get_project(project_id: int, db: DbSession) -> Project:
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -304,6 +312,86 @@ async def _changed_paths_at_sha(project: Project, sha: str) -> set[str]:
     if not output:
         return set()
     return {line.strip() for line in output.splitlines() if line.strip()}
+
+
+def _collect_rules_exists_refs(
+    value: Any,
+    variables: dict[str, str],
+    *,
+    current_project: str,
+    current_ref: str,
+) -> set[tuple[str, str]]:
+    refs: set[tuple[str, str]] = set()
+    if isinstance(value, dict):
+        rules = value.get("rules")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                exists = rule.get("exists")
+                if not isinstance(exists, dict):
+                    continue
+                if "project" not in exists and "ref" not in exists:
+                    continue
+                project_ref = _expand_ci_rule_value(
+                    str(exists.get("project") or current_project),
+                    variables,
+                )
+                ref = _expand_ci_rule_value(
+                    str(exists.get("ref") or current_ref),
+                    variables,
+                )
+                refs.add((project_ref, ref))
+        for nested in value.values():
+            refs.update(
+                _collect_rules_exists_refs(
+                    nested,
+                    variables,
+                    current_project=current_project,
+                    current_ref=current_ref,
+                )
+            )
+    elif isinstance(value, list):
+        for item in value:
+            refs.update(
+                _collect_rules_exists_refs(
+                    item,
+                    variables,
+                    current_project=current_project,
+                    current_ref=current_ref,
+                )
+            )
+    return refs
+
+
+async def _rules_exists_path_sets(
+    content: str,
+    project: Project,
+    ref: str,
+    variables: dict[str, str],
+    db: DbSession,
+) -> dict[tuple[str, str], set[str]]:
+    parsed = yaml.safe_load(content) or {}
+    if not isinstance(parsed, dict):
+        return {}
+    path_sets: dict[tuple[str, str], set[str]] = {}
+    refs = _collect_rules_exists_refs(
+        parsed,
+        variables,
+        current_project=project.full_name,
+        current_ref=ref,
+    )
+    for project_ref, target_ref in refs:
+        target_project = (
+            project
+            if project_ref == project.full_name
+            else await _get_project_ref(project_ref, db)
+        )
+        paths = await _repo_paths_at_ref(target_project, target_ref)
+        path_sets[(project_ref, target_ref)] = paths
+        if target_project.id == project.id:
+            path_sets[("", target_ref)] = paths
+    return path_sets
 
 
 async def _read_gitlab_ci(project: Project, ref: str) -> str:
@@ -1124,6 +1212,13 @@ async def _create_pipeline(
             )
             existing_paths = await _repo_paths_at_ref(project, body.ref)
             changed_paths = await _changed_paths_at_sha(project, sha)
+            existing_path_sets = await _rules_exists_path_sets(
+                merged_ci_content,
+                project,
+                body.ref,
+                rule_variables,
+                db,
+            )
             parsed_jobs = parse_gitlab_ci(
                 merged_ci_content,
                 ref=body.ref,
@@ -1131,6 +1226,7 @@ async def _create_pipeline(
                 variables=rule_variables,
                 existing_paths=existing_paths,
                 changed_paths=changed_paths,
+                existing_path_sets=existing_path_sets,
             )
             pipeline_name = parse_gitlab_ci_workflow_name(
                 merged_ci_content,
@@ -1139,6 +1235,7 @@ async def _create_pipeline(
                 variables=rule_variables,
                 existing_paths=existing_paths,
                 changed_paths=changed_paths,
+                existing_path_sets=existing_path_sets,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
