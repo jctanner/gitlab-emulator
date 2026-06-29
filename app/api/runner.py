@@ -213,6 +213,7 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "id": job.id,
         "name": job.name,
         "status": job.status,
+        "failure_reason": job.failure_reason,
         "stage": job.stage,
         "ref": job.pipeline.ref if job.pipeline else None,
         "environment": job.environment,

@@ -1299,6 +1299,7 @@ def _job_json(job: PipelineJob) -> dict:
     return {
         "id": job.id,
         "status": job.status,
+        "failure_reason": job.failure_reason,
         "stage": job.stage,
         "stage_index": job.stage_index,
         "name": job.name,

@@ -89,7 +89,8 @@ harness architecture.
   marks runnable jobs canceled, job retry clears prior runner state and trace
   content, `retry:exit_codes` filters automatic retries by runner-reported exit
   code, and pipeline retry requeues failed, canceled, and skipped jobs
-  through the persisted runner coordinator.
+  through the persisted runner coordinator. Persisted job failure reasons are
+  exposed in project job and runner-inspection job API responses.
 - The admin CI Lab exposes runner diagnostics, pending-job eligibility reasons,
   and a requeue control for pending/running jobs so stuck jobs can be diagnosed
   and recovered from the operator UI.

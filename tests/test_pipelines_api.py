@@ -506,9 +506,29 @@ async def test_retry_job_requeues_failed_job_for_runner(client, test_token):
     update = await client.put(
         f"{API}/jobs/{job_id}",
         headers={"JOB-TOKEN": job_token},
-        json={"token": job_token, "state": "failed", "exit_code": 1},
+        json={
+            "token": job_token,
+            "state": "failed",
+            "failure_reason": "script_failure",
+            "exit_code": 1,
+        },
     )
     assert update.status_code == 200
+
+    failed_job = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}",
+        headers=auth_headers(test_token),
+    )
+    assert failed_job.status_code == 200
+    assert failed_job.json()["status"] == "failed"
+    assert failed_job.json()["failure_reason"] == "script_failure"
+
+    failed_jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert failed_jobs.status_code == 200
+    assert failed_jobs.json()[0]["failure_reason"] == "script_failure"
 
     retry = await client.post(
         f"{API}/projects/{project['id']}/jobs/{job_id}/retry",

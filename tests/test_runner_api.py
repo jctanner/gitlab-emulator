@@ -265,6 +265,23 @@ async def test_runner_inspection_endpoints(client, test_token):
     assert job["runner"]["runner_type"] == "instance_type"
     assert job["web_url"].endswith(f"/testuser/runner-inspection/-/jobs/{job['id']}")
 
+    failed = await client.put(
+        f"{API}/jobs/{job['id']}",
+        headers={"JOB-TOKEN": request.json()["token"]},
+        json={
+            "token": request.json()["token"],
+            "state": "failed",
+            "failure_reason": "runner_system_failure",
+            "exit_code": 1,
+        },
+    )
+    assert failed.status_code == 200
+
+    failed_jobs = await client.get(f"{API}/runners/{runner_id}/jobs")
+    assert failed_jobs.status_code == 200
+    assert failed_jobs.json()[0]["status"] == "failed"
+    assert failed_jobs.json()[0]["failure_reason"] == "runner_system_failure"
+
 
 async def test_runner_jobs_pagination_headers(client, test_token):
     register = await client.post(
