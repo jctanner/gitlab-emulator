@@ -1783,6 +1783,42 @@ cache_probe:
     ]
 
 
+def test_parse_gitlab_ci_expands_cache_boolean_metadata():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  CACHE_UNTRACKED: "false"
+  CACHE_UNPROTECT: "false"
+
+cache_false:
+  cache:
+    key: false-flags
+    paths:
+      - .cache/
+    untracked: "$CACHE_UNTRACKED"
+    unprotect: "$CACHE_UNPROTECT"
+  script:
+    - echo cache
+
+cache_true:
+  cache:
+    key: true-flags
+    paths:
+      - .cache/
+    untracked: "true"
+    unprotect: "1"
+  script:
+    - echo cache
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["cache_false"].cache[0]["untracked"] is False
+    assert by_name["cache_false"].cache[0]["unprotect"] is False
+    assert by_name["cache_true"].cache[0]["untracked"] is True
+    assert by_name["cache_true"].cache[0]["unprotect"] is True
+
+
 def test_parse_gitlab_ci_rejects_unsupported_cache_options():
     cases = [
         (

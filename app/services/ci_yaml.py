@@ -486,6 +486,20 @@ def _expand_string_list(value: Any, variables: dict[str, str]) -> list[str]:
     return [_expand_ci_variables(item, variables) for item in _string_list(value)]
 
 
+def _bool_value(value: Any, variables: dict[str, str] | None = None) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        expanded = _expand_ci_variables(value, variables or {}).strip().lower()
+        if expanded in {"", "0", "false", "no", "off", "null", "none"}:
+            return False
+        if expanded in {"1", "true", "yes", "on"}:
+            return True
+    return bool(value)
+
+
 def _cache_key(value: Any, variables: dict[str, str] | None = None) -> str:
     variables = variables or {}
     if value is None:
@@ -526,7 +540,8 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
         if unsupported:
             raise ValueError(f"cache option(s) not supported: {', '.join(unsupported)}")
         paths = _expand_string_list(raw_entry.get("paths"), variables)
-        if not paths and not raw_entry.get("untracked"):
+        untracked = _bool_value(raw_entry.get("untracked", False), variables)
+        if not paths and not untracked:
             continue
         policy = _expand_ci_variables(
             str(raw_entry.get("policy") or "pull-push"),
@@ -543,8 +558,8 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
         entries.append(
             {
                 "key": _cache_key(raw_entry.get("key"), variables),
-                "untracked": bool(raw_entry.get("untracked", False)),
-                "unprotect": bool(raw_entry.get("unprotect", False)),
+                "untracked": untracked,
+                "unprotect": _bool_value(raw_entry.get("unprotect", False), variables),
                 "policy": policy,
                 "paths": paths,
                 "when": when,

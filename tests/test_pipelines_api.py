@@ -1700,6 +1700,8 @@ async def test_cache_variables_expand_in_runner_payload(client, test_token):
     ci_yaml = """
 variables:
   CACHE_POLICY: push
+  CACHE_UNPROTECT: "false"
+  CACHE_UNTRACKED: "false"
 
 cache_probe:
   variables:
@@ -1718,7 +1720,8 @@ cache_probe:
       - "$CACHE_DIR/"
     policy: "$CACHE_POLICY"
     when: "$CACHE_WHEN"
-    unprotect: true
+    untracked: "$CACHE_UNTRACKED"
+    unprotect: "$CACHE_UNPROTECT"
     fallback_keys:
       - "$CI_COMMIT_REF_NAME-fallback"
   script:
@@ -1752,7 +1755,7 @@ cache_probe:
         {
             "key": "main-uv.lock",
             "untracked": False,
-            "unprotect": True,
+            "unprotect": False,
             "policy": "push",
             "paths": [".cache/"],
             "when": "always",

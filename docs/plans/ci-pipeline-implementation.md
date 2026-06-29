@@ -82,10 +82,10 @@ Already working:
   uploaded, inspected, and downloaded through project cache endpoints
 - cache key list, prefix/files/files_commits parsing, and emulator cache
   fallback-key lookup are implemented for API-level cache coverage; cache
-  paths, keys, cache policies, `when`, `unprotect`, and fallback keys expand
-  merged CI variables before reaching the runner payload; unsupported cache
-  entry options and invalid cache policy/when values fail clearly during
-  pipeline creation;
+  paths, keys, cache policies, `when`, `untracked`, `unprotect`, and fallback
+  keys expand merged CI variables before reaching the runner payload, including
+  false-like boolean strings; unsupported cache entry options and invalid cache
+  policy/when values fail clearly during pipeline creation;
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve
