@@ -95,6 +95,9 @@ Already working:
 - artifact metadata and expiry are implemented: runner payloads preserve
   artifact name, paths, exclude, untracked, when, and expire_in values;
   artifact name/path/exclude/expire_in metadata expands merged CI variables;
+  `artifacts:reports` entries expand into separate official-runner upload
+  entries for report artifact types such as `junit`, `dotenv`, and
+  `coverage_report`;
   uploaded artifacts store type/format/expiry metadata and expired artifacts
   return 404
 - job `dependencies` are parsed, persisted, validated against earlier-stage
@@ -479,6 +482,8 @@ Implemented:
 - match tagged jobs only to runners whose tag list covers the job tags
 - honor `run_untagged` for untagged persisted jobs
 - parse and persist job `cache` entries
+- parse `artifacts:reports` metadata and expose report entries in official
+  runner artifact payloads
 - include GitLab Runner-shaped cache entries in persisted runner job payloads
 - store and serve cache archives through project cache endpoints
 - run a MinIO S3-compatible cache service in the server VM compose stack

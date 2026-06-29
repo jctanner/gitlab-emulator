@@ -792,20 +792,39 @@ def _repo_url_with_job_token(repo_url: str, job_token: str) -> str:
 def _artifact_payload(job: PipelineJob) -> list[dict]:
     config = job.artifacts_config or {}
     paths = config.get("paths") or job.artifacts_paths or []
-    if not paths and not config.get("untracked"):
-        return []
-    return [
-        {
-            "name": str(config.get("name") or "artifacts"),
-            "untracked": bool(config.get("untracked", False)),
-            "paths": paths,
-            "exclude": [str(path) for path in config.get("exclude", [])],
-            "when": str(config.get("when") or "on_success"),
-            "artifact_type": str(config.get("artifact_type") or "archive"),
-            "artifact_format": str(config.get("artifact_format") or "zip"),
-            "expire_in": str(config.get("expire_in") or ""),
-        }
-    ]
+    artifacts: list[dict] = []
+    if paths or config.get("untracked"):
+        artifacts.append(
+            {
+                "name": str(config.get("name") or "artifacts"),
+                "untracked": bool(config.get("untracked", False)),
+                "paths": paths,
+                "exclude": [str(path) for path in config.get("exclude", [])],
+                "when": str(config.get("when") or "on_success"),
+                "artifact_type": str(config.get("artifact_type") or "archive"),
+                "artifact_format": str(config.get("artifact_format") or "zip"),
+                "expire_in": str(config.get("expire_in") or ""),
+            }
+        )
+    for report in config.get("reports") or []:
+        if not isinstance(report, dict):
+            continue
+        report_paths = [str(path) for path in report.get("paths") or []]
+        if not report_paths:
+            continue
+        artifacts.append(
+            {
+                "name": str(config.get("name") or "artifacts"),
+                "untracked": False,
+                "paths": report_paths,
+                "exclude": [],
+                "when": str(config.get("when") or "on_success"),
+                "artifact_type": str(report.get("artifact_type") or "archive"),
+                "artifact_format": str(report.get("artifact_format") or "gzip"),
+                "expire_in": str(config.get("expire_in") or ""),
+            }
+        )
+    return artifacts
 
 
 def _cache_payload(entries: list[dict] | None) -> list[dict]:

@@ -128,9 +128,11 @@ harness architecture.
   through MinIO across a two-stage pipeline, and dependency artifact download
   through `needs:artifacts` across a two-stage pipeline.
 - Artifact metadata now preserves runner-facing `name`, `exclude`, `untracked`,
-  `when`, and `expire_in` settings. Uploaded artifact records store file type,
-  file format, size, creation time, and expiration time, and expired artifacts
-  are no longer downloadable.
+  `when`, and `expire_in` settings. YAML `artifacts:reports` entries expand
+  into official-runner upload entries for report artifact types such as
+  `junit`, `dotenv`, and `coverage_report`. Uploaded artifact records store
+  file type, file format, size, creation time, and expiration time, and expired
+  artifacts are no longer downloadable.
 - Cache key parsing supports list-form keys, common `key: { prefix, files }`,
   and `files_commits` forms. Pipeline creation derives `files` keys from the
   referenced files' repository blob state and `files_commits` keys from the

@@ -630,11 +630,12 @@ def _artifact_config(value: Any, variables: dict[str, str] | None = None) -> dic
         return {}
     variables = variables or {}
     paths = _expand_string_list(value.get("paths"), variables)
-    if not paths and not value.get("untracked"):
+    reports = _artifact_reports(value.get("reports"), variables)
+    if not paths and not value.get("untracked") and not reports:
         return {}
     name = _expand_ci_variables(str(value.get("name") or "artifacts"), variables)
     expire_in = _expand_ci_variables(str(value.get("expire_in") or ""), variables)
-    return {
+    config = {
         "name": name,
         "untracked": bool(value.get("untracked", False)),
         "paths": paths,
@@ -644,6 +645,39 @@ def _artifact_config(value: Any, variables: dict[str, str] | None = None) -> dic
         "artifact_type": "archive",
         "artifact_format": "zip",
     }
+    if reports:
+        config["reports"] = reports
+    return config
+
+
+def _artifact_reports(value: Any, variables: dict[str, str]) -> list[dict]:
+    if not isinstance(value, dict):
+        return []
+    reports: list[dict] = []
+    for raw_report_type, raw_config in value.items():
+        report_type = str(raw_report_type)
+        paths: list[str] = []
+        metadata: dict[str, str] = {}
+        if isinstance(raw_config, dict):
+            if raw_config.get("path") is not None:
+                paths.extend(_expand_string_list(raw_config.get("path"), variables))
+            if raw_config.get("paths") is not None:
+                paths.extend(_expand_string_list(raw_config.get("paths"), variables))
+            for key in ("coverage_format", "format"):
+                if raw_config.get(key) is not None:
+                    metadata[key] = _expand_ci_variables(str(raw_config[key]), variables)
+        else:
+            paths.extend(_expand_string_list(raw_config, variables))
+        if not paths:
+            continue
+        report = {
+            "artifact_type": report_type,
+            "artifact_format": "gzip",
+            "paths": paths,
+        }
+        report.update(metadata)
+        reports.append(report)
+    return reports
 
 
 def _ref_values(value: Any) -> list[str]:

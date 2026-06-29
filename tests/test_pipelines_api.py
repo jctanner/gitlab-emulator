@@ -1264,6 +1264,11 @@ variables:
   OUTPUT_DIR: out
   EXCLUDE_DIR: tmp
 
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: never
+
 artifact_metadata:
   image: alpine:3.20
   script:
@@ -1310,6 +1315,101 @@ artifact_metadata:
     assert artifact["exclude"] == ["out/tmp/"]
     assert artifact["when"] == "always"
     assert artifact["expire_in"] == "1 week"
+
+
+async def test_artifact_reports_reach_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: never
+
+report_metadata:
+  image: alpine:3.20
+  script:
+    - pytest
+  artifacts:
+    name: report-bundle
+    paths:
+      - out/archive.txt
+    when: always
+    expire_in: 3 days
+    reports:
+      junit:
+        - reports/unit.xml
+        - reports/integration.xml
+      dotenv: build.env
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura.xml
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add report artifact ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    assert request.json()["artifacts"] == [
+        {
+            "name": "report-bundle",
+            "untracked": False,
+            "paths": ["out/archive.txt"],
+            "exclude": [],
+            "when": "always",
+            "artifact_type": "archive",
+            "artifact_format": "zip",
+            "expire_in": "3 days",
+        },
+        {
+            "name": "report-bundle",
+            "untracked": False,
+            "paths": ["reports/unit.xml", "reports/integration.xml"],
+            "exclude": [],
+            "when": "always",
+            "artifact_type": "junit",
+            "artifact_format": "gzip",
+            "expire_in": "3 days",
+        },
+        {
+            "name": "report-bundle",
+            "untracked": False,
+            "paths": ["build.env"],
+            "exclude": [],
+            "when": "always",
+            "artifact_type": "dotenv",
+            "artifact_format": "gzip",
+            "expire_in": "3 days",
+        },
+        {
+            "name": "report-bundle",
+            "untracked": False,
+            "paths": ["coverage/cobertura.xml"],
+            "exclude": [],
+            "when": "always",
+            "artifact_type": "coverage_report",
+            "artifact_format": "gzip",
+            "expire_in": "3 days",
+        },
+    ]
 
 
 async def test_services_reach_api_and_runner_payload(client, test_token):

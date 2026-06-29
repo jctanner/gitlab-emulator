@@ -200,6 +200,58 @@ artifact_probe:
     }
 
 
+def test_parse_gitlab_ci_preserves_artifact_reports_without_archive_paths():
+    jobs = parse_gitlab_ci(
+        """
+report_job:
+  script:
+    - pytest
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    reports:
+      junit:
+        - reports/unit.xml
+        - reports/integration.xml
+      dotenv: build.env
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura.xml
+""",
+        ref="main",
+    )
+
+    assert jobs[0].artifacts_paths == []
+    assert jobs[0].artifacts == {
+        "name": "artifacts",
+        "untracked": False,
+        "paths": [],
+        "exclude": [],
+        "when": "always",
+        "expire_in": "2 weeks",
+        "artifact_type": "archive",
+        "artifact_format": "zip",
+        "reports": [
+            {
+                "artifact_type": "junit",
+                "artifact_format": "gzip",
+                "paths": ["reports/unit.xml", "reports/integration.xml"],
+            },
+            {
+                "artifact_type": "dotenv",
+                "artifact_format": "gzip",
+                "paths": ["build.env"],
+            },
+            {
+                "artifact_type": "coverage_report",
+                "artifact_format": "gzip",
+                "paths": ["coverage/cobertura.xml"],
+                "coverage_format": "cobertura",
+            },
+        ],
+    }
+
+
 def test_parse_gitlab_ci_preserves_variable_metadata():
     jobs = parse_gitlab_ci(
         """
