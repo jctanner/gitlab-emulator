@@ -104,6 +104,54 @@ async def test_create_pipeline_with_one_job(client, test_token):
     assert jobs.json()[0]["status"] == "pending"
 
 
+async def test_project_ci_lint_validates_yaml_and_returns_jobs(client, test_token):
+    project = await _create_project(client, test_token)
+    lint = await client.post(
+        f"{API}/projects/{project['id']}/ci/lint",
+        headers=auth_headers(test_token),
+        json={
+            "content": """
+stages: [build, test]
+build:
+  stage: build
+  script: echo build
+test:
+  stage: test
+  needs: [build]
+  script: echo test
+""",
+            "include_jobs": True,
+            "include_merged_yaml": True,
+        },
+    )
+    assert lint.status_code == 200
+    payload = lint.json()
+    assert payload["status"] == "valid"
+    assert payload["valid"] is True
+    assert payload["errors"] == []
+    assert [job["name"] for job in payload["jobs"]] == ["build", "test"]
+    assert "build:" in payload["merged_yaml"]
+
+
+async def test_ci_lint_reports_parser_errors(client):
+    lint = await client.post(
+        f"{API}/ci/lint",
+        json={
+            "content": """
+invalid_job:
+  rules:
+    - unknown_key: true
+  script: echo invalid
+"""
+        },
+    )
+    assert lint.status_code == 200
+    payload = lint.json()
+    assert payload["status"] == "invalid"
+    assert payload["valid"] is False
+    assert "rules option(s) not supported: unknown_key" in payload["errors"][0]
+
+
 async def test_pipeline_security_warnings_are_stored_and_diagnosed(client, test_token):
     project = await _create_project(client, test_token)
     settings = await client.put(

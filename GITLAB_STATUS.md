@@ -26,6 +26,9 @@ harness architecture.
   `before_script`, `script`, and `after_script`. Creating a pipeline from a
   project ref now reads the repository CI file, creates one persisted job per
   parsed job, and orders jobs by stage for the runner coordinator.
+- Minimal CI lint endpoints exist at global and project scope. They validate
+  YAML through the same parser and dependency checks used by pipeline creation
+  and can return discovered job metadata.
 - The official runner VM has executed a two-job YAML-defined pipeline through
   the Docker executor. The project pipeline reached `success` and both stored
   traces included the expected scripts.

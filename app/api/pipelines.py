@@ -118,6 +118,14 @@ class CreatePipelineRequest(BaseModel):
     job: PipelineJobDefinition | None = None
 
 
+class CiLintRequest(BaseModel):
+    content: str
+    ref: str = "main"
+    variables: list[PipelineVariable] = Field(default_factory=list)
+    include_jobs: bool = True
+    include_merged_yaml: bool = False
+
+
 class CreatePipelineTriggerRequest(BaseModel):
     description: str = ""
 
@@ -1302,6 +1310,84 @@ def _validate_job_dependencies(parsed_jobs: list[ParsedCiJob]) -> None:
                     f"{names}"
                 ),
             )
+
+
+def _ci_lint_response(
+    body: CiLintRequest,
+    *,
+    default_branch: str = "main",
+) -> dict:
+    variables = _pipeline_context_variable_entries(
+        body.variables,
+        source="api",
+        ref=body.ref,
+        default_branch=default_branch,
+    )
+    try:
+        parsed_jobs = parse_gitlab_ci(
+            body.content,
+            ref=body.ref,
+            variables=_simple_variable_values(variables),
+        )
+        _validate_job_needs(parsed_jobs)
+        _validate_job_dependencies(parsed_jobs)
+    except HTTPException as exc:
+        error = str(exc.detail)
+        return {
+            "status": "invalid",
+            "valid": False,
+            "errors": [error],
+            "warnings": [],
+        }
+    except (ValueError, yaml.YAMLError) as exc:
+        return {
+            "status": "invalid",
+            "valid": False,
+            "errors": [str(exc)],
+            "warnings": [],
+        }
+
+    payload = {
+        "status": "valid",
+        "valid": True,
+        "errors": [],
+        "warnings": [],
+    }
+    if body.include_jobs:
+        payload["jobs"] = [
+            {
+                "name": job.name,
+                "stage": job.stage,
+                "stage_index": job.stage_index,
+                "when": job.when,
+                "allow_failure": job.allow_failure,
+            }
+            for job in parsed_jobs
+        ]
+    if body.include_merged_yaml:
+        payload["merged_yaml"] = body.content
+    return payload
+
+
+@router.post("/ci/lint")
+async def lint_ci_yaml(body: CiLintRequest):
+    return _ci_lint_response(body)
+
+
+@router.post("/projects/{project_ref:path}/ci/lint")
+async def lint_project_ci_yaml(
+    project_ref: str,
+    body: CiLintRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    return _ci_lint_response(
+        body,
+        default_branch=getattr(project, "default_branch", None) or "main",
+    )
 
 
 def _job_json(job: PipelineJob) -> dict:
