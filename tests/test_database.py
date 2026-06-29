@@ -26,5 +26,6 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         assert "interruptible" in columns
         assert "resource_group" in columns
         assert "coverage_regex" in columns
+        assert "coverage" in columns
 
     await test_engine.dispose()

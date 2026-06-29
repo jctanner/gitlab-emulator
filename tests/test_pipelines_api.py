@@ -1002,6 +1002,7 @@ metadata_job:
     assert job["timeout"] == 2700
     assert job["interruptible"] is True
     assert job["resource_group"] == "production"
+    assert job["coverage"] is None
     assert job["coverage_regex"] == "/Coverage: \\d+\\.\\d+%/"
 
     request = await client.post(
@@ -1013,6 +1014,25 @@ metadata_job:
     payload = request.json()
     assert payload["runner_info"]["timeout"] == 2700
     assert payload["steps"][0]["timeout"] == 2700
+
+    trace = await client.patch(
+        f"{API}/jobs/{payload['id']}/trace?debug_trace=false",
+        headers={"JOB-TOKEN": payload["token"], "Content-Range": "0-14"},
+        content=b"Coverage: 87.5%",
+    )
+    assert trace.status_code == 202
+    update = await client.put(
+        f"{API}/jobs/{payload['id']}",
+        json={"token": payload["token"], "state": "success"},
+    )
+    assert update.status_code == 200
+
+    completed_job_resp = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{payload['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert completed_job_resp.status_code == 200
+    assert completed_job_resp.json()["coverage"] == "87.5"
 
 
 async def test_cache_variables_expand_in_runner_payload(client, test_token):

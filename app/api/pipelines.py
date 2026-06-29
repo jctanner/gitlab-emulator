@@ -674,6 +674,7 @@ def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
     job.exit_code = None
     job.trace_checksum = None
     job.trace_size = 0
+    job.coverage = None
     job.queued_at = now
     if job.status == "scheduled":
         job.scheduled_at = now.replace(tzinfo=None)
@@ -780,7 +781,7 @@ def _job_json(job: PipelineJob) -> dict:
         "resource_group": job.resource_group,
         "ref": job.pipeline.ref if job.pipeline else None,
         "tag": False,
-        "coverage": None,
+        "coverage": job.coverage,
         "coverage_regex": job.coverage_regex,
         "allow_failure": bool(job.allow_failure),
         "created_at": _fmt_dt(job.created_at),

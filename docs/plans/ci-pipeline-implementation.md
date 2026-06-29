@@ -76,7 +76,8 @@ Already working:
 - common job runtime metadata is parsed, persisted, and exposed in job API
   payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
   `coverage`; runner payloads use the parsed job timeout for runner and step
-  timeout fields
+  timeout fields, and job traces are scanned with the configured coverage regex
+  to populate the job API `coverage` field
 - CI `include` support is implemented for local files, nested local files,
   `include:project`, controlled `include:remote`, and built-in templates:
   pipeline creation resolves included files before parsing, supports
@@ -337,8 +338,8 @@ Still needed:
 
 - remaining long-tail `rules` / `only` / `except` edge cases
 - implement deeper execution semantics for parsed runtime metadata, including
-  automatic retry attempts, interruptible cancellation behavior, resource-group
-  serialization, and trace coverage extraction
+  automatic retry attempts, interruptible cancellation behavior, and
+  resource-group serialization
 
 ## Slice 7: Repository Checkout
 

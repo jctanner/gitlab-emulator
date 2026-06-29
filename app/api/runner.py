@@ -534,6 +534,50 @@ def _redact_trace_text(text: str, job: PipelineJob) -> str:
     return redact_trace_text(text, job.variables or {})
 
 
+def _coverage_pattern(raw_pattern: str) -> tuple[str, int]:
+    pattern = raw_pattern.strip()
+    flags = 0
+    if len(pattern) >= 2 and pattern.startswith("/"):
+        last_slash = pattern.rfind("/")
+        if last_slash > 0:
+            raw_flags = pattern[last_slash + 1 :]
+            unsupported = set(raw_flags) - {"i", "m", "s", "x"}
+            if unsupported:
+                return pattern, flags
+            pattern_body = pattern[1:last_slash]
+            flags_by_name = {
+                "i": re.IGNORECASE,
+                "m": re.MULTILINE,
+                "s": re.DOTALL,
+                "x": re.VERBOSE,
+            }
+            for flag in raw_flags:
+                flags |= flags_by_name[flag]
+            pattern = pattern_body
+    return pattern, flags
+
+
+def _extract_coverage_from_trace(job: PipelineJob) -> str | None:
+    if not job.coverage_regex or not job.trace or not job.trace.content:
+        return None
+    pattern, flags = _coverage_pattern(job.coverage_regex)
+    try:
+        match = re.search(pattern, job.trace.content, flags)
+    except re.error:
+        return None
+    if match is None:
+        return None
+    candidate = match.group(1) if match.groups() else match.group(0)
+    number = re.search(r"\d+(?:\.\d+)?", candidate)
+    return number.group(0) if number else None
+
+
+def _refresh_job_coverage(job: PipelineJob) -> None:
+    coverage = _extract_coverage_from_trace(job)
+    if coverage is not None:
+        job.coverage = coverage
+
+
 def _repo_url_with_job_token(repo_url: str, job_token: str) -> str:
     parts = urlsplit(repo_url)
     credentials = f"gitlab-ci-token:{quote(job_token, safe='')}"
@@ -1164,7 +1208,10 @@ async def patch_job_trace(
     """Append trace bytes from an official runner."""
     result = await db.execute(
         select(PipelineJob)
-        .options(selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs))
+        .options(
+            selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs),
+            selectinload(PipelineJob.trace),
+        )
         .where(PipelineJob.id == job_id)
     )
     persisted_job = result.scalar_one_or_none()
@@ -1197,6 +1244,7 @@ async def patch_job_trace(
         )
         trace.size = len(trace.content.encode())
         persisted_job.trace_size = trace.size
+        _refresh_job_coverage(persisted_job)
         await db.commit()
         await db.refresh(persisted_job)
         return Response(
@@ -1217,7 +1265,10 @@ async def update_job(
     """Accept final and intermediate job state updates from a runner."""
     result = await db.execute(
         select(PipelineJob)
-        .options(selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs))
+        .options(
+            selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs),
+            selectinload(PipelineJob.trace),
+        )
         .where(PipelineJob.id == job_id)
     )
     persisted_job = result.scalar_one_or_none()
@@ -1238,6 +1289,7 @@ async def update_job(
                 body.output.get("bytesize") or persisted_job.trace_size
             )
         if persisted_job.status in {"success", "failed"}:
+            _refresh_job_coverage(persisted_job)
             persisted_job.finished_at = datetime.now(timezone.utc)
         await _derive_pipeline_status(persisted_job.pipeline, db)
         await db.commit()
