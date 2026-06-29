@@ -67,7 +67,9 @@ and cache APIs for controlled integration testing.
 - merge request event pipelines can be created through
   `POST /projects/:id/merge_requests/:iid/pipelines`; they use
   `source=merge_request_event`, evaluate MR-specific rules, and expose common
-  `CI_MERGE_REQUEST_*` variables to runner payloads
+  `CI_MERGE_REQUEST_*` variables to runner payloads, including IID, ref path,
+  source/target branch names and SHAs, source/target project IDs and paths,
+  title, description, and labels
 - runner tag matching and `run_untagged`
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing and emulator cache fallback-key lookup

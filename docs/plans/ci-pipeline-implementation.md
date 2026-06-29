@@ -468,7 +468,9 @@ Implemented:
 - create `source=merge_request_event` pipelines when merge requests are opened
   or branch-target updates occur and the MR head `.gitlab-ci.yml` workflow
   permits the event; MR API payloads expose the latest matching pipeline as
-  `pipeline` and `head_pipeline`
+  `pipeline` and `head_pipeline`, and runner payloads include common
+  `CI_MERGE_REQUEST_*` variables for IID, ref path, source/target branches and
+  projects, title, description, and labels
 - parse and persist job `tags`
 - match tagged jobs only to runners whose tag list covers the job tags
 - honor `run_untagged` for untagged persisted jobs

@@ -213,16 +213,50 @@ def _merge_request_pipeline_variables(
 ) -> list[PipelineVariable]:
     issue = merge_request.issue
     iid = str(issue.number)
+    labels = ",".join(label.name for label in (issue.labels or []))
     return [
         PipelineVariable(key="CI_MERGE_REQUEST_ID", value=str(merge_request.id)),
         PipelineVariable(key="CI_MERGE_REQUEST_IID", value=iid),
         PipelineVariable(key="CI_MERGE_REQUEST_PROJECT_ID", value=str(project.id)),
-        PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", value=merge_request.head_ref),
-        PipelineVariable(key="CI_MERGE_REQUEST_TARGET_BRANCH_NAME", value=merge_request.base_ref),
-        PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_BRANCH_SHA", value=merge_request.head_sha),
-        PipelineVariable(key="CI_MERGE_REQUEST_TARGET_BRANCH_SHA", value=merge_request.base_sha),
-        PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_PROJECT_PATH", value=project.full_name),
-        PipelineVariable(key="CI_MERGE_REQUEST_TARGET_PROJECT_PATH", value=project.full_name),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_SOURCE_PROJECT_ID",
+            value=str(project.id),
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_TARGET_PROJECT_ID",
+            value=str(project.id),
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_REF_PATH",
+            value=f"refs/merge-requests/{iid}/head",
+        ),
+        PipelineVariable(key="CI_MERGE_REQUEST_TITLE", value=issue.title),
+        PipelineVariable(key="CI_MERGE_REQUEST_DESCRIPTION", value=issue.body or ""),
+        PipelineVariable(key="CI_MERGE_REQUEST_LABELS", value=labels),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_SOURCE_BRANCH_NAME",
+            value=merge_request.head_ref,
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_TARGET_BRANCH_NAME",
+            value=merge_request.base_ref,
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_SOURCE_BRANCH_SHA",
+            value=merge_request.head_sha,
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_TARGET_BRANCH_SHA",
+            value=merge_request.base_sha,
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_SOURCE_PROJECT_PATH",
+            value=project.full_name,
+        ),
+        PipelineVariable(
+            key="CI_MERGE_REQUEST_TARGET_PROJECT_PATH",
+            value=project.full_name,
+        ),
     ]
 
 
