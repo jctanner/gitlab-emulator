@@ -3785,6 +3785,41 @@ review_job:
     assert detail.json()["name"] == "production"
     assert detail.json()["last_deployment"]["deployable"]["name"] == "production_job"
 
+    environment_deployments = await client.get(
+        f"{API}/projects/{project['id']}/environments/{by_name['production']['id']}/deployments",
+        headers=auth_headers(test_token),
+    )
+    assert environment_deployments.status_code == 200
+    assert [
+        deployment["environment"]["name"]
+        for deployment in environment_deployments.json()
+    ] == ["production"]
+
+    stop = await client.post(
+        f"{API}/projects/{project['id']}/environments/{by_name['production']['id']}/stop",
+        headers=auth_headers(test_token),
+    )
+    assert stop.status_code == 200
+    assert stop.json()["state"] == "stopped"
+    assert stop.json()["last_deployment"]["deployable"]["environment_action"] == "stop"
+
+    stopped_detail = await client.get(
+        f"{API}/projects/{project['id']}/environments/{by_name['production']['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert stopped_detail.status_code == 200
+    assert stopped_detail.json()["state"] == "stopped"
+    assert (
+        stopped_detail.json()["last_deployment"]["deployable"]["environment_action"]
+        == "stop"
+    )
+
+    missing_stop = await client.post(
+        f"{API}/projects/{project['id']}/environments/999999999/stop",
+        headers=auth_headers(test_token),
+    )
+    assert missing_stop.status_code == 404
+
     missing = await client.get(
         f"{API}/projects/{project['id']}/environments/999999999",
         headers=auth_headers(test_token),
@@ -3803,6 +3838,9 @@ review_job:
     assert sorted(deployments_by_name) == ["production", "review/main", "staging"]
     assert deployments_by_name["production"]["deployable"]["name"] == (
         "production_job"
+    )
+    assert deployments_by_name["production"]["deployable"]["environment_action"] == (
+        "stop"
     )
     assert deployments_by_name["staging"]["environment"]["external_url"] == (
         "https://staging.example.test"

@@ -141,10 +141,12 @@ and cache APIs for controlled integration testing.
   and injected into downstream runner job variables
 - pipeline API payloads expose aggregate coverage from completed jobs that
   matched their configured coverage regex
-- project environment list/detail APIs derive GitLab-shaped environments and latest
-  deployment metadata from CI jobs with persisted environment metadata
-- project deployment list/detail APIs expose GitLab-shaped deployment records
-  derived from CI jobs with environment metadata
+- project environment list/detail/stop APIs derive GitLab-shaped environments
+  and latest deployment metadata from CI jobs with persisted environment
+  metadata
+- project environment deployment and project deployment list/detail APIs expose
+  GitLab-shaped deployment records derived from CI jobs with environment
+  metadata
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

@@ -111,9 +111,10 @@ Already working:
   payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
   `coverage`; pipeline API payloads expose aggregate coverage from completed
   jobs; job `environment` names, URLs, and actions are persisted, exposed in job
-  APIs, used to derive project environment and deployment list/detail payloads,
-  and sent to runner payloads as `CI_ENVIRONMENT_NAME`, `CI_ENVIRONMENT_URL`, and
-  `CI_ENVIRONMENT_ACTION`; `default:` inheritance
+  APIs, used to derive project environment list/detail/stop and project or
+  environment deployment list/detail payloads, and sent to runner payloads as
+  `CI_ENVIRONMENT_NAME`, `CI_ENVIRONMENT_URL`, and `CI_ENVIRONMENT_ACTION`;
+  `default:` inheritance
   applies to `retry`, `timeout`, and `interruptible`; job hooks for
   `pre_get_sources_script` and `post_get_sources_script` are parsed,
   variable-expanded, persisted, and exposed in official-runner `hooks`
