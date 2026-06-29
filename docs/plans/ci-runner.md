@@ -51,6 +51,7 @@ and cache APIs for controlled integration testing.
   cycle guards
 - controlled `include:remote` entries resolved from allowlisted HTTP(S) hosts
 - built-in GitLab-style template includes for local testing
+- `include:rules` filtering for `if`, `exists`, `changes`, and `when: never`
 - local `extends` with multi-parent merge, `default:` inheritance,
   including runtime defaults for `retry`, `timeout`, and `interruptible`,
   `inherit: default`, `inherit: variables`, and depth/error guards

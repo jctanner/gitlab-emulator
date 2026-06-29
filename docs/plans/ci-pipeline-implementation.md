@@ -114,7 +114,8 @@ Already working:
 - CI `include` support is implemented for local files, nested local files,
   `include:project`, controlled `include:remote`, and built-in templates:
   pipeline creation resolves included files before parsing, supports
-  list-valued local/project/remote/template entries, guards include
+  list-valued local/project/remote/template entries, applies `include:rules`
+  filters for `if`, `exists`, `changes`, and `when: never`, guards include
   depth/cycles, and supports included hidden jobs used by `extends`
 - CI `extends` support now covers local hidden-template inheritance,
   multi-parent reverse deep merge for common job keys, `default:` inheritance,

@@ -3842,6 +3842,77 @@ root_job:
     } in payload["variables"]
 
 
+async def test_gitlab_ci_include_rules_filter_local_includes(client, test_token):
+    project = await _create_project(client, test_token)
+    include_files = {
+        "enabled.yml": "enabled_job:\n  script:\n    - echo enabled\n",
+        "disabled.yml": "disabled_job:\n  script:\n    - echo disabled\n",
+        "exists.yml": "exists_job:\n  script:\n    - echo exists\n",
+        "marker.txt": "include marker\n",
+    }
+    for path, content in include_files.items():
+        write = await client.put(
+            f"{API}/repos/testuser/ci-repo/contents/{quote(path, safe='')}",
+            headers=auth_headers(test_token),
+            json={
+                "message": f"add {path}",
+                "content": base64.b64encode(content.encode()).decode(),
+                "branch": "main",
+            },
+        )
+        assert write.status_code in {200, 201}
+
+    ci_yaml = """
+include:
+  - local: enabled.yml
+    rules:
+      - if: '$CI_COMMIT_BRANCH == "main"'
+  - local: disabled.yml
+    rules:
+      - if: '$CI_COMMIT_BRANCH == "never"'
+  - local: missing.yml
+    rules:
+      - when: never
+  - local: exists.yml
+    rules:
+      - exists:
+          - marker.txt
+
+root_job:
+  script:
+    - echo root
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add ci include rules",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+    pipeline = resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == [
+        "enabled_job",
+        "exists_job",
+        "root_job",
+    ]
+
+
 async def test_gitlab_ci_local_include_root_config_wins(client, test_token):
     project = await _create_project(client, test_token)
     include_yaml = """

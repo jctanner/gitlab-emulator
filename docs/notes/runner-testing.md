@@ -493,8 +493,8 @@ Missing behavior for fuller GitLab CI execution:
   current same-pipeline validation, same-pipeline `needs:parallel:matrix`
   expansion, and stored-artifact `needs:project` / `needs:pipeline:job`,
   plus remaining long-tail `rules`, `extends`, and `include` semantics beyond
-  the current local/project/remote/template include coverage, including
-  list-valued remote/template entries
+  the current local/project/remote/template include coverage, list-valued
+  include entries, and `include:rules`
 - remaining richer cache options and edge cases beyond the current MinIO/S3
   validation path
 - pipeline/job UI or richer API state transitions

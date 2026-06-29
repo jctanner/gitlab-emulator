@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import os
 import secrets
 import ssl
@@ -442,23 +443,33 @@ def _include_items(value: Any) -> list[dict]:
             items.append({"kind": "local", "file": item})
         elif isinstance(item, dict) and item.get("local"):
             for file_path in _include_values(item["local"]):
-                items.append({"kind": "local", "file": file_path})
+                include_item = {"kind": "local", "file": file_path}
+                if "rules" in item:
+                    include_item["rules"] = item["rules"]
+                items.append(include_item)
         elif isinstance(item, dict) and item.get("project") and item.get("file"):
             for file_path in _include_values(item["file"]):
-                items.append(
-                    {
-                        "kind": "project",
-                        "project": str(item["project"]),
-                        "file": file_path,
-                        "ref": str(item.get("ref") or "main"),
-                    }
-                )
+                include_item = {
+                    "kind": "project",
+                    "project": str(item["project"]),
+                    "file": file_path,
+                    "ref": str(item.get("ref") or "main"),
+                }
+                if "rules" in item:
+                    include_item["rules"] = item["rules"]
+                items.append(include_item)
         elif isinstance(item, dict) and item.get("remote"):
             for remote_url in _include_values(item["remote"]):
-                items.append({"kind": "remote", "remote": remote_url})
+                include_item = {"kind": "remote", "remote": remote_url}
+                if "rules" in item:
+                    include_item["rules"] = item["rules"]
+                items.append(include_item)
         elif isinstance(item, dict) and item.get("template"):
             for template_name in _include_values(item["template"]):
-                items.append({"kind": "template", "template": template_name})
+                include_item = {"kind": "template", "template": template_name}
+                if "rules" in item:
+                    include_item["rules"] = item["rules"]
+                items.append(include_item)
         elif isinstance(item, dict):
             raise HTTPException(
                 status_code=400,
@@ -494,6 +505,153 @@ def _remote_include_allowed(url: str) -> bool:
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return False
     return parsed.hostname.lower() in _allowed_remote_include_hosts()
+
+
+def _split_top_level_ci_expression(expression: str, operator: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    index = 0
+    while index < len(expression):
+        char = expression[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and expression.startswith(operator, index):
+            parts.append(expression[start:index].strip())
+            index += len(operator)
+            start = index
+            continue
+        index += 1
+    parts.append(expression[start:].strip())
+    return parts
+
+
+def _strip_ci_expression_parentheses(expression: str) -> str:
+    expression = expression.strip()
+    while expression.startswith("(") and expression.endswith(")"):
+        depth = 0
+        wraps_entire_expression = True
+        for index, char in enumerate(expression):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0 and index != len(expression) - 1:
+                    wraps_entire_expression = False
+                    break
+        if not wraps_entire_expression:
+            break
+        expression = expression[1:-1].strip()
+    return expression
+
+
+def _ci_expression_atom_matches(expression: str, variables: dict[str, str]) -> bool:
+    expression = expression.strip()
+    if expression.startswith("!"):
+        return not _ci_expression_matches(expression[1:].strip(), variables)
+    if "==" in expression:
+        left, right = expression.split("==", 1)
+        return _ci_expression_value(left, variables) == _ci_expression_value(
+            right, variables
+        )
+    if "!=" in expression:
+        left, right = expression.split("!=", 1)
+        return _ci_expression_value(left, variables) != _ci_expression_value(
+            right, variables
+        )
+    return bool(_ci_expression_value(expression, variables))
+
+
+def _ci_expression_value(value: str, variables: dict[str, str]) -> str:
+    value = value.strip()
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        return value[1:-1]
+    if value.startswith("$"):
+        return variables.get(value[1:].strip("{}"), "")
+    if value == "null":
+        return ""
+    return value
+
+
+def _ci_expression_matches(expression: str, variables: dict[str, str]) -> bool:
+    expression = _strip_ci_expression_parentheses(expression)
+    if not expression:
+        return False
+    or_terms = _split_top_level_ci_expression(expression, "||")
+    if len(or_terms) > 1:
+        return any(_ci_expression_matches(term, variables) for term in or_terms)
+    and_terms = _split_top_level_ci_expression(expression, "&&")
+    if len(and_terms) > 1:
+        return all(_ci_expression_matches(term, variables) for term in and_terms)
+    return _ci_expression_atom_matches(expression, variables)
+
+
+def _ci_path_matches(pattern: str, paths: set[str]) -> bool:
+    normalized = pattern.strip().lstrip("/")
+    if not normalized:
+        return False
+    if normalized.endswith("/"):
+        return any(path.startswith(normalized) for path in paths)
+    return any(
+        path == normalized
+        or path.startswith(f"{normalized}/")
+        or fnmatch.fnmatch(path, normalized)
+        for path in paths
+    )
+
+
+def _include_rule_path_patterns(value: Any, variables: dict[str, str]) -> list[str]:
+    if isinstance(value, dict):
+        return [
+            _expand_ci_rule_value(str(path), variables)
+            for path in _include_values(value.get("paths"))
+        ]
+    return [_expand_ci_rule_value(str(path), variables) for path in _include_values(value)]
+
+
+def _include_rule_paths_match(
+    value: Any,
+    paths: set[str],
+    variables: dict[str, str],
+) -> bool:
+    patterns = _include_rule_path_patterns(value, variables)
+    return bool(patterns) and any(_ci_path_matches(pattern, paths) for pattern in patterns)
+
+
+def _include_rules_match(
+    include_item: dict,
+    variables: dict[str, str],
+    existing_paths: set[str],
+    changed_paths: set[str],
+) -> bool:
+    rules = include_item.get("rules")
+    if rules is None:
+        return True
+    if not isinstance(rules, list):
+        raise HTTPException(status_code=400, detail="CI include rules must be a list")
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        if "if" in rule and not _ci_expression_matches(str(rule["if"]), variables):
+            continue
+        if "exists" in rule and not _include_rule_paths_match(
+            rule.get("exists"),
+            existing_paths,
+            variables,
+        ):
+            continue
+        if "changes" in rule and not _include_rule_paths_match(
+            rule.get("changes"),
+            changed_paths,
+            variables,
+        ):
+            continue
+        return str(rule.get("when") or "always") != "never"
+    return False
 
 
 def _fetch_remote_include_sync(url: str) -> str:
@@ -538,6 +696,9 @@ async def _read_ci_config_with_includes(
     ref: str,
     path: str,
     db: DbSession,
+    variables: dict[str, str] | None = None,
+    existing_paths: set[str] | None = None,
+    changed_paths: set[str] | None = None,
     depth: int = 0,
     seen: set[tuple[str, str, str, str]] | None = None,
 ) -> dict:
@@ -568,6 +729,9 @@ async def _read_ci_config_with_includes(
             project,
             ref,
             db,
+            variables or {},
+            existing_paths or set(),
+            changed_paths or set(),
             depth,
             seen,
         )
@@ -581,6 +745,9 @@ async def _read_ci_config_content_with_includes(
     project: Project,
     ref: str,
     db: DbSession,
+    variables: dict[str, str],
+    existing_paths: set[str],
+    changed_paths: set[str],
     depth: int,
     seen: set[tuple[str, str, str, str]],
 ) -> dict:
@@ -589,11 +756,21 @@ async def _read_ci_config_content_with_includes(
     root = _ci_mapping(content, path)
     merged: dict = {}
     for include_item in _include_items(root.get("include")):
+        if not _include_rules_match(
+            include_item,
+            variables,
+            existing_paths,
+            changed_paths,
+        ):
+            continue
         include_config = await _read_include_config(
             include_item,
             project,
             ref,
             db,
+            variables,
+            existing_paths,
+            changed_paths,
             depth + 1,
             seen,
         )
@@ -606,6 +783,9 @@ async def _read_include_config(
     project: Project,
     ref: str,
     db: DbSession,
+    variables: dict[str, str],
+    existing_paths: set[str],
+    changed_paths: set[str],
     depth: int,
     seen: set[tuple[str, str, str, str]],
 ) -> dict:
@@ -620,6 +800,9 @@ async def _read_include_config(
             include_ref,
             include_item["file"],
             db,
+            variables,
+            existing_paths,
+            changed_paths,
             depth,
             seen,
         )
@@ -638,6 +821,9 @@ async def _read_include_config(
                 project,
                 ref,
                 db,
+                variables,
+                existing_paths,
+                changed_paths,
                 depth,
                 seen,
             )
@@ -658,6 +844,9 @@ async def _read_include_config(
                 project,
                 ref,
                 db,
+                variables,
+                existing_paths,
+                changed_paths,
                 depth,
                 seen,
             )
@@ -667,13 +856,21 @@ async def _read_include_config(
 
 
 async def _read_gitlab_ci_with_includes(
-    project: Project, ref: str, db: DbSession
+    project: Project,
+    ref: str,
+    db: DbSession,
+    variables: dict[str, str] | None = None,
+    existing_paths: set[str] | None = None,
+    changed_paths: set[str] | None = None,
 ) -> str:
     merged = await _read_ci_config_with_includes(
         project,
         ref,
         ".gitlab-ci.yml",
         db,
+        variables or {},
+        existing_paths or set(),
+        changed_paths or set(),
     )
     return yaml.safe_dump(merged, sort_keys=False)
 
@@ -1201,9 +1398,6 @@ async def _create_pipeline(
                 ".gitlab-ci.yml",
                 ".gitlab-ci.yml not found",
             )
-            merged_ci_content = await _read_gitlab_ci_with_includes(
-                project, body.ref, db
-            )
             rule_variables = _simple_variable_values(
                 {
                     **rule_project_variable_entries,
@@ -1212,6 +1406,14 @@ async def _create_pipeline(
             )
             existing_paths = await _repo_paths_at_ref(project, body.ref)
             changed_paths = await _changed_paths_at_sha(project, sha)
+            merged_ci_content = await _read_gitlab_ci_with_includes(
+                project,
+                body.ref,
+                db,
+                variables=rule_variables,
+                existing_paths=existing_paths,
+                changed_paths=changed_paths,
+            )
             existing_path_sets = await _rules_exists_path_sets(
                 merged_ci_content,
                 project,

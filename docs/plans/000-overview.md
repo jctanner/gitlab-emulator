@@ -89,8 +89,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   extraction from traces, interruptible cancellation when a newer same-ref
   pipeline is created, common service container definitions that reach
   official-runner-shaped payloads, deeper `extends` semantics, nested local `include`,
-  `include:project`, list-valued controlled `include:remote`, and list-valued
-  built-in template includes.
+  `include:project`, list-valued controlled `include:remote`, list-valued
+  built-in template includes, and `include:rules` filtering.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in
