@@ -39,6 +39,9 @@ GitLab-shaped server version metadata for CLI compatibility probes, and
 `/api/v4/application/settings` exposes a read-only admin-gated MVP application
 settings payload for instance compatibility checks, and
 `/api/v4/application/statistics` exposes admin-gated MVP instance counts.
+GitLab-shaped users now cover current user, get-by-username-or-id, and list
+with search, username filtering, pagination headers, and common GitLab user
+profile fields.
 GitLab-shaped commit status create/list routes are backed by the existing
 commit status storage and covered by local tests plus client-VM `glab api`
 smoke checks.

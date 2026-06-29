@@ -118,6 +118,44 @@ async def test_get_public_user_by_numeric_id(client, test_user):
     data = resp.json()
     assert data["id"] == test_user.id
     assert data["username"] == "testuser"
+    assert data["public_email"] == "test@test.com"
+    assert data["website_url"] == ""
+    assert data["bot"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_users_supports_gitlab_search_and_pagination(client, db_session):
+    """GET /users supports GitLab-shaped search, username, and pagination."""
+    from app.models.user import User
+    from app.services.auth_service import hash_password
+
+    for login, name in (
+        ("alice-search", "Alice Search"),
+        ("bob-search", "Bob Search"),
+    ):
+        db_session.add(
+            User(
+                login=login,
+                hashed_password=hash_password("password"),
+                name=name,
+                email=f"{login}@test.com",
+            )
+        )
+    await db_session.commit()
+
+    search = await client.get(f"{API}/users?search=search&per_page=1&page=1")
+    assert search.status_code == 200
+    assert search.headers["X-Total"] == "2"
+    assert search.headers["X-Total-Pages"] == "2"
+    assert search.headers["X-Next-Page"] == "2"
+    assert "rel=\"next\"" in search.headers["Link"]
+    assert len(search.json()) == 1
+    assert search.json()[0]["username"] == "alice-search"
+
+    username = await client.get(f"{API}/users?username=bob-search")
+    assert username.status_code == 200
+    assert [user["username"] for user in username.json()] == ["bob-search"]
+    assert username.json()[0]["public_email"] == "bob-search@test.com"
 
 
 @pytest.mark.asyncio

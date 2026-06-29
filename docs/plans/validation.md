@@ -155,6 +155,7 @@ Current client smoke coverage:
 
 - `glab auth status`
 - `glab api user`
+- `glab api` users search
 - `glab api` project get/list surfaces
 - `glab api` repository files, commits, branches, tags, merge requests,
   pipelines, and jobs

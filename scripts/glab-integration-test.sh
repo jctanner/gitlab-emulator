@@ -154,6 +154,10 @@ fi
 api_user=$(glab_api user)
 assert_json_field "glab api user" "$api_user" '.username == "admin" or .login == "admin"'
 
+users_search=$(glab_api "users?search=admin&per_page=1")
+assert_json_field "glab api users search" "$users_search" \
+    'length >= 1 and .[0].username == "admin" and .[0].public_email != null'
+
 section "Project API"
 
 project_json=$(curl -sk -X POST \

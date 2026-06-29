@@ -260,7 +260,8 @@ and tests with GitLab behavior.
 
 Target resource areas:
 
-- users
+- users: MVP current user/get/list with GitLab-shaped fields, search,
+  username filtering, and pagination implemented
 - groups: MVP create/list/get/list-projects, list-subgroups,
   list-descendant-groups, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/

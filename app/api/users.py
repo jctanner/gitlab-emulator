@@ -3,10 +3,12 @@
 import hashlib
 import secrets
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, HTTPException, Query, Request
+from sqlalchemy import func as sa_func
+from sqlalchemy import or_, select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession
+from app.api.pagination import paginated_json
 from app.config import settings
 from app.models.user import User
 from app.models.token import PersonalAccessToken
@@ -55,18 +57,36 @@ async def get_user(username: str, db: DbSession):
 async def list_users(
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
     since: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
+    search: str | None = Query(None),
+    username: str | None = Query(None),
 ):
     """List all users (public, or admin-only in private installs)."""
-    result = await db.execute(
-        select(User)
-        .where(User.id > since)
-        .order_by(User.id)
-        .limit(per_page)
+    query = select(User).where(User.id > since)
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(or_(User.login.ilike(pattern), User.name.ilike(pattern)))
+    if username:
+        query = query.where(User.login == username)
+    query = query.order_by(User.id)
+    total = (
+        await db.execute(select(sa_func.count()).select_from(query.subquery()))
+    ).scalar() or 0
+    result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
+    users = [
+        UserResponse.from_db(user, BASE).model_dump()
+        for user in result.scalars().all()
+    ]
+    return paginated_json(
+        users,
+        request,
+        page,
+        per_page,
+        total,
     )
-    users = result.scalars().all()
-    return [UserResponse.from_db(u, BASE) for u in users]
 
 
 # ---- admin helpers (not part of real GitLab API) ---------------------------
