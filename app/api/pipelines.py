@@ -773,6 +773,7 @@ def _job_json(job: PipelineJob) -> dict:
         "name": job.name,
         "needs": _need_names(job.needs),
         "tag_list": job.tags or [],
+        "services": job.services or [],
         "cache": job.cache or [],
         "when": job.when or "on_success",
         "retry": job.retry_config or {},
@@ -1083,6 +1084,7 @@ async def _create_pipeline(
             if parsed_job.needs is not None
             else None,
             tags=parsed_job.tags,
+            services=parsed_job.services,
             cache=parsed_job.cache,
             artifacts_paths=parsed_job.artifacts_paths,
             artifacts_config=parsed_job.artifacts,

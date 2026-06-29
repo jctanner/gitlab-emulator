@@ -242,6 +242,7 @@ class PipelineJob(Base):
     variables: Mapped[dict] = mapped_column(JSON, default=dict)
     needs: Mapped[list] = mapped_column(JSON, default=list)
     tags: Mapped[list] = mapped_column(JSON, default=list)
+    services: Mapped[list] = mapped_column(JSON, default=list)
     cache: Mapped[list] = mapped_column(JSON, default=list)
     artifacts_paths: Mapped[list] = mapped_column(JSON, default=list)
     artifacts_config: Mapped[dict] = mapped_column(JSON, default=dict)

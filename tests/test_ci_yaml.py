@@ -353,12 +353,6 @@ matrix_job:
   parallel: 3
   script: echo matrix
 """,
-        "services": """
-db_job:
-  services:
-    - postgres:16
-  script: echo db
-""",
     }.items():
         try:
             parse_gitlab_ci(content)
@@ -368,6 +362,92 @@ db_job:
             assert keyword in message
         else:
             raise AssertionError("expected ValueError")
+
+
+def test_parse_gitlab_ci_preserves_service_containers():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  POSTGRES_VERSION: "16"
+
+default:
+  services:
+    - name: redis:7
+      alias: cache
+
+default_service_job:
+  script:
+    - echo default services
+
+service_job:
+  services:
+    - "postgres:$POSTGRES_VERSION"
+    - name: mysql:8
+      alias: db mysql
+      command: ["--default-authentication-plugin=mysql_native_password"]
+      entrypoint:
+        - docker-entrypoint.sh
+      pull_policy: [if-not-present]
+      variables:
+        MYSQL_DATABASE: app
+        MYSQL_ROOT_PASSWORD: root
+  script:
+    - echo services
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["default_service_job"].services == [
+        {"name": "redis:7", "alias": "cache"}
+    ]
+    assert by_name["service_job"].services == [
+        {"name": "postgres:16"},
+        {
+            "name": "mysql:8",
+            "alias": "db mysql",
+            "command": ["--default-authentication-plugin=mysql_native_password"],
+            "entrypoint": ["docker-entrypoint.sh"],
+            "pull_policy": ["if-not-present"],
+            "variables": [
+                {
+                    "key": "MYSQL_DATABASE",
+                    "value": "app",
+                    "public": True,
+                    "file": False,
+                    "masked": False,
+                    "raw": False,
+                },
+                {
+                    "key": "MYSQL_ROOT_PASSWORD",
+                    "value": "root",
+                    "public": True,
+                    "file": False,
+                    "masked": False,
+                    "raw": False,
+                },
+            ],
+        },
+    ]
+
+
+def test_parse_gitlab_ci_rejects_unsupported_service_options():
+    try:
+        parse_gitlab_ci(
+            """
+service_job:
+  services:
+    - name: postgres:16
+      ports: [5432]
+  script:
+    - echo services
+"""
+        )
+    except ValueError as exc:
+        message = str(exc)
+        assert "services option(s) not supported" in message
+        assert "ports" in message
+    else:
+        raise AssertionError("expected ValueError")
 
 
 def test_parse_gitlab_ci_applies_common_ref_filters():

@@ -32,13 +32,21 @@ DEFAULT_INHERITABLE_KEYS = {
     "before_script",
     "cache",
     "image",
+    "services",
     "tags",
 }
 MAX_EXTENDS_DEPTH = 11
 UNSUPPORTED_JOB_KEYS = {
     "parallel": "parallel job expansion is not supported",
-    "services": "service containers are not supported",
     "trigger": "bridge/downstream pipeline trigger jobs are not supported",
+}
+SUPPORTED_SERVICE_ENTRY_KEYS = {
+    "name",
+    "alias",
+    "command",
+    "entrypoint",
+    "variables",
+    "pull_policy",
 }
 SUPPORTED_CACHE_ENTRY_KEYS = {
     "key",
@@ -72,6 +80,7 @@ class ParsedCiJob:
     variable_metadata: dict[str, dict] = field(default_factory=dict)
     needs: list[dict] | None = None
     tags: list[str] = field(default_factory=list)
+    services: list[dict] = field(default_factory=list)
     cache: list[dict] = field(default_factory=list)
     artifacts_paths: list[str] = field(default_factory=list)
     artifacts: dict = field(default_factory=dict)
@@ -150,6 +159,68 @@ def _environment_name(value: Any) -> str | None:
     if isinstance(value, dict) and value.get("name"):
         return str(value["name"])
     return None
+
+
+def _service_entry(raw_value: Any, variables: dict[str, str]) -> dict | None:
+    if isinstance(raw_value, str):
+        name = _expand_ci_variables(raw_value, variables)
+        return {"name": name} if name else None
+    if not isinstance(raw_value, dict):
+        raise ValueError("services entries must be strings or mappings")
+    unsupported = sorted(set(raw_value) - SUPPORTED_SERVICE_ENTRY_KEYS)
+    if unsupported:
+        raise ValueError(f"services option(s) not supported: {', '.join(unsupported)}")
+    if not raw_value.get("name"):
+        raise ValueError("services entries must define a name")
+    service = {
+        "name": _expand_ci_variables(str(raw_value["name"]), variables),
+    }
+    if raw_value.get("alias") is not None:
+        service["alias"] = _expand_ci_variables(str(raw_value["alias"]), variables)
+    if raw_value.get("command") is not None:
+        service["command"] = _expand_string_list(raw_value.get("command"), variables)
+    if raw_value.get("entrypoint") is not None:
+        service["entrypoint"] = _expand_string_list(
+            raw_value.get("entrypoint"),
+            variables,
+        )
+    if raw_value.get("pull_policy") is not None:
+        service["pull_policy"] = _expand_string_list(
+            raw_value.get("pull_policy"),
+            variables,
+        )
+    if raw_value.get("variables") is not None:
+        service["variables"] = [
+            _variable_payload_entry(key, entry, variables)
+            for key, entry in _variable_entries(raw_value.get("variables")).items()
+        ]
+    return service
+
+
+def _variable_payload_entry(
+    key: str, entry: dict[str, Any], variables: dict[str, str]
+) -> dict:
+    masked = bool(entry.get("masked", False))
+    return {
+        "key": key,
+        "value": _expand_ci_variables(str(entry.get("value", "")), variables),
+        "public": bool(entry.get("public", not masked)),
+        "file": bool(entry.get("file", False)),
+        "masked": masked,
+        "raw": bool(entry.get("raw", False)),
+    }
+
+
+def _service_entries(value: Any, variables: dict[str, str]) -> list[dict]:
+    if value is None:
+        return []
+    raw_entries = value if isinstance(value, list) else [value]
+    services: list[dict] = []
+    for raw_entry in raw_entries:
+        service = _service_entry(raw_entry, variables)
+        if service:
+            services.append(service)
+    return services
 
 
 def _secret_entries(value: Any) -> dict[str, dict]:
@@ -1015,6 +1086,7 @@ def parse_gitlab_ci(
     - global/job `after_script`
     - job `stage`
     - job `needs`
+    - global/default/job `services`
     - global/job `cache`
     - job `artifacts.paths`
     - common job `rules`, `only`, and `except` filters
@@ -1030,6 +1102,7 @@ def parse_gitlab_ci(
     global_variables = _variable_entries(parsed.get("variables"))
     global_before = _string_list(parsed.get("before_script"))
     global_after = _string_list(parsed.get("after_script"))
+    global_services_config = parsed.get("services")
     global_cache_config = parsed.get("cache")
     global_tags: list[str] = []
     stage_order = {stage_name: index for index, stage_name in enumerate(stages)}
@@ -1113,6 +1186,13 @@ def parse_gitlab_ci(
             "CI_COMMIT_REF_NAME": ref,
             **variables,
         }
+        service_variables = {
+            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+            "CI_COMMIT_REF_NAME": ref,
+            **pipeline_variables,
+            **variables,
+        }
         artifact_variables = {
             "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
             "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
@@ -1129,6 +1209,14 @@ def parse_gitlab_ci(
         cache = (
             _cache_entries(raw_cache, cache_variables) if raw_cache is not None else []
         )
+        raw_services = (
+            config.get("services") if "services" in config else global_services_config
+        )
+        services = (
+            _service_entries(raw_services, service_variables)
+            if raw_services is not None
+            else []
+        )
 
         jobs.append(
             ParsedCiJob(
@@ -1141,6 +1229,7 @@ def parse_gitlab_ci(
                 variable_metadata=merged_variable_entries,
                 needs=_needs(config.get("needs")),
                 tags=_string_list(config.get("tags", global_tags)),
+                services=services,
                 cache=cache,
                 artifacts_paths=artifact_paths,
                 artifacts=artifact_config,

@@ -548,6 +548,30 @@ def _variables_from_dict(values: dict[str, object]) -> list[dict]:
     return [_variable_payload_item(key, value) for key, value in values.items()]
 
 
+def _service_payload(services: list[dict] | None) -> list[dict]:
+    payload: list[dict] = []
+    for service in services or []:
+        if not isinstance(service, dict) or not service.get("name"):
+            continue
+        item = {"name": str(service["name"])}
+        if service.get("alias"):
+            item["alias"] = str(service["alias"])
+        if service.get("command"):
+            item["command"] = [str(entry) for entry in service.get("command", [])]
+        if service.get("entrypoint"):
+            item["entrypoint"] = [
+                str(entry) for entry in service.get("entrypoint", [])
+            ]
+        if service.get("pull_policy"):
+            item["pull_policy"] = [
+                str(entry) for entry in service.get("pull_policy", [])
+            ]
+        if service.get("variables"):
+            item["variables"] = service.get("variables")
+        payload.append(item)
+    return payload
+
+
 def _redact_trace_text(text: str, job: PipelineJob) -> str:
     return redact_trace_text(text, job.variables or {})
 
@@ -862,7 +886,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
             }
         ],
         "image": {"name": job.image},
-        "services": [],
+        "services": _service_payload(job.services),
         "artifacts": _artifact_payload(job),
         "cache": _cache_payload(job.cache),
         "credentials": [],

@@ -1186,6 +1186,82 @@ artifact_metadata:
     assert artifact["expire_in"] == "1 week"
 
 
+async def test_services_reach_api_and_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+variables:
+  POSTGRES_VERSION: "16"
+
+service_job:
+  services:
+    - "postgres:$POSTGRES_VERSION"
+    - name: mysql:8
+      alias: db mysql
+      command: ["--default-authentication-plugin=mysql_native_password"]
+      entrypoint:
+        - docker-entrypoint.sh
+      pull_policy: [if-not-present]
+      variables:
+        MYSQL_DATABASE: app
+  script:
+    - echo services
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add service containers ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    expected_services = [
+        {"name": "postgres:16"},
+        {
+            "name": "mysql:8",
+            "alias": "db mysql",
+            "command": ["--default-authentication-plugin=mysql_native_password"],
+            "entrypoint": ["docker-entrypoint.sh"],
+            "pull_policy": ["if-not-present"],
+            "variables": [
+                {
+                    "key": "MYSQL_DATABASE",
+                    "value": "app",
+                    "public": True,
+                    "file": False,
+                    "masked": False,
+                    "raw": False,
+                }
+            ],
+        },
+    ]
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert jobs.json()[0]["services"] == expected_services
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    assert request.json()["services"] == expected_services
+
+
 async def test_job_runtime_metadata_reaches_api_and_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

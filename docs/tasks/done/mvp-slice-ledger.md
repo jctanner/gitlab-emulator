@@ -22,7 +22,8 @@ expansion, clear rejection of unsupported cache entry options and invalid cache
 policy/when values, parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
 `resource_group`, and `coverage`, automatic failed-job retry attempts,
 resource-group runner serialization, trace coverage extraction, interruptible
-same-ref cancellation, richer
+same-ref cancellation, common CI service container definitions that are parsed,
+persisted, exposed through job APIs, and sent to runner job payloads, richer
 `needs`, including clear rejection of unsupported `needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries, clear rejection of unsupported cross-ref

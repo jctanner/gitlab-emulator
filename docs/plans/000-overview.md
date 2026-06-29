@@ -79,7 +79,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   `resource_group`, and `coverage`, automatic failed-job retry attempts from
   `retry`, resource-group serialization for runner assignment, coverage
   extraction from traces, interruptible cancellation when a newer same-ref
-  pipeline is created, deeper `extends` semantics, nested local `include`,
+  pipeline is created, common service container definitions that reach
+  official-runner-shaped payloads, deeper `extends` semantics, nested local `include`,
   `include:project`, list-valued controlled `include:remote`, and list-valued
   built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,

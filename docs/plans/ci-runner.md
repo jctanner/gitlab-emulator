@@ -65,14 +65,18 @@ and cache APIs for controlled integration testing.
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing and emulator cache fallback-key lookup
 - MinIO-backed official runner cache upload/restore validation
+- common CI service container definitions are parsed, persisted, exposed in
+  job API payloads, and sent to official-runner-shaped job payloads for string
+  entries and mapping entries with `name`, `alias`, `command`, `entrypoint`,
+  `pull_policy`, and variables
 - persisted jobs are the only runner coordinator source; the debug in-memory
   smoke queue has been removed
 - stale running jobs are exposed in pipeline/CI Lab diagnostics; recovery is
   manual through the CI Lab requeue action or, for GitLab-shaped clients,
   cancel followed by retry
 - unsupported execution-affecting CI syntax such as bridge `trigger` jobs,
-  `parallel` expansion, and `services` fails pipeline creation with a clear
-  400 response instead of being silently ignored
+  and `parallel` expansion fails pipeline creation with a clear 400 response
+  instead of being silently ignored
 
 ## Remaining CI Work
 
