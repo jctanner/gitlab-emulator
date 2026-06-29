@@ -28,6 +28,16 @@ from tests.conftest import API, auth_headers
 RUNNER_TOKEN = "glrt-emulator-runner-token"
 
 
+def _api_only_ci_yaml(content: str) -> str:
+    return (
+        "workflow:\n"
+        "  rules:\n"
+        "    - if: '$CI_PIPELINE_SOURCE == \"api\"'\n"
+        "    - when: never\n\n"
+        f"{content.lstrip()}"
+    )
+
+
 def test_compute_next_run_at_supports_timezone_and_steps():
     after = datetime(2026, 6, 28, 7, 56, 10, tzinfo=timezone.utc)
 
@@ -530,7 +540,8 @@ async def test_retry_job_requeues_failed_job_for_runner(client, test_token):
 
 async def test_job_retry_keyword_auto_requeues_failed_job(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 retry_me:
   retry:
     max: 1
@@ -538,6 +549,7 @@ retry_me:
   script:
     - exit 1
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -615,7 +627,8 @@ retry_me:
 
 async def test_job_retry_exit_codes_filter_auto_retry(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 retry_match:
   retry:
     max: 1
@@ -632,6 +645,7 @@ retry_miss:
   script:
     - exit 42
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -731,7 +745,8 @@ retry_miss:
 
 async def test_resource_group_serializes_runner_assignment(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 deploy_one:
   resource_group: production
   script:
@@ -742,6 +757,7 @@ deploy_two:
   script:
     - echo two
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -806,12 +822,14 @@ deploy_two:
 
 async def test_new_same_ref_pipeline_cancels_interruptible_jobs(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 interruptible_job:
   interruptible: true
   script:
     - echo interruptible
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -873,7 +891,8 @@ interruptible_job:
 
 async def test_rule_interruptible_cancels_same_ref_pipeline_jobs(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 rule_interruptible_job:
   interruptible: false
   script:
@@ -882,6 +901,7 @@ rule_interruptible_job:
     - if: '$CI_COMMIT_REF_NAME == "main"'
       interruptible: true
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -2074,7 +2094,8 @@ async def test_cache_key_files_use_repository_state_in_runner_payload(
         )
         assert write.status_code == 201
 
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 cache_probe:
   cache:
     - key:
@@ -2098,6 +2119,7 @@ cache_probe:
   script:
     - echo cache
 """
+    )
     write_ci = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -2313,7 +2335,8 @@ compile:
 
 async def test_create_pipeline_from_gitlab_ci_yaml_for_tag_ref(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages: [test]
 
 tag_only:
@@ -2331,6 +2354,7 @@ skip_tag:
     - echo skip tag
   except: [tags]
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -2848,7 +2872,8 @@ async def test_pipeline_variables_merge_with_yaml_and_job_precedence(
     client, test_token
 ):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 variables:
   FROM_YAML: yaml
   FROM_PIPELINE: yaml-override
@@ -2862,6 +2887,7 @@ vars:
   script:
     - echo variables
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -2909,7 +2935,8 @@ async def test_project_variables_reach_runner_payload_with_precedence(
     client, test_token
 ):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 variables:
   FROM_PROJECT: yaml
   FROM_PIPELINE: yaml
@@ -2920,6 +2947,7 @@ project_probe:
   script:
     - echo project variables
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -2992,11 +3020,13 @@ project_probe:
 
 async def test_protected_project_variables_require_protected_ref(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 protected_probe:
   script:
     - echo protected variables
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -3067,7 +3097,8 @@ async def test_project_variable_environment_scope_matches_job_environment(
     client, test_token
 ):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 production_job:
   environment: production
   script:
@@ -3089,6 +3120,7 @@ review_job:
   script:
     - echo review
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -3418,11 +3450,13 @@ async def test_instance_group_and_project_variable_precedence(
         headers=auth_headers(test_token),
     )
     assert project.status_code == 201
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 precedence_probe:
   script:
     - echo precedence
 """
+    )
     write = await client.post(
         f"{API}/projects/{project.json()['id']}/repository/files/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -3667,11 +3701,13 @@ metadata_probe:
 
 async def test_masked_project_variables_are_redacted_from_trace(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 redaction_probe:
   script:
     - echo project trace redaction
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -4241,7 +4277,8 @@ included_job:
     )
     assert include_write.status_code == 201
 
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 include:
   - local: .gitlab/ci/build.yml
 stages: [build, test]
@@ -4252,6 +4289,7 @@ root_job:
   script:
     - echo root
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5041,7 +5079,8 @@ job:
 
 async def test_runner_respects_stage_gating(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -5056,6 +5095,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5108,7 +5148,8 @@ unit:
 
 async def test_runner_allows_same_stage_jobs_before_stage_completes(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
 
@@ -5122,6 +5163,7 @@ compile_b:
   script:
     - echo b
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5159,7 +5201,8 @@ compile_b:
 
 async def test_failed_stage_skips_later_pending_jobs(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -5174,6 +5217,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5222,7 +5266,8 @@ unit:
 
 async def test_when_always_job_runs_after_failed_stage(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - cleanup
@@ -5244,6 +5289,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5316,7 +5362,8 @@ unit:
 
 async def test_when_on_failure_job_is_skipped_after_success(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - cleanup
@@ -5332,6 +5379,7 @@ notify_failure:
   script:
     - echo failed
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5387,7 +5435,8 @@ notify_failure:
 
 async def test_when_on_failure_job_runs_after_failed_stage(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - cleanup
@@ -5409,6 +5458,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5475,7 +5525,8 @@ unit:
 
 async def test_allowed_failure_does_not_block_later_jobs(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -5491,6 +5542,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5561,7 +5613,8 @@ unit:
 
 async def test_allow_failure_exit_codes_gate_failed_jobs(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -5579,6 +5632,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -5698,7 +5752,8 @@ async def test_runner_allows_needs_to_bypass_incomplete_same_stage_peer(
     client, test_token
 ):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -5720,6 +5775,7 @@ unit:
   script:
     - echo test
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -6089,7 +6145,8 @@ async def test_needs_parallel_true_expands_to_integer_parallel_jobs(
     client, test_token
 ):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -6112,6 +6169,7 @@ consume:
   script:
     - echo consume
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -6221,7 +6279,8 @@ second:
 
 async def test_needs_artifacts_populates_runner_dependencies(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -6251,6 +6310,7 @@ consume_true:
   script:
     - echo artifact dependency
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -6340,7 +6400,8 @@ consume_true:
 
 async def test_needs_artifacts_dependencies_follow_needs_order(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -6371,6 +6432,7 @@ consume:
   script:
     - echo consume
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -6614,7 +6676,8 @@ consume:
 
 async def test_dependencies_populate_runner_artifact_payload(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages:
   - build
   - test
@@ -6642,6 +6705,7 @@ consume:
   script:
     - echo consume
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -6713,7 +6777,8 @@ consume:
 
 async def test_empty_dependencies_disable_default_artifact_payload(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages: [build, test]
 
 compile:
@@ -6730,6 +6795,7 @@ consume:
   script:
     - echo consume
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
@@ -6781,7 +6847,8 @@ consume:
 
 async def test_default_artifact_dependencies_include_prior_stages(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    ci_yaml = _api_only_ci_yaml(
+        """
 stages: [build, test]
 
 compile:
@@ -6797,6 +6864,7 @@ consume:
   script:
     - echo consume
 """
+    )
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
