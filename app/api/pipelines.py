@@ -40,7 +40,11 @@ from app.services.ci_security import (
 )
 from app.services.ci_secrets import ci_secret_metadata_entry, project_secret_entries
 from app.services.ci_variables import project_variable_entries
-from app.services.ci_yaml import ParsedCiJob, parse_gitlab_ci
+from app.services.ci_yaml import (
+    ParsedCiJob,
+    parse_gitlab_ci,
+    parse_gitlab_ci_workflow_name,
+)
 from app.services.permissions import (
     DEVELOPER,
     MAINTAINER,
@@ -590,6 +594,7 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "project_id": pipeline.project_id,
         "sha": pipeline.sha,
         "ref": pipeline.ref,
+        "name": pipeline.name,
         "status": pipeline.status,
         "source": pipeline.source,
         "security_warnings": pipeline.security_warnings or [],
@@ -939,6 +944,7 @@ async def _create_pipeline(
     project = await _get_project(project_id, db)
     parsed_jobs: list[ParsedCiJob]
     ci_content = ""
+    pipeline_name = None
     sha = body.sha
     if sha == "0000000000000000000000000000000000000000":
         sha = await _resolve_ref(project, body.ref)
@@ -1011,18 +1017,29 @@ async def _create_pipeline(
             merged_ci_content = await _read_gitlab_ci_with_includes(
                 project, body.ref, db
             )
+            rule_variables = _simple_variable_values(
+                {
+                    **rule_project_variable_entries,
+                    **pipeline_variable_entries,
+                }
+            )
+            existing_paths = await _repo_paths_at_ref(project, body.ref)
+            changed_paths = await _changed_paths_at_sha(project, sha)
             parsed_jobs = parse_gitlab_ci(
                 merged_ci_content,
                 ref=body.ref,
                 ref_kind=ref_kind,
-                variables=_simple_variable_values(
-                    {
-                        **rule_project_variable_entries,
-                        **pipeline_variable_entries,
-                    }
-                ),
-                existing_paths=await _repo_paths_at_ref(project, body.ref),
-                changed_paths=await _changed_paths_at_sha(project, sha),
+                variables=rule_variables,
+                existing_paths=existing_paths,
+                changed_paths=changed_paths,
+            )
+            pipeline_name = parse_gitlab_ci_workflow_name(
+                merged_ci_content,
+                ref=body.ref,
+                ref_kind=ref_kind,
+                variables=rule_variables,
+                existing_paths=existing_paths,
+                changed_paths=changed_paths,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1057,6 +1074,7 @@ async def _create_pipeline(
         iid=(max_iid or 0) + 1,
         ref=body.ref,
         sha=sha,
+        name=pipeline_name,
         status="pending",
         source=source,
         security_warnings=security_warnings,

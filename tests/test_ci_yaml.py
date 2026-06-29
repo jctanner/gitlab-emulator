@@ -1,6 +1,6 @@
 """`.gitlab-ci.yml` parser tests."""
 
-from app.services.ci_yaml import parse_gitlab_ci
+from app.services.ci_yaml import parse_gitlab_ci, parse_gitlab_ci_workflow_name
 
 
 def test_parse_gitlab_ci_orders_jobs_by_stage_and_merges_scripts():
@@ -98,6 +98,38 @@ compile:
         }
     ]
     assert jobs[1].artifacts_paths == []
+
+
+def test_parse_gitlab_ci_workflow_name_expands_variables_and_rule_variables():
+    content = """
+workflow:
+  name: "$PIPELINE_KIND pipeline for $CI_COMMIT_REF_NAME"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      variables:
+        PIPELINE_KIND: merge-request
+    - variables:
+        PIPELINE_KIND: branch
+
+test:
+  script: echo test
+"""
+    assert (
+        parse_gitlab_ci_workflow_name(
+            content,
+            ref="feature/name",
+            variables={"CI_PIPELINE_SOURCE": "merge_request_event"},
+        )
+        == "merge-request pipeline for feature/name"
+    )
+    assert (
+        parse_gitlab_ci_workflow_name(
+            content,
+            ref="main",
+            variables={"CI_PIPELINE_SOURCE": "push"},
+        )
+        == "branch pipeline for main"
+    )
 
 
 def test_parse_gitlab_ci_job_variables_override_global_variables():

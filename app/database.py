@@ -59,6 +59,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         "security_warnings JSON DEFAULT '[]'",
     )
     await ensure_column(
+        "pipelines",
+        "name",
+        "name VARCHAR",
+    )
+    await ensure_column(
         "pipeline_jobs",
         "secret_metadata",
         "secret_metadata JSON DEFAULT '[]'",

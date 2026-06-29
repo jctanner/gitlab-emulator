@@ -29,6 +29,7 @@ class Pipeline(Base):
     iid: Mapped[int] = mapped_column(Integer, nullable=False)
     ref: Mapped[str] = mapped_column(String, nullable=False)
     sha: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")
     source: Mapped[str] = mapped_column(String, default="api")
     security_warnings: Mapped[list] = mapped_column(JSON, default=list)

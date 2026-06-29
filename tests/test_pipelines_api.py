@@ -1648,6 +1648,11 @@ stages:
 image: alpine:3.20
 variables:
   GLOBAL: one
+workflow:
+  name: "$PIPELINE_KIND pipeline for $CI_COMMIT_REF_NAME"
+  rules:
+    - variables:
+        PIPELINE_KIND: api
 before_script:
   - echo before
 
@@ -1686,6 +1691,7 @@ compile:
     assert resp.status_code == 201
     pipeline = resp.json()
     assert pipeline["sha"] == commit_sha
+    assert pipeline["name"] == "api pipeline for main"
 
     jobs = await client.get(
         f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"

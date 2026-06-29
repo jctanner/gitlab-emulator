@@ -53,7 +53,9 @@ Already working:
   are rejected before pipeline creation.
   Matched
   `workflow:rules:variables` are applied as job defaults before job-level
-  variables. Boolean `allow_failure` is supported for jobs and rules, while
+  variables, and `workflow:name` is expanded, persisted on the pipeline, and
+  exposed in pipeline API responses. Boolean `allow_failure` is supported for
+  jobs and rules, while
   unsupported `allow_failure:exit_codes` is rejected clearly. Current
   `only`/`except` support covers scalar/list branch, tag, and pipeline-source
   refs including common source aliases, glob-style ref patterns, plus

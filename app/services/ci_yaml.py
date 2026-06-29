@@ -962,6 +962,66 @@ def _workflow_rule_decision(
     )
 
 
+def _workflow_context(
+    ref: str,
+    ref_kind: str,
+    pipeline_variables: dict[str, str],
+    global_variables: dict[str, dict],
+) -> dict[str, str]:
+    return {
+        "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+        "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+        "CI_COMMIT_REF_NAME": ref,
+        **pipeline_variables,
+        **_variable_values(global_variables),
+    }
+
+
+def parse_gitlab_ci_workflow_name(
+    content: str,
+    ref: str = "main",
+    ref_kind: str = "branch",
+    variables: dict[str, str] | None = None,
+    existing_paths: set[str] | None = None,
+    changed_paths: set[str] | None = None,
+) -> str | None:
+    """Return the expanded `workflow:name` value for a parsed CI config."""
+    parsed = yaml.safe_load(content) or {}
+    if not isinstance(parsed, dict):
+        raise ValueError(".gitlab-ci.yml must contain a mapping")
+
+    workflow = parsed.get("workflow")
+    if not isinstance(workflow, dict):
+        return None
+    raw_name = workflow.get("name")
+    if not isinstance(raw_name, str) or not raw_name.strip():
+        return None
+
+    global_variables = _variable_entries(parsed.get("variables"))
+    pipeline_variables = variables or {}
+    repository_paths = existing_paths or set()
+    commit_changed_paths = changed_paths or set()
+    context = _workflow_context(ref, ref_kind, pipeline_variables, global_variables)
+    decision = _workflow_rule_decision(
+        parsed,
+        ref,
+        ref_kind,
+        pipeline_variables.get("CI_PIPELINE_SOURCE", "api"),
+        context,
+        repository_paths,
+        commit_changed_paths,
+    )
+    if not decision.included:
+        raise ValueError(".gitlab-ci.yml workflow rules skipped pipeline")
+    if decision.variables:
+        context = {
+            **context,
+            **_variable_values(decision.variables),
+        }
+    name = _expand_ci_variables(raw_name, context).strip()
+    return name or None
+
+
 def _deep_merge(parent: dict, child: dict) -> dict:
     merged = dict(parent)
     for key, value in child.items():
@@ -1127,13 +1187,12 @@ def parse_gitlab_ci(
     pipeline_source = pipeline_variables.get("CI_PIPELINE_SOURCE", "api")
     repository_paths = existing_paths or set()
     commit_changed_paths = changed_paths or set()
-    workflow_context = {
-        "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
-        "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
-        "CI_COMMIT_REF_NAME": ref,
-        **pipeline_variables,
-        **_variable_values(global_variables),
-    }
+    workflow_context = _workflow_context(
+        ref,
+        ref_kind,
+        pipeline_variables,
+        global_variables,
+    )
     workflow_decision = _workflow_rule_decision(
         parsed,
         ref,
