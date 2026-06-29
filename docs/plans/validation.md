@@ -69,6 +69,19 @@ For an already deployed server, use:
 make vm-validate-current
 ```
 
+For client-side GitLab CLI compatibility only, use:
+
+```bash
+make vm-test
+```
+
+This syncs the client scripts, installs or reuses the pinned `glab` binary,
+installs the emulator CA in the client VM, and runs the broad
+`scripts/glab-integration-test.sh` smoke. The current smoke covers auth, users,
+projects, nested groups, repository create/clone/delete, Git Smart HTTP,
+repository files, issues, labels, milestones, branches, tags, releases, commits,
+merge requests, pipelines, traces, artifacts, manual jobs, cancel, and retry.
+
 For runner-only validation, use:
 
 ```bash

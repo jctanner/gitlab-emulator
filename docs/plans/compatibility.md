@@ -30,8 +30,8 @@ Vagrant architecture.
   `testuser%2Fexample-project`.
 - Project creation supports group namespaces with `namespace_id` or
   `namespace_path`, backed by the existing organization model.
-- Minimal GitLab-shaped group APIs exist for create, get by ID/path, and group
-  project listing.
+- Minimal GitLab-shaped group APIs exist for create, get by ID/path, group
+  project listing, nested group paths, and nested group project creation.
 - Minimal GitLab repository files APIs exist for get, create, update, and
   delete by numeric project ID or URL-encoded project path.
 - Minimal GitLab repository commits APIs exist for list, get, and diff metadata
@@ -156,17 +156,20 @@ Minimal merge request APIs are implemented for:
 
 The same endpoints accept URL-encoded `path_with_namespace` project references.
 
-Validate:
+Validated:
 
 - project creation response shape
 - clone/fetch/push against the created project
 - `glab` behavior where the implemented surface is enough
+- nested group/subgroup namespace behavior used by the current client workflow
 
-Remaining validation:
-
-- `glab` smoke behavior against the implemented project surface
-- richer group/subgroup namespace semantics beyond the current organization
-  namespace adapter
+Latest evidence: `make vm-test` passed from the client VM on June 29, 2026
+with 112 `glab` smoke checks covering auth, users, projects, nested groups,
+repo create/view/list/clone/delete, Git Smart HTTP push/fetch, repository files,
+issues, labels, milestones, branches, protected branches, tags, releases,
+commit APIs, repository compare, commit statuses, merge request APIs, merge
+request CLI workflows, pipeline APIs, CI trace/artifacts, manual jobs, cancel,
+and retry.
 
 ## Done Criteria
 
