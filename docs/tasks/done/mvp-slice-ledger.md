@@ -10,7 +10,8 @@ cleanup scheduling, clear unsupported delayed-job and unknown `when` rejection, 
 `rules:if` expressions, regex non-match operators, unary negation,
 null/empty variable comparisons, variable-backed regex patterns in `rules:if`,
 `exists`/`changes` path-object rules, variable-expanded rule path patterns,
-mapping-form `only`/`except`,
+directory-style `rules:exists` patterns ending in `/`, mapping-form
+`only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters, cache
 glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
 cache path/key/policy/when/fallback-key variable expansion, clear rejection of

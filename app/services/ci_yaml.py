@@ -595,6 +595,8 @@ def _path_matches(pattern: str, paths: set[str]) -> bool:
     normalized = pattern.strip().lstrip("/")
     if not normalized:
         return False
+    if normalized.endswith("/"):
+        return any(path.startswith(normalized) for path in paths)
     return any(
         path == normalized or fnmatch.fnmatch(path, normalized) for path in paths
     )

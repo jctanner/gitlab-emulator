@@ -39,8 +39,9 @@ Already working:
   empty-string variable comparisons, regex match/non-match, simple boolean
   operators with grouped parentheses, `exists`, commit-local `changes`,
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
-  clear rejection of unsupported cross-ref `rules:changes:compare_to` and
-  `rules:exists` project/ref options, `when: never`,
+  directory-style `rules:exists` patterns ending in `/`, clear rejection of
+  unsupported cross-ref `rules:changes:compare_to` and `rules:exists`
+  project/ref options, `when: never`,
   `when: always`, `when: on_failure`, persisted non-runnable `manual` jobs,
   and `when: delayed` jobs with `start_in`. Delayed jobs persist as
   `scheduled` with `scheduled_at`, stay out of runner assignment until due,

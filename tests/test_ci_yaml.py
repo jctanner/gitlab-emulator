@@ -727,6 +727,27 @@ object_miss:
     assert [job.name for job in jobs] == ["changes_object", "exists_object"]
 
 
+def test_parse_gitlab_ci_rules_exists_matches_directory_patterns():
+    jobs = parse_gitlab_ci(
+        """
+exists_directory:
+  script: echo exists directory
+  rules:
+    - exists:
+        - config/
+
+exists_directory_miss:
+  script: echo exists directory miss
+  rules:
+    - exists:
+        - docs/
+""",
+        existing_paths={"config/app.yml", "src/main.py"},
+    )
+
+    assert [job.name for job in jobs] == ["exists_directory"]
+
+
 def test_parse_gitlab_ci_expands_variables_in_rules_path_patterns():
     jobs = parse_gitlab_ci(
         """
