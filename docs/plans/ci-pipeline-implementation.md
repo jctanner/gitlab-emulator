@@ -78,6 +78,8 @@ Already working:
   `coverage`; runner payloads use the parsed job timeout for runner and step
   timeout fields, and job traces are scanned with the configured coverage regex
   to populate the job API `coverage` field
+- failed jobs with matching `retry` metadata are automatically requeued until
+  their configured retry attempt limit is reached
 - CI `include` support is implemented for local files, nested local files,
   `include:project`, controlled `include:remote`, and built-in templates:
   pipeline creation resolves included files before parsing, supports
@@ -338,8 +340,7 @@ Still needed:
 
 - remaining long-tail `rules` / `only` / `except` edge cases
 - implement deeper execution semantics for parsed runtime metadata, including
-  automatic retry attempts, interruptible cancellation behavior, and
-  resource-group serialization
+  interruptible cancellation behavior and resource-group serialization
 
 ## Slice 7: Repository Checkout
 

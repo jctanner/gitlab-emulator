@@ -248,6 +248,7 @@ class PipelineJob(Base):
     when: Mapped[str] = mapped_column(String, default="on_success")
     allow_failure: Mapped[bool] = mapped_column(Boolean, default=False)
     retry_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    retry_attempt: Mapped[int] = mapped_column(Integer, default=0)
     timeout_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     interruptible: Mapped[bool] = mapped_column(Boolean, default=False)
     resource_group: Mapped[str | None] = mapped_column(String, nullable=True)

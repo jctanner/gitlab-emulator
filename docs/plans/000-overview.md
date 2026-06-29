@@ -74,9 +74,10 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   file-derived keys, variable-expanded paths, keys,
   policies, `when`, and fallback keys, artifact metadata variable expansion,
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
-  `resource_group`, and `coverage`, coverage extraction from traces, deeper
-  `extends` semantics, nested local `include`, `include:project`, list-valued
-  controlled `include:remote`, and list-valued built-in template includes.
+  `resource_group`, and `coverage`, automatic failed-job retry attempts from
+  `retry`, coverage extraction from traces, deeper `extends` semantics, nested
+  local `include`, `include:project`, list-valued controlled `include:remote`,
+  and list-valued built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
   top-level YAML variables, and job-level YAML variables with MVP precedence.
   Variable metadata for raw, masked/public, and file variables is preserved in
@@ -213,9 +214,8 @@ Target areas:
   boolean expressions, regex operators and flags, `exists`, `changes`,
   path-object rules, variable-expanded rule paths, mapping-form legacy filters,
   rule variables, and delayed/manual scheduling
-- remaining execution semantics for parsed job metadata, including automatic
-  retry attempts, interruptible cancellation behavior, and resource-group
-  serialization
+- remaining execution semantics for parsed job metadata, including
+  interruptible cancellation behavior and resource-group serialization
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, prefix/files/files_commits keys, fallback keys, policy, `when`,
   clear unsupported option rejection, and MinIO-backed runner validation

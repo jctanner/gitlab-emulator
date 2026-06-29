@@ -518,6 +518,91 @@ async def test_retry_job_requeues_failed_job_for_runner(client, test_token):
     assert next_request.json()["token"] != job_token
 
 
+async def test_job_retry_keyword_auto_requeues_failed_job(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+retry_me:
+  retry:
+    max: 1
+    when: script_failure
+  script:
+    - exit 1
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add retry keyword ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    first_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first_request.status_code == 201
+    first_payload = first_request.json()
+    first_update = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={
+            "token": first_payload["token"],
+            "state": "failed",
+            "failure_reason": "script_failure",
+            "exit_code": 1,
+        },
+    )
+    assert first_update.status_code == 200
+
+    jobs_after_first_failure = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs_after_first_failure.status_code == 200
+    retried_job = jobs_after_first_failure.json()[0]
+    assert retried_job["status"] == "pending"
+    assert retried_job["retry_attempt"] == 1
+
+    second_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert second_request.status_code == 201
+    second_payload = second_request.json()
+    assert second_payload["id"] == first_payload["id"]
+    assert second_payload["token"] != first_payload["token"]
+
+    second_update = await client.put(
+        f"{API}/jobs/{second_payload['id']}",
+        headers={"JOB-TOKEN": second_payload["token"]},
+        json={
+            "token": second_payload["token"],
+            "state": "failed",
+            "failure_reason": "script_failure",
+            "exit_code": 1,
+        },
+    )
+    assert second_update.status_code == 200
+    jobs_after_second_failure = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs_after_second_failure.status_code == 200
+    terminal_job = jobs_after_second_failure.json()[0]
+    assert terminal_job["status"] == "failed"
+    assert terminal_job["retry_attempt"] == 1
+
+
 async def test_pipeline_diagnostics_marks_stale_running_job(
     client, test_token, db_session
 ):
@@ -999,6 +1084,7 @@ metadata_job:
     assert jobs_resp.status_code == 200
     job = jobs_resp.json()[0]
     assert job["retry"] == {"max": 2, "when": ["runner_system_failure"]}
+    assert job["retry_attempt"] == 0
     assert job["timeout"] == 2700
     assert job["interruptible"] is True
     assert job["resource_group"] == "production"

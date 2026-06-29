@@ -578,6 +578,49 @@ def _refresh_job_coverage(job: PipelineJob) -> None:
         job.coverage = coverage
 
 
+def _retry_when_matches(configured: list[str], failure_reason: str | None) -> bool:
+    if not configured:
+        return True
+    reason = failure_reason or "script_failure"
+    return "always" in configured or reason in configured
+
+
+def _should_auto_retry(job: PipelineJob, failure_reason: str | None) -> bool:
+    config = job.retry_config or {}
+    try:
+        max_attempts = int(config.get("max") or 0)
+    except (TypeError, ValueError):
+        return False
+    if max_attempts <= 0:
+        return False
+    if (job.retry_attempt or 0) >= max_attempts:
+        return False
+    configured_when = config.get("when") or []
+    if isinstance(configured_when, str):
+        configured_when = [configured_when]
+    return _retry_when_matches([str(item) for item in configured_when], failure_reason)
+
+
+def _prepare_auto_retry(job: PipelineJob) -> None:
+    job.retry_attempt = (job.retry_attempt or 0) + 1
+    now = datetime.now(timezone.utc)
+    job.status = "scheduled" if (job.when or "on_success") == "delayed" else "pending"
+    job.job_token = f"gljt-persisted-{secrets.token_urlsafe(24)}"
+    job.runner_name = None
+    job.failure_reason = None
+    job.exit_code = None
+    job.trace_checksum = None
+    job.trace_size = 0
+    job.coverage = None
+    job.queued_at = now
+    job.scheduled_at = now.replace(tzinfo=None) if job.status == "scheduled" else None
+    job.started_at = None
+    job.finished_at = None
+    if job.trace:
+        job.trace.content = ""
+        job.trace.size = 0
+
+
 def _repo_url_with_job_token(repo_url: str, job_token: str) -> str:
     parts = urlsplit(repo_url)
     credentials = f"gitlab-ci-token:{quote(job_token, safe='')}"
@@ -1278,8 +1321,6 @@ async def update_job(
             raise HTTPException(status_code=403, detail="Forbidden")
         if body.state:
             persisted_job.status = body.state
-        if persisted_job.status == "failed":
-            _skip_jobs_after_failed_stage(persisted_job.pipeline)
         _skip_on_failure_jobs_without_failure(persisted_job.pipeline)
         persisted_job.failure_reason = body.failure_reason
         persisted_job.exit_code = body.exit_code
@@ -1288,6 +1329,14 @@ async def update_job(
             persisted_job.trace_size = (
                 body.output.get("bytesize") or persisted_job.trace_size
             )
+        auto_retry = (
+            persisted_job.status == "failed"
+            and _should_auto_retry(persisted_job, body.failure_reason)
+        )
+        if auto_retry:
+            _prepare_auto_retry(persisted_job)
+        elif persisted_job.status == "failed":
+            _skip_jobs_after_failed_stage(persisted_job.pipeline)
         if persisted_job.status in {"success", "failed"}:
             _refresh_job_coverage(persisted_job)
             persisted_job.finished_at = datetime.now(timezone.utc)

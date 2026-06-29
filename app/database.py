@@ -75,6 +75,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "retry_attempt",
+        "retry_attempt INTEGER DEFAULT 0",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "timeout_seconds",
         "timeout_seconds INTEGER",
     )

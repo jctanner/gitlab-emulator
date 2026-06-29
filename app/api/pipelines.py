@@ -776,6 +776,7 @@ def _job_json(job: PipelineJob) -> dict:
         "cache": job.cache or [],
         "when": job.when or "on_success",
         "retry": job.retry_config or {},
+        "retry_attempt": job.retry_attempt or 0,
         "timeout": job.timeout_seconds,
         "interruptible": bool(job.interruptible),
         "resource_group": job.resource_group,
