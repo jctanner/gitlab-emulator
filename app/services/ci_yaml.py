@@ -67,6 +67,29 @@ SUPPORTED_JOB_WHEN = {
     "never",
     "delayed",
 }
+DURATION_SECONDS_BY_UNIT = {
+    "second": 1,
+    "seconds": 1,
+    "sec": 1,
+    "secs": 1,
+    "s": 1,
+    "minute": 60,
+    "minutes": 60,
+    "min": 60,
+    "mins": 60,
+    "m": 60,
+    "hour": 3600,
+    "hours": 3600,
+    "hr": 3600,
+    "hrs": 3600,
+    "h": 3600,
+    "day": 86400,
+    "days": 86400,
+    "d": 86400,
+    "week": 604800,
+    "weeks": 604800,
+    "w": 604800,
+}
 
 
 @dataclass
@@ -520,41 +543,7 @@ def _when_setting(value: Any) -> str:
 def _start_in_seconds(value: Any) -> int:
     if value is None:
         raise ValueError("start_in is required when when delayed is used")
-    raw = str(value).strip().lower()
-    match = re.fullmatch(r"(\d+)\s*([a-z]+)", raw)
-    if not match:
-        raise ValueError(f"start_in value is not supported: {value}")
-    amount = int(match.group(1))
-    unit = match.group(2)
-    seconds_by_unit = {
-        "second": 1,
-        "seconds": 1,
-        "sec": 1,
-        "secs": 1,
-        "s": 1,
-        "minute": 60,
-        "minutes": 60,
-        "min": 60,
-        "mins": 60,
-        "m": 60,
-        "hour": 3600,
-        "hours": 3600,
-        "hr": 3600,
-        "hrs": 3600,
-        "h": 3600,
-        "day": 86400,
-        "days": 86400,
-        "d": 86400,
-        "week": 604800,
-        "weeks": 604800,
-        "w": 604800,
-    }
-    multiplier = seconds_by_unit.get(unit)
-    if multiplier is None:
-        raise ValueError(f"start_in unit is not supported: {unit}")
-    if amount <= 0:
-        raise ValueError("start_in must be greater than zero")
-    return amount * multiplier
+    return _duration_seconds(value, "start_in")
 
 
 def _duration_seconds(value: Any, keyword: str) -> int:
@@ -563,40 +552,27 @@ def _duration_seconds(value: Any, keyword: str) -> int:
             raise ValueError(f"{keyword} must be greater than zero")
         return value
     raw = str(value).strip().lower()
-    match = re.fullmatch(r"(\d+)\s*([a-z]+)", raw)
-    if not match:
+    normalized = re.sub(r"\band\b|,", " ", raw)
+    matches = list(re.finditer(r"(\d+)\s*([a-z]+)", normalized))
+    if not matches:
         raise ValueError(f"{keyword} value is not supported: {value}")
-    amount = int(match.group(1))
-    unit = match.group(2)
-    seconds_by_unit = {
-        "second": 1,
-        "seconds": 1,
-        "sec": 1,
-        "secs": 1,
-        "s": 1,
-        "minute": 60,
-        "minutes": 60,
-        "min": 60,
-        "mins": 60,
-        "m": 60,
-        "hour": 3600,
-        "hours": 3600,
-        "hr": 3600,
-        "hrs": 3600,
-        "h": 3600,
-        "day": 86400,
-        "days": 86400,
-        "d": 86400,
-        "week": 604800,
-        "weeks": 604800,
-        "w": 604800,
-    }
-    multiplier = seconds_by_unit.get(unit)
-    if multiplier is None:
-        raise ValueError(f"{keyword} unit is not supported: {unit}")
-    if amount <= 0:
-        raise ValueError(f"{keyword} must be greater than zero")
-    return amount * multiplier
+    total_seconds = 0
+    position = 0
+    for match in matches:
+        if normalized[position : match.start()].strip():
+            raise ValueError(f"{keyword} value is not supported: {value}")
+        amount = int(match.group(1))
+        unit = match.group(2)
+        multiplier = DURATION_SECONDS_BY_UNIT.get(unit)
+        if multiplier is None:
+            raise ValueError(f"{keyword} unit is not supported: {unit}")
+        if amount <= 0:
+            raise ValueError(f"{keyword} must be greater than zero")
+        total_seconds += amount * multiplier
+        position = match.end()
+    if normalized[position:].strip():
+        raise ValueError(f"{keyword} value is not supported: {value}")
+    return total_seconds
 
 
 def _timeout_seconds(value: Any) -> int | None:

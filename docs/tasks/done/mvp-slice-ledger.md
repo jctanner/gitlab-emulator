@@ -14,7 +14,7 @@ regex flags in `rules:if`,
 directory-style `rules:exists` patterns ending in `/`, mapping-form
 `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters with common source
-aliases, cache
+aliases, compound `timeout` and `start_in` duration values, cache
 glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
 cache `key:files_commits`, cache path/key/policy/when/fallback-key variable
 expansion, cache `unprotect`, artifact name/path/exclude/expire_in variable

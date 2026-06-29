@@ -1143,6 +1143,32 @@ rule_delayed:
     assert by_name["rule_delayed"].start_in_seconds == 7200
 
 
+def test_parse_gitlab_ci_supports_compound_duration_values():
+    jobs = parse_gitlab_ci(
+        """
+compound_timeout:
+  timeout: 1 hour 30 minutes
+  script: echo timeout
+
+compound_delayed:
+  when: delayed
+  start_in: 1h 15m
+  script: echo delayed
+
+rule_compound_delayed:
+  rules:
+    - when: delayed
+      start_in: 2 hours, 10 minutes
+  script: echo rule delayed
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["compound_timeout"].timeout_seconds == 5400
+    assert by_name["compound_delayed"].start_in_seconds == 4500
+    assert by_name["rule_compound_delayed"].start_in_seconds == 7800
+
+
 def test_parse_gitlab_ci_rejects_invalid_delayed_jobs():
     for content in [
         """

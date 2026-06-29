@@ -71,7 +71,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   rejection of unsupported `allow_failure:exit_codes`,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
   metadata, delayed jobs with `when: delayed`/`start_in`, clear rejection of
-  unknown `when` values, list and
+  unknown `when` values, compound `timeout` and `start_in` duration values,
+  list and
   file-derived keys, variable-expanded paths, keys,
   policies, `when`, `unprotect`, and fallback keys, artifact metadata variable
   expansion, job `dependencies` artifact selection and default prior-stage

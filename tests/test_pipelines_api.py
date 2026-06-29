@@ -1340,6 +1340,52 @@ metadata_job:
     assert completed_job_resp.json()["coverage"] == "87.5"
 
 
+async def test_compound_timeout_reaches_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+compound_timeout:
+  image: alpine:3.20
+  timeout: 1 hour 30 minutes
+  script:
+    - echo timeout
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add compound timeout ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert jobs.json()[0]["timeout"] == 5400
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["runner_info"]["timeout"] == 5400
+    assert payload["steps"][0]["timeout"] == 5400
+
+
 async def test_cache_variables_expand_in_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
