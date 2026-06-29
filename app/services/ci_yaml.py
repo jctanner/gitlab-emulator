@@ -379,10 +379,10 @@ def _ref_matches(pattern: str, ref: str, ref_kind: str, source: str) -> bool:
         return source in expected_sources.get(pattern, set())
     if pattern == ref:
         return True
-    if pattern.startswith("/") and pattern.endswith("/") and len(pattern) > 2:
-        import re
-
-        return re.search(pattern[1:-1], ref) is not None
+    regex = _regex_literal(pattern)
+    if regex is not None:
+        regex_pattern, regex_flags = regex
+        return re.search(regex_pattern, ref, regex_flags) is not None
     if any(char in pattern for char in "*?["):
         return fnmatch.fnmatch(ref, pattern)
     return False
@@ -473,13 +473,34 @@ def _expression_value(value: str, variables: dict[str, str]) -> str:
     return _unquote(value)
 
 
-def _regex_pattern_value(value: str, variables: dict[str, str]) -> str:
+def _regex_literal(value: str) -> tuple[str, int] | None:
+    match = re.fullmatch(r"/(.+)/([a-zA-Z]*)", value)
+    if not match:
+        return None
+    pattern, raw_flags = match.groups()
+    flags = 0
+    unsupported = set(raw_flags) - {"i", "m", "s", "x"}
+    if unsupported:
+        raise ValueError(f"regex flag(s) not supported: {''.join(sorted(unsupported))}")
+    if "i" in raw_flags:
+        flags |= re.IGNORECASE
+    if "m" in raw_flags:
+        flags |= re.MULTILINE
+    if "s" in raw_flags:
+        flags |= re.DOTALL
+    if "x" in raw_flags:
+        flags |= re.VERBOSE
+    return pattern, flags
+
+
+def _regex_pattern_value(value: str, variables: dict[str, str]) -> tuple[str, int]:
     value = value.strip()
     if re.fullmatch(r"\$[A-Za-z_][A-Za-z0-9_]*", value):
         value = variables.get(value[1:], "")
-    if value.startswith("/") and value.endswith("/") and len(value) > 1:
-        return value[1:-1]
-    return _unquote(value)
+    regex = _regex_literal(value)
+    if regex is not None:
+        return regex
+    return _unquote(value), 0
 
 
 def _is_null_literal(value: str) -> bool:
@@ -505,8 +526,8 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
         left_key = left[1:]
         left_value = _expression_value(left, variables)
         if operator in {"=~", "!~"}:
-            pattern = _regex_pattern_value(right, variables)
-            matches = bool(pattern) and re.search(pattern, left_value) is not None
+            pattern, flags = _regex_pattern_value(right, variables)
+            matches = bool(pattern) and re.search(pattern, left_value, flags) is not None
             return matches if operator == "=~" else not matches
         if _is_null_literal(right):
             matches = left_key not in variables

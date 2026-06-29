@@ -37,7 +37,8 @@ Already working:
   and pipeline creation applies `rules`, `only`, and `except` filters. Current
   `rules` support covers common `if` expressions, unary negation, null and
   empty-string variable comparisons, regex match/non-match, simple boolean
-  operators with grouped parentheses, `exists`, commit-local `changes`,
+  operators with grouped parentheses, common regex flags, `exists`,
+  commit-local `changes`,
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
   directory-style `rules:exists` patterns ending in `/`, clear rejection of
   unsupported cross-ref `rules:changes:compare_to` and `rules:exists`

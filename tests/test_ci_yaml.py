@@ -610,6 +610,58 @@ skipped:
     ]
 
 
+def test_parse_gitlab_ci_supports_regex_flags_in_rules_if_and_legacy_refs():
+    jobs = parse_gitlab_ci(
+        """
+case_insensitive_rule:
+  script: echo rule
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ /^release-/i'
+
+variable_regex_flags:
+  variables:
+    RELEASE_PATTERN: "/^release-/i"
+  script: echo variable regex
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ $RELEASE_PATTERN'
+
+legacy_regex_ref:
+  script: echo legacy
+  only:
+    - /^release-/i
+
+case_sensitive_miss:
+  script: echo miss
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ /^release-/'
+""",
+        ref="Release-2026",
+    )
+
+    assert [job.name for job in jobs] == [
+        "case_insensitive_rule",
+        "legacy_regex_ref",
+        "variable_regex_flags",
+    ]
+
+
+def test_parse_gitlab_ci_rejects_unsupported_regex_flags():
+    try:
+        parse_gitlab_ci(
+            """
+bad_regex_flag:
+  script: echo bad
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ /^release-/q'
+"""
+        )
+    except ValueError as exc:
+        assert "regex flag(s) not supported" in str(exc)
+        assert "q" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_applies_workflow_rules():
     content = """
 workflow:

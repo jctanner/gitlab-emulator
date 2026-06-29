@@ -61,7 +61,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   validation edge cases including clear rejection of unsupported
   `needs:parallel:matrix`, common ref filters, richer `rules` job selection with
   grouped boolean `if` expressions, unary negation, null/empty checks, and regex
-  match/non-match operators including variable-backed regex patterns,
+  match/non-match operators including variable-backed regex patterns and common
+  regex flags,
   `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, branch/tag/source-aware
   `only`/`except` filters including glob-style refs and mapping forms, workflow/rule-level
