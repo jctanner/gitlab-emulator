@@ -1039,6 +1039,28 @@ cache_probe:
     assert jobs[0].cache[0]["key"] == "pyproject.toml-uv.lock"
 
 
+def test_parse_gitlab_ci_supports_cache_key_files_commits():
+    jobs = parse_gitlab_ci(
+        """
+cache_probe:
+  variables:
+    LOCKFILE: uv.lock
+  cache:
+    key:
+      prefix: commits
+      files_commits:
+        - pyproject.toml
+        - "$LOCKFILE"
+    paths:
+      - .cache/uv
+  script:
+    - echo cache
+"""
+    )
+
+    assert jobs[0].cache[0]["key"] == "commits-pyproject.toml-uv.lock"
+
+
 def test_parse_gitlab_ci_expands_variables_in_cache_metadata():
     jobs = parse_gitlab_ci(
         """
