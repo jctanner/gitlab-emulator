@@ -85,8 +85,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   expansion, job `dependencies` artifact selection and default prior-stage
   artifact dependency payloads,
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
-  `resource_group`, and `coverage`, `default:` inheritance for `retry`,
-  `timeout`, and `interruptible`, automatic failed-job retry attempts from
+  `resource_group`, `coverage`, and structured `environment` name/URL/action,
+  `default:` inheritance for `retry`, `timeout`, and `interruptible`, automatic failed-job retry attempts from
   `retry` including `retry:exit_codes` filters, resource-group serialization
   for runner assignment, coverage
   extraction from traces, interruptible cancellation when a newer same-ref

@@ -140,6 +140,16 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "environment_url",
+        "environment_url VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "environment_action",
+        "environment_action VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "trigger_project",
         "trigger_project VARCHAR",
     )

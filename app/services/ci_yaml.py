@@ -131,6 +131,8 @@ class ParsedCiJob:
     resource_group: str | None = None
     coverage: str | None = None
     environment: str | None = None
+    environment_url: str | None = None
+    environment_action: str | None = None
     secrets: dict[str, dict] = field(default_factory=dict)
     trigger: dict | None = None
 
@@ -216,14 +218,28 @@ def _image_config(value: Any, variables: dict[str, str]) -> dict:
     return config
 
 
-def _environment_name(value: Any) -> str | None:
+def _environment_config(
+    value: Any,
+    variables: dict[str, str] | None = None,
+) -> dict[str, str | None]:
+    variables = variables or {}
     if value is None:
-        return None
+        return {"name": None, "url": None, "action": None}
     if isinstance(value, str):
-        return value
+        return {
+            "name": _expand_ci_variables(value, variables),
+            "url": None,
+            "action": None,
+        }
     if isinstance(value, dict) and value.get("name"):
-        return str(value["name"])
-    return None
+        return {
+            "name": _expand_ci_variables(str(value["name"]), variables),
+            "url": _expand_ci_variables(str(value["url"]), variables)
+            if value.get("url") is not None
+            else None,
+            "action": str(value["action"]) if value.get("action") is not None else None,
+        }
+    return {"name": None, "url": None, "action": None}
 
 
 def _service_entry(raw_value: Any, variables: dict[str, str]) -> dict | None:
@@ -1668,6 +1684,17 @@ def parse_gitlab_ci(
             **pipeline_variables,
             **variables,
         }
+        environment_variables = {
+            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+            "CI_COMMIT_REF_NAME": ref,
+            **pipeline_variables,
+            **variables,
+        }
+        environment_config = _environment_config(
+            config.get("environment"),
+            environment_variables,
+        )
         before = _string_list(config.get("before_script", global_before))
         script = _string_list(config.get("script"))
         after = _string_list(config.get("after_script", global_after))
@@ -1735,7 +1762,9 @@ def parse_gitlab_ci(
                     coverage=str(config["coverage"])
                     if config.get("coverage") is not None
                     else None,
-                    environment=_environment_name(config.get("environment")),
+                    environment=environment_config["name"],
+                    environment_url=environment_config["url"],
+                    environment_action=environment_config["action"],
                     secrets=_secret_entries(config.get("secrets")),
                     trigger=trigger,
                 )

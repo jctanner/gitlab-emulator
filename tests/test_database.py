@@ -33,6 +33,8 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         assert "coverage_regex" in columns
         assert "coverage" in columns
         assert "environment" in columns
+        assert "environment_url" in columns
+        assert "environment_action" in columns
         assert "trigger_project" in columns
         assert "trigger_ref" in columns
         assert "trigger_strategy" in columns

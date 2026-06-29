@@ -202,6 +202,8 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "stage": job.stage,
         "ref": job.pipeline.ref if job.pipeline else None,
         "environment": job.environment,
+        "environment_url": job.environment_url,
+        "environment_action": job.environment_action,
         "tag": False,
         "coverage": job.coverage,
         "allow_failure": bool(job.allow_failure),
@@ -1026,6 +1028,10 @@ async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
     }
     if job.environment:
         variables["CI_ENVIRONMENT_NAME"] = job.environment
+    if job.environment_url:
+        variables["CI_ENVIRONMENT_URL"] = job.environment_url
+    if job.environment_action:
+        variables["CI_ENVIRONMENT_ACTION"] = job.environment_action
     return {
         "id": job.id,
         "token": job.job_token,

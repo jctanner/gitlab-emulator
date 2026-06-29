@@ -261,6 +261,8 @@ class PipelineJob(Base):
     coverage_regex: Mapped[str | None] = mapped_column(String, nullable=True)
     coverage: Mapped[str | None] = mapped_column(String, nullable=True)
     environment: Mapped[str | None] = mapped_column(String, nullable=True)
+    environment_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    environment_action: Mapped[str | None] = mapped_column(String, nullable=True)
     secret_metadata: Mapped[list] = mapped_column(JSON, default=list)
     trigger_project: Mapped[str | None] = mapped_column(String, nullable=True)
     trigger_ref: Mapped[str | None] = mapped_column(String, nullable=True)

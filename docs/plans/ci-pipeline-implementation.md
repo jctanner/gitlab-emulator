@@ -103,8 +103,9 @@ Already working:
   downloads, while omitted dependencies use prior-stage artifacts when present
 - common job runtime metadata is parsed, persisted, and exposed in job API
   payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
-  `coverage`; job `environment` names are persisted, exposed in job APIs, and
-  sent to runner payloads as `CI_ENVIRONMENT_NAME`; `default:` inheritance
+  `coverage`; job `environment` names, URLs, and actions are persisted, exposed
+  in job APIs, and sent to runner payloads as `CI_ENVIRONMENT_NAME`,
+  `CI_ENVIRONMENT_URL`, and `CI_ENVIRONMENT_ACTION`; `default:` inheritance
   applies to `retry`, `timeout`, and `interruptible`; runner payloads use the
   parsed job timeout for runner and step timeout fields, and job traces are
   scanned with the configured coverage regex to populate the job API `coverage`

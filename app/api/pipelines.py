@@ -1260,6 +1260,8 @@ def _job_json(job: PipelineJob) -> dict:
         "coverage": job.coverage,
         "coverage_regex": job.coverage_regex,
         "environment": job.environment,
+        "environment_url": job.environment_url,
+        "environment_action": job.environment_action,
         "allow_failure": bool(job.allow_failure),
         "allow_failure_exit_codes": job.allow_failure_exit_codes or [],
         "trigger": {
@@ -1676,6 +1678,8 @@ async def _create_pipeline(
             resource_group=parsed_job.resource_group,
             coverage_regex=parsed_job.coverage,
             environment=parsed_job.environment,
+            environment_url=parsed_job.environment_url,
+            environment_action=parsed_job.environment_action,
             trigger_project=parsed_job.trigger["project"] if parsed_job.trigger else None,
             trigger_ref=parsed_job.trigger["ref"] if parsed_job.trigger else None,
             trigger_strategy=parsed_job.trigger["strategy"]

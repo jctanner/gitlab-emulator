@@ -2786,11 +2786,16 @@ production_job:
 staging_job:
   environment:
     name: staging
+    url: https://staging.example.test
+    action: prepare
   script:
     - echo staging
 
 review_job:
-  environment: review/app
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: https://review.example.test/$CI_COMMIT_REF_NAME
+    action: start
   script:
     - echo review
 """
@@ -2826,6 +2831,8 @@ review_job:
 
     values_by_job = {}
     environment_by_job = {}
+    environment_url_by_job = {}
+    environment_action_by_job = {}
     for _ in range(3):
         request = await client.post(
             f"{API}/jobs/request",
@@ -2839,6 +2846,12 @@ review_job:
         environment_by_job[payload["job_info"]["name"]] = variables.get(
             "CI_ENVIRONMENT_NAME"
         )
+        environment_url_by_job[payload["job_info"]["name"]] = variables.get(
+            "CI_ENVIRONMENT_URL"
+        )
+        environment_action_by_job[payload["job_info"]["name"]] = variables.get(
+            "CI_ENVIRONMENT_ACTION"
+        )
 
     assert values_by_job == {
         "production_job": "production",
@@ -2848,7 +2861,17 @@ review_job:
     assert environment_by_job == {
         "production_job": "production",
         "staging_job": "staging",
-        "review_job": "review/app",
+        "review_job": "review/main",
+    }
+    assert environment_url_by_job == {
+        "production_job": None,
+        "staging_job": "https://staging.example.test",
+        "review_job": "https://review.example.test/main",
+    }
+    assert environment_action_by_job == {
+        "production_job": None,
+        "staging_job": "prepare",
+        "review_job": "start",
     }
 
     jobs = await client.get(
@@ -2858,7 +2881,17 @@ review_job:
     assert {job["name"]: job["environment"] for job in jobs.json()} == {
         "production_job": "production",
         "staging_job": "staging",
-        "review_job": "review/app",
+        "review_job": "review/main",
+    }
+    assert {job["name"]: job["environment_url"] for job in jobs.json()} == {
+        "production_job": None,
+        "staging_job": "https://staging.example.test",
+        "review_job": "https://review.example.test/main",
+    }
+    assert {job["name"]: job["environment_action"] for job in jobs.json()} == {
+        "production_job": None,
+        "staging_job": "prepare",
+        "review_job": "start",
     }
 
 
