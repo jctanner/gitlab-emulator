@@ -3,12 +3,14 @@
 import asyncio
 import base64
 import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
+from app.api.repository_files import _create_push_pipeline_for_file_commit
 from app.config import settings
 from app.schemas.user import _make_node_id
 from app.services.permissions import DEVELOPER, require_project_access
@@ -209,6 +211,16 @@ async def create_or_update_file(
 
     # Update ref
     await _git(repo_path, "update-ref", f"refs/heads/{branch}", commit_sha)
+    repository.pushed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await _create_push_pipeline_for_file_commit(
+        repository,
+        branch,
+        commit_sha,
+        parent_sha,
+        db,
+        actor=user,
+    )
 
     api = f"{BASE}/api/v4"
     result = {
@@ -278,6 +290,16 @@ async def delete_file(
         )
     ).strip()
     await _git(repository.disk_path, "update-ref", f"refs/heads/{branch}", commit_sha)
+    repository.pushed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await _create_push_pipeline_for_file_commit(
+        repository,
+        branch,
+        commit_sha,
+        parent_sha,
+        db,
+        actor=user,
+    )
 
     api = f"{BASE}/api/v4"
 

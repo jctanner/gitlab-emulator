@@ -66,6 +66,66 @@ async def test_create_file(client, test_user, test_token, test_repo_with_init):
 
 
 @pytest.mark.asyncio
+async def test_contents_commit_creates_push_pipeline(
+    client, test_user, test_token, test_repo_with_init
+):
+    """PUT /repos/{owner}/{repo}/contents/.gitlab-ci.yml creates a push pipeline."""
+    owner, repo_name, _ = test_repo_with_init
+    project = await client.get(
+        f"{API}/projects/{owner}%2F{repo_name}",
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 200
+    readme = await client.get(
+        f"{API}/projects/{project.json()['id']}/repository/files/README.md",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert readme.status_code == 200
+    before_sha = readme.json()["commit_id"]
+    ci_yaml = """
+push_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+  script:
+    - echo contents push
+
+api_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
+"""
+    content_b64 = base64.b64encode(ci_yaml.encode()).decode()
+    resp = await client.put(
+        f"{API}/repos/{owner}/{repo_name}/contents/.gitlab-ci.yml",
+        json={
+            "message": "Create CI config",
+            "content": content_b64,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+
+    pipelines = await client.get(
+        f"{API}/projects/{project.json()['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert pipelines.status_code == 200
+    pipeline = next(item for item in pipelines.json() if item["source"] == "push")
+    assert pipeline["ref"] == "main"
+    assert pipeline["sha"] == resp.json()["commit"]["sha"]
+    assert pipeline["before_sha"] == before_sha
+
+    jobs = await client.get(
+        f"{API}/projects/{project.json()['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["push_job"]
+
+
+@pytest.mark.asyncio
 async def test_update_file(client, test_user, test_token, test_repo_with_init):
     """PUT /repos/{owner}/{repo}/contents/{path} updates an existing file."""
     owner, repo_name, _ = test_repo_with_init

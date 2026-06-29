@@ -99,6 +99,65 @@ async def test_repository_tree_and_raw_file(client, test_token):
 
 
 @pytest.mark.asyncio
+async def test_repository_file_commit_creates_push_pipeline(client, test_token):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "file-push-pipeline-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    readme = await client.get(
+        f"{API}/projects/{project_id}/repository/files/README.md",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert readme.status_code == 200
+    before_sha = readme.json()["commit_id"]
+
+    ci_yaml = """
+push_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+  script:
+    - echo file push
+
+api_job:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+  script:
+    - echo api
+"""
+    create = await client.post(
+        f"{API}/projects/{project_id}/repository/files/.gitlab-ci.yml",
+        json={
+            "branch": "main",
+            "commit_message": "add ci through files api",
+            "content": ci_yaml,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert create.status_code == 201
+
+    pipelines = await client.get(
+        f"{API}/projects/{project_id}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert pipelines.status_code == 200
+    pipeline = next(item for item in pipelines.json() if item["source"] == "push")
+    assert pipeline["ref"] == "main"
+    assert pipeline["sha"] == create.json()["commit_id"]
+    assert pipeline["before_sha"] == before_sha
+
+    jobs = await client.get(
+        f"{API}/projects/{project_id}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["push_job"]
+
+
+@pytest.mark.asyncio
 async def test_create_update_and_delete_repository_file(client, test_token):
     project = await client.post(
         f"{API}/projects",

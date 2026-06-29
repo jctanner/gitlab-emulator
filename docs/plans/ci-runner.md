@@ -99,10 +99,10 @@ and cache APIs for controlled integration testing.
 
 - current event support covers API, push, trigger, schedule, and merge request
   event pipelines; the MVP now creates `source=push` pipelines after successful
-  Git Smart HTTP and SSH branch or tag pushes when `.gitlab-ci.yml` is present
-  and workflow rules include the pushed ref, persists the pushed ref's previous
-  SHA as pipeline `before_sha`, sends that value in runner
-  `git_info.before_sha`, and merge request creation or branch-target updates
+  Git Smart HTTP/SSH branch or tag pushes and repository file API commits when
+  `.gitlab-ci.yml` is present and workflow rules include the updated ref,
+  persists the updated ref's previous SHA as pipeline `before_sha`, sends that
+  value in runner `git_info.before_sha`, and merge request creation or branch-target updates
   opportunistically create `source=merge_request_event` pipelines when the MR
   head `.gitlab-ci.yml` allows the event
 - deeper pipeline event behavior beyond those MVP paths remains future work

@@ -171,7 +171,7 @@ async def _commit_file_change(
     message: str,
     content: bytes | None,
     start_ref: str | None = None,
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, str | None]:
     repo_path = project.disk_path
     if not repo_path or not os.path.isdir(repo_path):
         raise HTTPException(status_code=404, detail="404 Project Not Found")
@@ -227,7 +227,33 @@ async def _commit_file_change(
     commit_sha = (await _git(repo_path, *commit_args)).strip()
     await _git(repo_path, "update-ref", f"refs/heads/{branch}", commit_sha)
     project.pushed_at = datetime.now(timezone.utc)
-    return commit_sha, blob_sha
+    return commit_sha, blob_sha, parent_sha
+
+
+async def _create_push_pipeline_for_file_commit(
+    project: Project,
+    branch: str,
+    commit_sha: str,
+    before_sha: str | None,
+    db: DbSession,
+    *,
+    actor=None,
+) -> None:
+    from app.api.pipelines import CreatePipelineRequest, _create_pipeline
+
+    try:
+        await _create_pipeline(
+            project.id,
+            CreatePipelineRequest(ref=branch, sha=commit_sha),
+            db,
+            source="push",
+            actor=actor,
+            before_sha=before_sha or "0000000000000000000000000000000000000000",
+        )
+    except Exception:
+        # GitLab accepts repository file commits even when CI config is absent,
+        # skipped by workflow rules, or invalid.
+        await db.rollback()
 
 
 def _commit_response(commit_sha: str, message: str) -> dict:
@@ -411,10 +437,13 @@ async def create_repository_file(
         )
         raise HTTPException(status_code=400, detail=detail)
 
-    commit_sha, blob_sha = await _commit_file_change(
+    commit_sha, blob_sha, before_sha = await _commit_file_change(
         project, branch, decoded_path, message, _decode_content(body), start_ref
     )
     await db.commit()
+    await _create_push_pipeline_for_file_commit(
+        project, branch, commit_sha, before_sha, db, actor=user
+    )
     payload = _file_change_response(decoded_path, branch, commit_sha, message, blob_sha)
     return JSONResponse(content=payload, status_code=201)
 
@@ -436,10 +465,13 @@ async def update_repository_file(
     read_ref = await _read_ref_for_change(project, branch, start_ref)
     message = str(body.get("commit_message") or f"Update {decoded_path}")
     await _file_metadata(project, decoded_path, read_ref)
-    commit_sha, blob_sha = await _commit_file_change(
+    commit_sha, blob_sha, before_sha = await _commit_file_change(
         project, branch, decoded_path, message, _decode_content(body), start_ref
     )
     await db.commit()
+    await _create_push_pipeline_for_file_commit(
+        project, branch, commit_sha, before_sha, db, actor=user
+    )
     return _file_change_response(decoded_path, branch, commit_sha, message, blob_sha)
 
 
@@ -460,6 +492,16 @@ async def delete_repository_file(
     read_ref = await _read_ref_for_change(project, branch, start_ref)
     message = str(body.get("commit_message") or f"Delete {decoded_path}")
     await _file_metadata(project, decoded_path, read_ref)
-    commit_sha, _ = await _commit_file_change(project, branch, decoded_path, message, None, start_ref)
+    commit_sha, _, before_sha = await _commit_file_change(
+        project,
+        branch,
+        decoded_path,
+        message,
+        None,
+        start_ref,
+    )
     await db.commit()
+    await _create_push_pipeline_for_file_commit(
+        project, branch, commit_sha, before_sha, db, actor=user
+    )
     return _file_change_response(decoded_path, branch, commit_sha, message)
