@@ -120,12 +120,14 @@ async def test_pipeline_and_job_lists_are_paginated(client, test_token):
                 "ref": "main",
                 "job": {"name": job_name, "script": [f"echo {job_name}"]},
             },
+            headers=auth_headers(test_token),
         )
         assert pipeline.status_code == 201
 
     pipelines = await client.get(
         f"{API}/projects/{project_id}/pipelines",
         params={"page": 1, "per_page": 1},
+        headers=auth_headers(test_token),
     )
     assert pipelines.status_code == 200
     assert len(pipelines.json()) == 1
@@ -135,6 +137,7 @@ async def test_pipeline_and_job_lists_are_paginated(client, test_token):
     jobs = await client.get(
         f"{API}/projects/{project_id}/jobs",
         params={"page": 2, "per_page": 1},
+        headers=auth_headers(test_token),
     )
     assert jobs.status_code == 200
     assert len(jobs.json()) == 1

@@ -75,6 +75,8 @@ and cache APIs for controlled integration testing.
 - runner registration, verification, and polling persist official runner
   metadata, feature flags such as `fallback_cache_keys`, and runner config
   maps for API/admin inspection
+- runner list and per-runner job inspection endpoints return GitLab-style
+  pagination headers
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing and emulator cache fallback-key lookup
 - MinIO-backed official runner cache upload/restore validation
@@ -117,7 +119,8 @@ and cache APIs for controlled integration testing.
 - expose additional runner/job/pipeline inspection APIs in GitLab-compatible
   shapes where target clients require them; runner job inspection now returns
   GitLab job-shaped fields including pipeline, commit, runner, artifacts,
-  timestamps, duration, queued duration, tags, status, and web URL
+  timestamps, duration, queued duration, tags, status, web URL, and pagination
+  headers
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

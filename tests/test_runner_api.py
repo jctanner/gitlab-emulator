@@ -99,6 +99,29 @@ async def test_runner_registration_creates_distinct_runner_tokens(client):
     ]
 
 
+async def test_runner_list_pagination_headers(client):
+    for description in ["docker-runner", "k8s-runner", "shell-runner"]:
+        register = await client.post(
+            f"{API}/runners",
+            headers={"RUNNER-TOKEN": REGISTRATION_TOKEN},
+            json={"token": REGISTRATION_TOKEN, "description": description},
+        )
+        assert register.status_code == 201
+
+    runners = await client.get(f"{API}/runners", params={"page": 2, "per_page": 1})
+
+    assert runners.status_code == 200
+    assert [runner["description"] for runner in runners.json()] == ["k8s-runner"]
+    assert runners.headers["X-Total"] == "3"
+    assert runners.headers["X-Total-Pages"] == "3"
+    assert runners.headers["X-Page"] == "2"
+    assert runners.headers["X-Per-Page"] == "1"
+    assert runners.headers["X-Prev-Page"] == "1"
+    assert runners.headers["X-Next-Page"] == "3"
+    assert 'rel="prev"' in runners.headers["Link"]
+    assert 'rel="next"' in runners.headers["Link"]
+
+
 async def test_runner_request_no_job_returns_204(client, db_session):
     resp = await client.post(
         f"{API}/jobs/request",
@@ -221,6 +244,10 @@ async def test_runner_inspection_endpoints(client, test_token):
 
     jobs = await client.get(f"{API}/runners/{runner_id}/jobs")
     assert jobs.status_code == 200
+    assert jobs.headers["X-Total"] == "1"
+    assert jobs.headers["X-Total-Pages"] == "1"
+    assert jobs.headers["X-Page"] == "1"
+    assert jobs.headers["X-Per-Page"] == "30"
     job = jobs.json()[0]
     assert job["name"] == "inspect_job"
     assert job["status"] == "running"
@@ -237,6 +264,59 @@ async def test_runner_inspection_endpoints(client, test_token):
     assert job["runner"]["description"] == "inspect-runner"
     assert job["runner"]["runner_type"] == "instance_type"
     assert job["web_url"].endswith(f"/testuser/runner-inspection/-/jobs/{job['id']}")
+
+
+async def test_runner_jobs_pagination_headers(client, test_token):
+    register = await client.post(
+        f"{API}/runners",
+        headers={"RUNNER-TOKEN": REGISTRATION_TOKEN},
+        json={
+            "token": REGISTRATION_TOKEN,
+            "description": "jobs-page-runner",
+            "info": {"name": "jobs-page-runner"},
+        },
+    )
+    assert register.status_code == 201
+    runner_id = register.json()["id"]
+
+    project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "runner-jobs-pagination", "auto_init": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+
+    for index in range(3):
+        pipeline = await client.post(
+            f"{API}/projects/{project.json()['id']}/pipeline",
+            json={
+                "ref": "main",
+                "job": {"name": f"paged_job_{index}", "script": ["echo paged"]},
+            },
+            headers=auth_headers(test_token),
+        )
+        assert pipeline.status_code == 201
+        request = await client.post(
+            f"{API}/jobs/request",
+            headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+            json={"token": RUNNER_TOKEN, "info": {"name": "jobs-page-runner"}},
+        )
+        assert request.status_code == 201
+
+    jobs = await client.get(
+        f"{API}/runners/{runner_id}/jobs", params={"page": 2, "per_page": 1}
+    )
+
+    assert jobs.status_code == 200
+    assert len(jobs.json()) == 1
+    assert jobs.headers["X-Total"] == "3"
+    assert jobs.headers["X-Total-Pages"] == "3"
+    assert jobs.headers["X-Page"] == "2"
+    assert jobs.headers["X-Per-Page"] == "1"
+    assert jobs.headers["X-Prev-Page"] == "1"
+    assert jobs.headers["X-Next-Page"] == "3"
+    assert 'rel="prev"' in jobs.headers["Link"]
+    assert 'rel="next"' in jobs.headers["Link"]
 
 
 async def test_debug_smoke_queue_admin_routes_are_removed(client):

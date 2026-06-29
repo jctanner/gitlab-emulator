@@ -16,10 +16,11 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DbSession
+from app.api.pagination import pagination_headers
 from app.config import settings
 from app.models.ci import CiRunner, JobArtifact, JobTrace, Pipeline, PipelineJob
 from app.models.project import Project
@@ -1365,9 +1366,21 @@ def _skip_on_failure_jobs_without_failure(pipeline: Pipeline) -> None:
 
 
 @router.get("/runners")
-async def list_runners(db: DbSession):
+async def list_runners(
+    request: Request,
+    response: Response,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
     """List persisted runners for emulator/operator inspection."""
-    result = await db.execute(select(CiRunner).order_by(CiRunner.id.asc()))
+    query = select(CiRunner).order_by(CiRunner.id.asc())
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
+    result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
+    for name, value in pagination_headers(request, page, per_page, total).items():
+        response.headers[name] = value
     return [_runner_json(runner) for runner in result.scalars().all()]
 
 
@@ -1382,7 +1395,14 @@ async def get_runner(runner_id: int, db: DbSession):
 
 
 @router.get("/runners/{runner_id}/jobs")
-async def list_runner_jobs(runner_id: int, db: DbSession):
+async def list_runner_jobs(
+    runner_id: int,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
     """Return recent jobs associated with a persisted runner."""
     result = await db.execute(select(CiRunner).where(CiRunner.id == runner_id))
     runner = result.scalar_one_or_none()
@@ -1390,8 +1410,10 @@ async def list_runner_jobs(runner_id: int, db: DbSession):
         raise HTTPException(status_code=404, detail="Runner Not Found")
     runner_names = {name for name in [runner.runner_name, runner.description] if name}
     if not runner_names:
+        for name, value in pagination_headers(request, page, per_page, 0).items():
+            response.headers[name] = value
         return []
-    jobs_result = await db.execute(
+    query = (
         select(PipelineJob)
         .options(
             selectinload(PipelineJob.pipeline),
@@ -1400,8 +1422,13 @@ async def list_runner_jobs(runner_id: int, db: DbSession):
         )
         .where(PipelineJob.runner_name.in_(runner_names))
         .order_by(PipelineJob.id.desc())
-        .limit(50)
     )
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
+    jobs_result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
+    for name, value in pagination_headers(request, page, per_page, total).items():
+        response.headers[name] = value
     return [_runner_job_json(job, runner) for job in jobs_result.scalars().all()]
 
 

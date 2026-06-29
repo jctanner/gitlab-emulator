@@ -201,7 +201,8 @@ harness architecture.
   query-preserving RFC 5988 `Link` headers. Current coverage includes projects,
   user projects, groups, group projects, project issues, merge requests,
   branches, tags, protected branches, repository tree, commits, releases,
-  pipelines, jobs, search, project/group hooks, and project/group members;
+  pipelines, jobs, runner lists, per-runner jobs, search, project/group hooks,
+  and project/group members;
   middleware still supplies baseline pagination header names for any remaining
   paginated `/api/v4` endpoints.
 - GitLab-shaped group APIs exist for creating, listing, getting groups by
