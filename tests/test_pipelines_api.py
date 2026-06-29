@@ -1817,6 +1817,31 @@ junit_probe:
         "skipped",
     ]
 
+    summary = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/test_report_summary",
+        headers=auth_headers(test_token),
+    )
+    assert summary.status_code == 200
+    assert summary.json()["total"] == {
+        "time": 1.5,
+        "count": 3,
+        "success": 1,
+        "failed": 1,
+        "skipped": 1,
+        "error": 0,
+    }
+    assert summary.json()["test_suites"] == [
+        {
+            "name": "unit",
+            "total_time": 1.5,
+            "total_count": 3,
+            "success_count": 1,
+            "failed_count": 1,
+            "skipped_count": 1,
+            "error_count": 0,
+        }
+    ]
+
 
 async def test_job_hooks_reach_runner_payload(client, test_token):
     project = await _create_project(client, test_token)

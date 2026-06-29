@@ -135,8 +135,8 @@ and cache APIs for controlled integration testing.
 - project job artifact keep clears artifact expiration timestamps
 - project job APIs can download individual files from stored ZIP artifact
   archives by job ID or by ref plus job name
-- pipeline test report APIs aggregate stored JUnit report artifacts into
-  GitLab-shaped suite and test case counts
+- pipeline test report and test report summary APIs aggregate stored JUnit
+  report artifacts into GitLab-shaped suite and test case counts
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

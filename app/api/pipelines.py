@@ -1163,6 +1163,31 @@ def _merge_test_suites(suites: list[dict]) -> dict:
     return report
 
 
+def _test_report_summary(report: dict) -> dict:
+    return {
+        "total": {
+            "time": report["total_time"],
+            "count": report["total_count"],
+            "success": report["success_count"],
+            "failed": report["failed_count"],
+            "skipped": report["skipped_count"],
+            "error": report["error_count"],
+        },
+        "test_suites": [
+            {
+                "name": suite["name"],
+                "total_time": suite["total_time"],
+                "total_count": suite["total_count"],
+                "success_count": suite["success_count"],
+                "failed_count": suite["failed_count"],
+                "skipped_count": suite["skipped_count"],
+                "error_count": suite["error_count"],
+            }
+            for suite in report["test_suites"]
+        ],
+    }
+
+
 def _junit_suites_from_artifact(artifact) -> list[dict]:
     if artifact.file_type != "junit" or not artifact.storage_path:
         return []
@@ -2396,6 +2421,14 @@ async def get_pipeline_test_report(
         for artifact in job.artifacts:
             suites.extend(_junit_suites_from_artifact(artifact))
     return _merge_test_suites(suites)
+
+
+@router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/test_report_summary")
+async def get_pipeline_test_report_summary(
+    project_ref: str, pipeline_id: int, db: DbSession, current_user: CurrentUser
+):
+    report = await get_pipeline_test_report(project_ref, pipeline_id, db, current_user)
+    return _test_report_summary(report)
 
 
 async def _get_pipeline_for_project_ref(
