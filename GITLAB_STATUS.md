@@ -154,6 +154,8 @@ harness architecture.
   and injected into downstream runner job variables.
 - Pipeline API payloads expose aggregate coverage from completed jobs that
   matched their configured coverage regex.
+- Project environment list APIs derive GitLab-shaped environments and latest
+  deployment metadata from CI jobs with persisted environment metadata.
 - YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
   are parsed, variable-expanded, persisted, and exposed in official-runner
   `hooks` payloads.

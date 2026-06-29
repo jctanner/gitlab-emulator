@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import fnmatch
+import hashlib
 import json
 import mimetypes
 import os
+import re
 import secrets
 import ssl
 import xml.etree.ElementTree as ET
@@ -1085,6 +1087,37 @@ def _pipeline_variable_json(variable: dict) -> dict:
         "masked": bool(variable.get("masked", False)),
         "raw": bool(variable.get("raw", False)),
         "public": variable.get("public"),
+    }
+
+
+def _environment_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug[:63] or "environment"
+
+
+def _environment_id(name: str) -> int:
+    return int(hashlib.sha1(name.encode()).hexdigest()[:8], 16)
+
+
+def _environment_json(name: str, job: PipelineJob) -> dict:
+    return {
+        "id": _environment_id(name),
+        "name": name,
+        "slug": _environment_slug(name),
+        "external_url": job.environment_url,
+        "state": "stopped" if job.environment_action == "stop" else "available",
+        "created_at": _fmt_dt(job.created_at),
+        "updated_at": _fmt_dt(job.updated_at),
+        "last_deployment": {
+            "id": job.id,
+            "iid": job.id,
+            "status": job.status,
+            "deployable": _job_json(job),
+            "environment": {"id": _environment_id(name), "name": name},
+            "created_at": _fmt_dt(job.created_at),
+            "updated_at": _fmt_dt(job.updated_at),
+            "finished_at": _fmt_dt(job.finished_at),
+        },
     }
 
 
@@ -2375,6 +2408,54 @@ async def list_pipelines(
     result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
     return paginated_json(
         [_pipeline_json(pipeline) for pipeline in result.scalars().all()],
+        request,
+        page,
+        per_page,
+        total,
+    )
+
+
+@router.get("/projects/{project_ref:path}/environments")
+async def list_project_environments(
+    project_ref: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    search: str | None = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    result = await db.execute(
+        select(PipelineJob)
+        .options(
+            selectinload(PipelineJob.pipeline),
+            selectinload(PipelineJob.project),
+            selectinload(PipelineJob.artifacts),
+        )
+        .where(
+            PipelineJob.project_id == project.id,
+            PipelineJob.environment.is_not(None),
+        )
+        .order_by(PipelineJob.id.desc())
+    )
+    latest_by_environment: dict[str, PipelineJob] = {}
+    for job in result.scalars().all():
+        if not job.environment:
+            continue
+        if search and search.lower() not in job.environment.lower():
+            continue
+        latest_by_environment.setdefault(job.environment, job)
+    environments = [
+        _environment_json(name, job)
+        for name, job in sorted(latest_by_environment.items())
+    ]
+    total = len(environments)
+    start = (page - 1) * per_page
+    return paginated_json(
+        environments[start : start + per_page],
         request,
         page,
         per_page,

@@ -141,6 +141,8 @@ and cache APIs for controlled integration testing.
   and injected into downstream runner job variables
 - pipeline API payloads expose aggregate coverage from completed jobs that
   matched their configured coverage regex
+- project environment list APIs derive GitLab-shaped environments and latest
+  deployment metadata from CI jobs with persisted environment metadata
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

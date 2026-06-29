@@ -3752,6 +3752,31 @@ review_job:
         "review_job": "start",
     }
 
+    environments = await client.get(
+        f"{API}/projects/{project['id']}/environments",
+        headers=auth_headers(test_token),
+    )
+    assert environments.status_code == 200
+    by_name = {environment["name"]: environment for environment in environments.json()}
+    assert sorted(by_name) == ["production", "review/main", "staging"]
+    assert by_name["production"]["slug"] == "production"
+    assert by_name["production"]["state"] == "available"
+    assert by_name["production"]["external_url"] is None
+    assert by_name["production"]["last_deployment"]["deployable"]["name"] == (
+        "production_job"
+    )
+    assert by_name["staging"]["external_url"] == "https://staging.example.test"
+    assert by_name["staging"]["last_deployment"]["status"] == "running"
+    assert by_name["review/main"]["slug"] == "review-main"
+
+    search = await client.get(
+        f"{API}/projects/{project['id']}/environments",
+        params={"search": "review"},
+        headers=auth_headers(test_token),
+    )
+    assert search.status_code == 200
+    assert [environment["name"] for environment in search.json()] == ["review/main"]
+
 
 async def test_job_secrets_resolve_to_runner_payload_and_access_events(
     client, test_token, db_session
