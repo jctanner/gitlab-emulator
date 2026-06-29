@@ -1843,6 +1843,87 @@ junit_probe:
     ]
 
 
+async def test_dotenv_report_variables_reach_downstream_job(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = _api_only_ci_yaml(
+        """
+stages: [build, test]
+build_env:
+  stage: build
+  image: alpine:3.20
+  script:
+    - echo build env
+  artifacts:
+    reports:
+      dotenv: build.env
+consume_env:
+  stage: test
+  image: alpine:3.20
+  script:
+    - echo $DYNAMIC_VALUE
+"""
+    )
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add dotenv ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    build_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert build_request.status_code == 201
+    build_payload = build_request.json()
+    assert build_payload["job_info"]["name"] == "build_env"
+
+    dotenv_upload = await client.post(
+        f"{API}/jobs/{build_payload['id']}/artifacts?artifact_format=gzip&artifact_type=dotenv",
+        headers={
+            "JOB-TOKEN": build_payload["token"],
+            "Content-Type": "application/gzip",
+        },
+        content=b"DYNAMIC_VALUE=from-dotenv\nINVALID-NAME=ignored\n",
+    )
+    assert dotenv_upload.status_code == 201
+
+    finish = await client.put(
+        f"{API}/jobs/{build_payload['id']}",
+        headers={"JOB-TOKEN": build_payload["token"]},
+        json={
+            "token": build_payload["token"],
+            "state": "success",
+            "exit_code": 0,
+        },
+    )
+    assert finish.status_code == 200
+
+    consume_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume_request.status_code == 201
+    consume_payload = consume_request.json()
+    assert consume_payload["job_info"]["name"] == "consume_env"
+    variables = {item["key"]: item["value"] for item in consume_payload["variables"]}
+    assert variables["DYNAMIC_VALUE"] == "from-dotenv"
+    assert "INVALID-NAME" not in variables
+
+
 async def test_job_hooks_reach_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

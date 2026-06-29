@@ -100,7 +100,9 @@ Already working:
   entries for report artifact types such as `junit`, `dotenv`, and
   `coverage_report`;
   uploaded artifacts store type/format/expiry metadata and expired artifacts
-  return 404
+  return 404; stored JUnit reports can be queried through pipeline test report
+  APIs, and dotenv reports from successful dependency jobs are injected into
+  downstream runner variables
 - job `dependencies` are parsed, persisted, validated against earlier-stage
   jobs, exposed in job API payloads, and used to shape runner artifact
   dependency payloads; explicit `dependencies: []` disables default artifact

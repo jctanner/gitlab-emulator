@@ -137,6 +137,8 @@ and cache APIs for controlled integration testing.
   archives by job ID or by ref plus job name
 - pipeline test report and test report summary APIs aggregate stored JUnit
   report artifacts into GitLab-shaped suite and test case counts
+- dotenv report artifacts from successful upstream dependency jobs are parsed
+  and injected into downstream runner job variables
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

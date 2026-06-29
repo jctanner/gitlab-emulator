@@ -150,6 +150,8 @@ harness architecture.
   files from stored ZIP artifact archives by job ID or by ref plus job name.
   Pipeline test report and test report summary APIs aggregate stored JUnit
   report artifacts into GitLab-shaped suite and test case counts.
+- Dotenv report artifacts from successful upstream dependency jobs are parsed
+  and injected into downstream runner job variables.
 - YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
   are parsed, variable-expanded, persisted, and exposed in official-runner
   `hooks` payloads.

@@ -10,6 +10,7 @@ import os
 import posixpath
 import re
 import secrets
+import gzip
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -1052,6 +1053,76 @@ def _artifact_is_expired(artifact: JobArtifact) -> bool:
     return bool(artifact.expire_at and artifact.expire_at <= now)
 
 
+def _local_dependency_jobs(job: PipelineJob) -> list[PipelineJob]:
+    if job.dependencies is not None:
+        dependency_names = [str(name) for name in job.dependencies]
+    elif job.needs is not None:
+        dependency_names = [
+            need["job"]
+            for need in _need_items(job.needs)
+            if need.get("artifacts", True) and not _is_external_need(need)
+        ]
+    else:
+        return [
+            peer
+            for peer in sorted(
+                job.pipeline.jobs,
+                key=lambda peer: (peer.stage_index, peer.id),
+            )
+            if peer.stage_index < job.stage_index
+        ]
+    peers_by_name = {peer.name: peer for peer in job.pipeline.jobs}
+    return [peers_by_name[name] for name in dependency_names if name in peers_by_name]
+
+
+def _dotenv_bytes(artifact: JobArtifact) -> bytes | None:
+    if (
+        artifact.file_type != "dotenv"
+        or not artifact.storage_path
+        or _artifact_is_expired(artifact)
+        or not os.path.isfile(artifact.storage_path)
+    ):
+        return None
+    try:
+        with open(artifact.storage_path, "rb") as artifact_file:
+            data = artifact_file.read()
+    except OSError:
+        return None
+    if artifact.file_format == "gzip" or artifact.filename.endswith(".gz"):
+        try:
+            return gzip.decompress(data)
+        except (OSError, EOFError):
+            return data
+    return data
+
+
+def _dotenv_variables_from_artifact(artifact: JobArtifact) -> dict[str, str]:
+    data = _dotenv_bytes(artifact)
+    if data is None:
+        return {}
+    variables: dict[str, str] = {}
+    for raw_line in data.decode(errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        variables[key] = value.strip().strip('"').strip("'")
+    return variables
+
+
+def _dotenv_variables_for_job(job: PipelineJob) -> dict[str, str]:
+    variables: dict[str, str] = {}
+    for peer in _local_dependency_jobs(job):
+        if peer.status != "success":
+            continue
+        for artifact in peer.artifacts:
+            variables.update(_dotenv_variables_from_artifact(artifact))
+    return variables
+
+
 async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
     pipeline = job.pipeline
     project = job.project
@@ -1077,6 +1148,7 @@ async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
         "CI_JOB_STAGE": job.stage,
         "CI_JOB_TOKEN": job.job_token,
         "GIT_STRATEGY": "fetch",
+        **_dotenv_variables_for_job(job),
         **(job.variables or {}),
     }
     if job.environment:
