@@ -76,7 +76,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
   `resource_group`, and `coverage`, automatic failed-job retry attempts from
   `retry`, resource-group serialization for runner assignment, coverage
-  extraction from traces, deeper `extends` semantics, nested local `include`,
+  extraction from traces, interruptible cancellation when a newer same-ref
+  pipeline is created, deeper `extends` semantics, nested local `include`,
   `include:project`, list-valued controlled `include:remote`, and list-valued
   built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
@@ -215,8 +216,8 @@ Target areas:
   boolean expressions, regex operators and flags, `exists`, `changes`,
   path-object rules, variable-expanded rule paths, mapping-form legacy filters,
   rule variables, and delayed/manual scheduling
-- remaining execution semantics for parsed job metadata, including
-  interruptible cancellation behavior
+- remaining execution semantics for parsed job metadata beyond the current
+  retry, timeout, resource-group, coverage, and interruptible support
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, prefix/files/files_commits keys, fallback keys, policy, `when`,
   clear unsupported option rejection, and MinIO-backed runner validation

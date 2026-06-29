@@ -858,6 +858,38 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.status = "pending"
 
 
+async def _cancel_interruptible_jobs_for_new_pipeline(
+    project_id: int, ref: str, new_pipeline_id: int, db: DbSession
+) -> None:
+    """Cancel older interruptible jobs superseded by a same-ref pipeline."""
+    result = await db.execute(
+        select(Pipeline)
+        .options(selectinload(Pipeline.jobs))
+        .where(
+            Pipeline.project_id == project_id,
+            Pipeline.ref == ref,
+            Pipeline.id != new_pipeline_id,
+        )
+        .order_by(Pipeline.id.desc())
+    )
+    now = datetime.now(timezone.utc)
+    for pipeline in result.scalars().all():
+        changed = False
+        for job in pipeline.jobs:
+            if job.interruptible and job.status in {
+                "pending",
+                "running",
+                "scheduled",
+                "manual",
+            }:
+                job.status = "canceled"
+                job.failure_reason = "canceled"
+                job.finished_at = now
+                changed = True
+        if changed:
+            await _derive_pipeline_status(pipeline, db)
+
+
 async def _create_pipeline(
     project_id: int,
     body: CreatePipelineRequest,
@@ -1087,6 +1119,9 @@ async def _create_pipeline(
                 )
             )
         db.add(JobTrace(job_id=job.id, content="", size=0))
+    await _cancel_interruptible_jobs_for_new_pipeline(
+        project.id, body.ref, pipeline.id, db
+    )
     await db.commit()
     await db.refresh(pipeline)
     return pipeline

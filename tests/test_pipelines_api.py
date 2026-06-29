@@ -678,6 +678,73 @@ deploy_two:
     assert second_request.json()["job_info"]["name"] == "deploy_two"
 
 
+async def test_new_same_ref_pipeline_cancels_interruptible_jobs(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+interruptible_job:
+  interruptible: true
+  script:
+    - echo interruptible
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add interruptible ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    first_pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert first_pipeline_resp.status_code == 201
+    first_pipeline = first_pipeline_resp.json()
+
+    first_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first_request.status_code == 201
+    first_payload = first_request.json()
+    assert first_payload["job_info"]["name"] == "interruptible_job"
+
+    second_pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert second_pipeline_resp.status_code == 201
+    second_pipeline = second_pipeline_resp.json()
+
+    first_jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{first_pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert first_jobs.status_code == 200
+    assert first_jobs.json()[0]["status"] == "canceled"
+
+    first_pipeline_after = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{first_pipeline['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert first_pipeline_after.status_code == 200
+    assert first_pipeline_after.json()["status"] == "canceled"
+
+    second_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert second_request.status_code == 201
+    assert second_request.json()["id"] != first_payload["id"]
+    assert second_request.json()["job_info"]["pipeline_id"] == second_pipeline["id"]
+
+
 async def test_pipeline_diagnostics_marks_stale_running_job(
     client, test_token, db_session
 ):
