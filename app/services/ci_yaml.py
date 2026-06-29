@@ -47,6 +47,7 @@ SUPPORTED_CACHE_ENTRY_KEYS = {
     "policy",
     "when",
     "fallback_keys",
+    "unprotect",
 }
 SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
 SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
@@ -316,6 +317,7 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
             {
                 "key": _cache_key(raw_entry.get("key"), variables),
                 "untracked": bool(raw_entry.get("untracked", False)),
+                "unprotect": bool(raw_entry.get("unprotect", False)),
                 "policy": policy,
                 "paths": paths,
                 "when": when,

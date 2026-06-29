@@ -63,9 +63,10 @@ Already working:
   uploaded, inspected, and downloaded through project cache endpoints
 - cache key list, prefix/files/files_commits parsing, and emulator cache
   fallback-key lookup are implemented for API-level cache coverage; cache
-  paths, keys, cache policies, `when`, and fallback keys expand merged CI
-  variables before reaching the runner payload; unsupported cache entry options
-  and invalid cache policy/when values fail clearly during pipeline creation;
+  paths, keys, cache policies, `when`, `unprotect`, and fallback keys expand
+  merged CI variables before reaching the runner payload; unsupported cache
+  entry options and invalid cache policy/when values fail clearly during
+  pipeline creation;
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve
@@ -442,9 +443,9 @@ Still needed:
 
 - support remaining richer cache options and edge cases beyond current
   variable-expanded paths, list, prefix/files/files_commits, fallback-key,
-  policy, `when`, clear unsupported option rejection, and MinIO/S3 validation
-  coverage; GitLab Runner supports S3/GCS/Azure distributed cache adapters, not
-  an arbitrary HTTP cache endpoint
+  policy, `when`, `unprotect`, clear unsupported option rejection, and
+  MinIO/S3 validation coverage; GitLab Runner supports S3/GCS/Azure
+  distributed cache adapters, not an arbitrary HTTP cache endpoint
 
 ## Done Criteria
 

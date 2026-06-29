@@ -679,6 +679,7 @@ def _cache_payload(entries: list[dict] | None) -> list[dict]:
         {
             "key": str(entry.get("key") or "default"),
             "untracked": bool(entry.get("untracked", False)),
+            "unprotect": bool(entry.get("unprotect", False)),
             "policy": str(entry.get("policy") or "pull-push"),
             "paths": [str(path) for path in entry.get("paths", [])],
             "when": str(entry.get("when") or "on_success"),

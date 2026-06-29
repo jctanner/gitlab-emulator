@@ -73,7 +73,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   metadata, delayed jobs with `when: delayed`/`start_in`, clear rejection of
   unknown `when` values, list and
   file-derived keys, variable-expanded paths, keys,
-  policies, `when`, and fallback keys, artifact metadata variable expansion,
+  policies, `when`, `unprotect`, and fallback keys, artifact metadata variable
+  expansion,
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
   `resource_group`, and `coverage`, automatic failed-job retry attempts from
   `retry`, resource-group serialization for runner assignment, coverage
@@ -221,7 +222,8 @@ Target areas:
   retry, timeout, resource-group, coverage, and interruptible support
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, prefix/files/files_commits keys, fallback keys, policy, `when`,
-  clear unsupported option rejection, and MinIO-backed runner validation
+  `unprotect`, clear unsupported option rejection, and MinIO-backed runner
+  validation
 
 Done when:
 

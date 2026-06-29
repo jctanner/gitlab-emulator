@@ -63,6 +63,7 @@ compile:
         {
             "key": "build-cache",
             "untracked": False,
+            "unprotect": False,
             "policy": "pull-push",
             "paths": [".cache/pip"],
             "when": "always",
@@ -89,6 +90,7 @@ compile:
         {
             "key": "global-cache",
             "untracked": False,
+            "unprotect": False,
             "policy": "pull-push",
             "paths": ["vendor/"],
             "when": "on_success",
@@ -1275,6 +1277,7 @@ cache:
     - "$CACHE_DIR/"
   policy: "$CACHE_POLICY"
   when: "$CACHE_WHEN"
+  unprotect: true
   fallback_keys:
     - "$CI_COMMIT_REF_NAME-fallback"
 
@@ -1296,6 +1299,7 @@ cache_probe:
         {
             "key": "feature/cache-uv.lock",
             "untracked": False,
+            "unprotect": True,
             "policy": "pull",
             "paths": [".cache/"],
             "when": "always",
@@ -1306,19 +1310,6 @@ cache_probe:
 
 def test_parse_gitlab_ci_rejects_unsupported_cache_options():
     cases = [
-        (
-            """
-cache_probe:
-  cache:
-    paths:
-      - .cache/
-    unprotect: true
-  script:
-    - echo cache
-""",
-            "cache option(s) not supported",
-            "unprotect",
-        ),
         (
             """
 cache_probe:

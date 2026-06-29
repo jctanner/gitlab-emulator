@@ -1049,6 +1049,7 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
         {
             "key": "pip-cache",
             "untracked": False,
+            "unprotect": False,
             "policy": "pull-push",
             "paths": [".cache/pip"],
             "when": "on_success",
@@ -1286,6 +1287,7 @@ cache_probe:
       - "$CACHE_DIR/"
     policy: "$CACHE_POLICY"
     when: "$CACHE_WHEN"
+    unprotect: true
     fallback_keys:
       - "$CI_COMMIT_REF_NAME-fallback"
   script:
@@ -1319,6 +1321,7 @@ cache_probe:
         {
             "key": "main-uv.lock",
             "untracked": False,
+            "unprotect": True,
             "policy": "push",
             "paths": [".cache/"],
             "when": "always",

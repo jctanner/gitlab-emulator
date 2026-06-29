@@ -17,9 +17,9 @@ branch/tag/source-aware legacy `only`/`except` ref filters with common source
 aliases, cache
 glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
 cache `key:files_commits`, cache path/key/policy/when/fallback-key variable
-expansion, artifact name/path/exclude/expire_in variable expansion, clear
-rejection of unsupported cache entry options and invalid cache policy/when
-values, parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
+expansion, cache `unprotect`, artifact name/path/exclude/expire_in variable
+expansion, clear rejection of unsupported cache entry options and invalid cache
+policy/when values, parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
 `resource_group`, and `coverage`, automatic failed-job retry attempts,
 resource-group runner serialization, trace coverage extraction, interruptible
 same-ref cancellation, richer
