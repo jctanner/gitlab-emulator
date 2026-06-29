@@ -2355,6 +2355,7 @@ review_job:
     assert pipeline_resp.status_code == 201
 
     values_by_job = {}
+    environment_by_job = {}
     for _ in range(3):
         request = await client.post(
             f"{API}/jobs/request",
@@ -2365,11 +2366,29 @@ review_job:
         payload = request.json()
         variables = {item["key"]: item["value"] for item in payload["variables"]}
         values_by_job[payload["job_info"]["name"]] = variables["ENV_VALUE"]
+        environment_by_job[payload["job_info"]["name"]] = variables.get(
+            "CI_ENVIRONMENT_NAME"
+        )
 
     assert values_by_job == {
         "production_job": "production",
         "staging_job": "default",
         "review_job": "review",
+    }
+    assert environment_by_job == {
+        "production_job": "production",
+        "staging_job": "staging",
+        "review_job": "review/app",
+    }
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline_resp.json()['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    assert {job["name"]: job["environment"] for job in jobs.json()} == {
+        "production_job": "production",
+        "staging_job": "staging",
+        "review_job": "review/app",
     }
 
 

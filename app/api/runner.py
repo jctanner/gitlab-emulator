@@ -196,6 +196,7 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "status": job.status,
         "stage": job.stage,
         "ref": job.pipeline.ref if job.pipeline else None,
+        "environment": job.environment,
         "tag": False,
         "coverage": job.coverage,
         "allow_failure": bool(job.allow_failure),
@@ -918,6 +919,8 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
         "GIT_STRATEGY": "fetch",
         **(job.variables or {}),
     }
+    if job.environment:
+        variables["CI_ENVIRONMENT_NAME"] = job.environment
     return {
         "id": job.id,
         "token": job.job_token,

@@ -90,10 +90,12 @@ Already working:
   downloads, while omitted dependencies use prior-stage artifacts when present
 - common job runtime metadata is parsed, persisted, and exposed in job API
   payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
-  `coverage`; `default:` inheritance applies to `retry`, `timeout`, and
-  `interruptible`; runner payloads use the parsed job timeout for runner and
-  step timeout fields, and job traces are scanned with the configured coverage
-  regex to populate the job API `coverage` field
+  `coverage`; job `environment` names are persisted, exposed in job APIs, and
+  sent to runner payloads as `CI_ENVIRONMENT_NAME`; `default:` inheritance
+  applies to `retry`, `timeout`, and `interruptible`; runner payloads use the
+  parsed job timeout for runner and step timeout fields, and job traces are
+  scanned with the configured coverage regex to populate the job API `coverage`
+  field
 - failed jobs with matching `retry` metadata are automatically requeued until
   their configured retry attempt limit is reached
 - jobs with the same `resource_group` in a project are serialized during runner

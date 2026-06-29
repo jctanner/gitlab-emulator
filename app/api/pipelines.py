@@ -826,6 +826,7 @@ def _job_json(job: PipelineJob) -> dict:
         "tag": False,
         "coverage": job.coverage,
         "coverage_regex": job.coverage_regex,
+        "environment": job.environment,
         "allow_failure": bool(job.allow_failure),
         "created_at": _fmt_dt(job.created_at),
         "scheduled_at": _fmt_dt(job.scheduled_at),
@@ -1155,6 +1156,7 @@ async def _create_pipeline(
             interruptible=parsed_job.interruptible,
             resource_group=parsed_job.resource_group,
             coverage_regex=parsed_job.coverage,
+            environment=parsed_job.environment,
             secret_metadata=[
                 ci_secret_metadata_entry(resolved_secret)
                 for resolved_secret in resolved_secrets

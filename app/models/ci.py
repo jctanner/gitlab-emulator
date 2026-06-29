@@ -258,6 +258,7 @@ class PipelineJob(Base):
     resource_group: Mapped[str | None] = mapped_column(String, nullable=True)
     coverage_regex: Mapped[str | None] = mapped_column(String, nullable=True)
     coverage: Mapped[str | None] = mapped_column(String, nullable=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True)
     secret_metadata: Mapped[list] = mapped_column(JSON, default=list)
     job_token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     runner_name: Mapped[str | None] = mapped_column(String, nullable=True)
