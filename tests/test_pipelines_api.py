@@ -625,6 +625,67 @@ retry_me:
     assert terminal_job["retry_attempt"] == 1
 
 
+async def test_job_retry_when_image_pull_failure_auto_requeues(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = _api_only_ci_yaml(
+        """
+retry_image_pull:
+  retry:
+    max: 1
+    when: image_pull_failure
+  script:
+    - echo retry image pull
+"""
+    )
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add image pull retry ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    first_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first_request.status_code == 201
+    first_payload = first_request.json()
+    assert "image_pull_failure" in first_payload["features"]["failure_reasons"]
+
+    first_update = await client.put(
+        f"{API}/jobs/{first_payload['id']}",
+        headers={"JOB-TOKEN": first_payload["token"]},
+        json={
+            "token": first_payload["token"],
+            "state": "failed",
+            "failure_reason": "image_pull_failure",
+            "exit_code": 1,
+        },
+    )
+    assert first_update.status_code == 200
+
+    jobs_after_failure = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs_after_failure.status_code == 200
+    retried_job = jobs_after_failure.json()[0]
+    assert retried_job["status"] == "pending"
+    assert retried_job["retry_attempt"] == 1
+    assert retried_job["retry"]["when"] == ["image_pull_failure"]
+
+
 async def test_job_retry_exit_codes_filter_auto_retry(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = _api_only_ci_yaml(

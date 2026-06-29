@@ -33,6 +33,16 @@ router = APIRouter(tags=["runner"])
 EMULATOR_RUNNER_ID = 1
 EMULATOR_RUNNER_TOKEN = "glrt-emulator-runner-token"
 RUNNING_JOB_STALE_AFTER = timedelta(minutes=30)
+SUPPORTED_FAILURE_REASONS = [
+    "script_failure",
+    "runner_system_failure",
+    "job_execution_timeout",
+    "image_pull_failure",
+    "unknown_failure",
+    "runner_configuration_error",
+    "runner_external_dependency_failure",
+    "runner_interrupted",
+]
 
 
 class RunnerInfo(BaseModel):
@@ -1132,11 +1142,7 @@ async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
         "features": {
             "trace_sections": True,
             "token_mask_prefixes": ["gljt-"],
-            "failure_reasons": [
-                "script_failure",
-                "runner_system_failure",
-                "job_execution_timeout",
-            ],
+            "failure_reasons": SUPPORTED_FAILURE_REASONS,
             "tracing": None,
         },
         "secrets": {},

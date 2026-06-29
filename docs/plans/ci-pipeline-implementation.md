@@ -474,6 +474,8 @@ Implemented:
   template includes, including list-valued include entries, before parsing
 - merge pipeline-level, top-level YAML, and job-level YAML variables with
   runner-facing metadata for raw, masked/public, and file variables
+- retry execution honors configured failure reasons beyond the always-supported
+  baseline, including runner-reported image pull failures
 - create `source=push` pipelines from successful Git Smart HTTP/SSH branch and
   tag pushes and repository file API commits when the updated ref contains
   `.gitlab-ci.yml`

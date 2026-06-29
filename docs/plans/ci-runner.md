@@ -77,6 +77,8 @@ and cache APIs for controlled integration testing.
   maps for API/admin inspection
 - runner list and per-runner job inspection endpoints return GitLab-style
   pagination headers
+- runner job payloads advertise the GitLab Runner failure-reason vocabulary
+  used for retry/failure mapping
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing, GitLab Runner-style cache archive key
   sanitization, and emulator cache fallback-key lookup
