@@ -142,7 +142,7 @@ harness architecture.
   file type, file format, size, creation time, and expiration time, and expired
   artifacts are no longer downloadable. Project job artifact keep clears
   artifact expiration timestamps, and project job APIs can return individual
-  files from stored ZIP artifact archives.
+  files from stored ZIP artifact archives by job ID or by ref plus job name.
 - YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
   are parsed, variable-expanded, persisted, and exposed in official-runner
   `hooks` payloads.

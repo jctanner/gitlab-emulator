@@ -130,7 +130,7 @@ and cache APIs for controlled integration testing.
   persisted artifacts for terminal jobs
 - project job artifact keep clears artifact expiration timestamps
 - project job APIs can download individual files from stored ZIP artifact
-  archives
+  archives by job ID or by ref plus job name
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

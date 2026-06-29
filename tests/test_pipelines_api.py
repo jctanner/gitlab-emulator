@@ -1289,6 +1289,13 @@ async def test_download_job_artifacts_by_encoded_project_path_and_ref(
     assert file_download.status_code == 200
     assert file_download.text == "artifact content\n"
 
+    ref_file_download = await client.get(
+        f"{API}/projects/{project_ref}/jobs/artifacts/main/raw/out/result.txt",
+        params={"job": "artifact_job"},
+    )
+    assert ref_file_download.status_code == 200
+    assert ref_file_download.text == "artifact content\n"
+
     missing_file = await client.get(
         f"{API}/projects/{project_ref}/jobs/{job_id}/artifacts/out/missing.txt"
     )

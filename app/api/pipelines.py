@@ -2369,6 +2369,61 @@ async def download_project_job_artifacts_by_ref(
     )
 
 
+@router.get("/projects/{project_ref:path}/jobs/artifacts/{ref_name:path}/raw/{artifact_path:path}")
+async def download_project_job_artifact_file_by_ref(
+    project_ref: str,
+    ref_name: str,
+    artifact_path: str,
+    db: DbSession,
+    current_user: CurrentUser,
+    job: str,
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    result = await db.execute(
+        select(PipelineJob)
+        .join(Pipeline)
+        .options(selectinload(PipelineJob.artifacts))
+        .where(
+            Pipeline.project_id == project.id,
+            Pipeline.ref == unquote(ref_name),
+            Pipeline.status == "success",
+            PipelineJob.name == job,
+            PipelineJob.status == "success",
+        )
+        .order_by(Pipeline.id.desc(), PipelineJob.id.asc())
+        .limit(1)
+    )
+    pipeline_job = result.scalar_one_or_none()
+    if pipeline_job is None:
+        raise HTTPException(status_code=404, detail="Job Artifacts Not Found")
+    artifact = pipeline_job.artifacts[0] if pipeline_job.artifacts else None
+    if artifact is None or not artifact.storage_path:
+        raise HTTPException(status_code=404, detail="Artifacts Not Found")
+    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(
+        tzinfo=None
+    ):
+        raise HTTPException(status_code=404, detail="Artifacts Expired")
+    if not os.path.isfile(artifact.storage_path):
+        raise HTTPException(status_code=404, detail="Artifacts Not Found")
+    if artifact.file_format != "zip" and not artifact.filename.endswith(".zip"):
+        raise HTTPException(status_code=404, detail="Artifact File Not Found")
+    try:
+        with zipfile.ZipFile(artifact.storage_path) as archive:
+            try:
+                content = archive.read(artifact_path)
+            except KeyError:
+                raise HTTPException(
+                    status_code=404, detail="Artifact File Not Found"
+                ) from None
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=404, detail="Artifact File Not Found") from None
+
+    media_type = mimetypes.guess_type(artifact_path)[0] or "application/octet-stream"
+    return Response(content=content, media_type=media_type)
+
+
 @router.get("/projects/{project_ref:path}/jobs/{job_id}")
 async def get_project_job(
     project_ref: str, job_id: int, db: DbSession, current_user: CurrentUser
