@@ -150,6 +150,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "hooks_config",
+        "hooks_config JSON DEFAULT '[]'",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "trigger_project",
         "trigger_project VARCHAR",
     )

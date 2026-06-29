@@ -79,6 +79,10 @@ SUPPORTED_JOB_WHEN = {
     "never",
     "delayed",
 }
+SUPPORTED_HOOKS = {
+    "pre_get_sources_script",
+    "post_get_sources_script",
+}
 DURATION_SECONDS_BY_UNIT = {
     "second": 1,
     "seconds": 1,
@@ -133,6 +137,7 @@ class ParsedCiJob:
     environment: str | None = None
     environment_url: str | None = None
     environment_action: str | None = None
+    hooks: list[dict] = field(default_factory=list)
     secrets: dict[str, dict] = field(default_factory=dict)
     trigger: dict | None = None
 
@@ -678,6 +683,20 @@ def _artifact_reports(value: Any, variables: dict[str, str]) -> list[dict]:
         report.update(metadata)
         reports.append(report)
     return reports
+
+
+def _hooks_config(value: Any, variables: dict[str, str]) -> list[dict]:
+    if not isinstance(value, dict):
+        return []
+    unsupported = sorted(set(value) - SUPPORTED_HOOKS)
+    if unsupported:
+        raise ValueError(f"hooks option(s) not supported: {', '.join(unsupported)}")
+    hooks: list[dict] = []
+    for name in ("pre_get_sources_script", "post_get_sources_script"):
+        script = _expand_string_list(value.get(name), variables)
+        if script:
+            hooks.append({"name": name, "script": script})
+    return hooks
 
 
 def _ref_values(value: Any) -> list[str]:
@@ -1734,6 +1753,7 @@ def parse_gitlab_ci(
         after = _string_list(config.get("after_script", global_after))
         artifact_config = _artifact_config(config.get("artifacts"), artifact_variables)
         artifact_paths = artifact_config.get("paths", [])
+        hooks = _hooks_config(config.get("hooks"), artifact_variables)
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
         cache = (
             _cache_entries(
@@ -1799,6 +1819,7 @@ def parse_gitlab_ci(
                     environment=environment_config["name"],
                     environment_url=environment_config["url"],
                     environment_action=environment_config["action"],
+                    hooks=hooks,
                     secrets=_secret_entries(config.get("secrets")),
                     trigger=trigger,
                 )

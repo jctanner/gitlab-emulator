@@ -827,6 +827,18 @@ def _artifact_payload(job: PipelineJob) -> list[dict]:
     return artifacts
 
 
+def _hooks_payload(job: PipelineJob) -> list[dict]:
+    hooks: list[dict] = []
+    for hook in job.hooks_config or []:
+        if not isinstance(hook, dict):
+            continue
+        name = str(hook.get("name") or "")
+        script = [str(line) for line in hook.get("script") or []]
+        if name and script:
+            hooks.append({"name": name, "script": script})
+    return hooks
+
+
 def _cache_payload(entries: list[dict] | None) -> list[dict]:
     if not entries:
         return []
@@ -1118,7 +1130,7 @@ async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
             "tracing": None,
         },
         "secrets": {},
-        "hooks": [],
+        "hooks": _hooks_payload(job),
         "policy_options": {"execution_policy_job": False, "policy_name": ""},
         "suspend_options": {},
     }

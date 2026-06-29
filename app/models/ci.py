@@ -263,6 +263,7 @@ class PipelineJob(Base):
     environment: Mapped[str | None] = mapped_column(String, nullable=True)
     environment_url: Mapped[str | None] = mapped_column(String, nullable=True)
     environment_action: Mapped[str | None] = mapped_column(String, nullable=True)
+    hooks_config: Mapped[list] = mapped_column(JSON, default=list)
     secret_metadata: Mapped[list] = mapped_column(JSON, default=list)
     trigger_project: Mapped[str | None] = mapped_column(String, nullable=True)
     trigger_ref: Mapped[str | None] = mapped_column(String, nullable=True)

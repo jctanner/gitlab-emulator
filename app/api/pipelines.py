@@ -1680,6 +1680,7 @@ async def _create_pipeline(
             environment=parsed_job.environment,
             environment_url=parsed_job.environment_url,
             environment_action=parsed_job.environment_action,
+            hooks_config=parsed_job.hooks,
             trigger_project=parsed_job.trigger["project"] if parsed_job.trigger else None,
             trigger_ref=parsed_job.trigger["ref"] if parsed_job.trigger else None,
             trigger_strategy=parsed_job.trigger["strategy"]

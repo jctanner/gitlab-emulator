@@ -1615,6 +1615,54 @@ metadata_job:
     assert jobs[0].environment_action == "start"
 
 
+def test_parse_gitlab_ci_preserves_job_hooks():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  HOOK_MARKER: from-global
+
+hooked:
+  script:
+    - echo run
+  hooks:
+    pre_get_sources_script:
+      - echo pre $HOOK_MARKER
+    post_get_sources_script: echo post $CI_COMMIT_REF_NAME
+""",
+        ref="feature/hooks",
+    )
+
+    assert jobs[0].hooks == [
+        {
+            "name": "pre_get_sources_script",
+            "script": ["echo pre from-global"],
+        },
+        {
+            "name": "post_get_sources_script",
+            "script": ["echo post feature/hooks"],
+        },
+    ]
+
+
+def test_parse_gitlab_ci_rejects_unsupported_job_hooks():
+    try:
+        parse_gitlab_ci(
+            """
+hooked:
+  script:
+    - echo run
+  hooks:
+    before_script:
+      - echo unsupported
+"""
+        )
+    except ValueError as exc:
+        assert "hooks option(s) not supported" in str(exc)
+        assert "before_script" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_inherits_runtime_metadata_from_default():
     jobs = parse_gitlab_ci(
         """

@@ -109,7 +109,10 @@ Already working:
   `coverage`; job `environment` names, URLs, and actions are persisted, exposed
   in job APIs, and sent to runner payloads as `CI_ENVIRONMENT_NAME`,
   `CI_ENVIRONMENT_URL`, and `CI_ENVIRONMENT_ACTION`; `default:` inheritance
-  applies to `retry`, `timeout`, and `interruptible`; runner payloads use the
+  applies to `retry`, `timeout`, and `interruptible`; job hooks for
+  `pre_get_sources_script` and `post_get_sources_script` are parsed,
+  variable-expanded, persisted, and exposed in official-runner `hooks`
+  payloads; runner payloads use the
   parsed job timeout for runner and step timeout fields, and job traces are
   scanned with the configured coverage regex to populate the job API `coverage`
   field; job API payloads compute `duration` and `queued_duration` from
@@ -484,6 +487,7 @@ Implemented:
 - parse and persist job `cache` entries
 - parse `artifacts:reports` metadata and expose report entries in official
   runner artifact payloads
+- parse and persist job hook metadata and expose runner `hooks` payloads
 - include GitLab Runner-shaped cache entries in persisted runner job payloads
 - store and serve cache archives through project cache endpoints
 - run a MinIO S3-compatible cache service in the server VM compose stack

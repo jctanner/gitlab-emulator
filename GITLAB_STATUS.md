@@ -133,6 +133,9 @@ harness architecture.
   `junit`, `dotenv`, and `coverage_report`. Uploaded artifact records store
   file type, file format, size, creation time, and expiration time, and expired
   artifacts are no longer downloadable.
+- YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
+  are parsed, variable-expanded, persisted, and exposed in official-runner
+  `hooks` payloads.
 - Cache key parsing supports list-form keys, common `key: { prefix, files }`,
   and `files_commits` forms. Pipeline creation derives `files` keys from the
   referenced files' repository blob state and `files_commits` keys from the
