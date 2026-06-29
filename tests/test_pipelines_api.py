@@ -958,6 +958,63 @@ artifact_metadata:
     assert artifact["expire_in"] == "1 week"
 
 
+async def test_job_runtime_metadata_reaches_api_and_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+metadata_job:
+  image: alpine:3.20
+  retry:
+    max: 2
+    when: runner_system_failure
+  timeout: 45 minutes
+  interruptible: true
+  resource_group: production
+  coverage: '/Coverage: \\d+\\.\\d+%/'
+  script:
+    - echo metadata
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add runtime metadata ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs_resp = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs_resp.status_code == 200
+    job = jobs_resp.json()[0]
+    assert job["retry"] == {"max": 2, "when": ["runner_system_failure"]}
+    assert job["timeout"] == 2700
+    assert job["interruptible"] is True
+    assert job["resource_group"] == "production"
+    assert job["coverage_regex"] == "/Coverage: \\d+\\.\\d+%/"
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["runner_info"]["timeout"] == 2700
+    assert payload["steps"][0]["timeout"] == 2700
+
+
 async def test_cache_variables_expand_in_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

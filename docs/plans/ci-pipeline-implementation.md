@@ -73,6 +73,10 @@ Already working:
   artifact name/path/exclude/expire_in metadata expands merged CI variables;
   uploaded artifacts store type/format/expiry metadata and expired artifacts
   return 404
+- common job runtime metadata is parsed, persisted, and exposed in job API
+  payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
+  `coverage`; runner payloads use the parsed job timeout for runner and step
+  timeout fields
 - CI `include` support is implemented for local files, nested local files,
   `include:project`, controlled `include:remote`, and built-in templates:
   pipeline creation resolves included files before parsing, supports
@@ -332,6 +336,9 @@ Implemented:
 Still needed:
 
 - remaining long-tail `rules` / `only` / `except` edge cases
+- implement deeper execution semantics for parsed runtime metadata, including
+  automatic retry attempts, interruptible cancellation behavior, resource-group
+  serialization, and trace coverage extraction
 
 ## Slice 7: Repository Checkout
 

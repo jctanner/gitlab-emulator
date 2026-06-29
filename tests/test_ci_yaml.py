@@ -994,6 +994,68 @@ delayed_job:
             raise AssertionError("expected ValueError")
 
 
+def test_parse_gitlab_ci_preserves_job_runtime_metadata():
+    jobs = parse_gitlab_ci(
+        """
+metadata_job:
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+  timeout: 45 minutes
+  interruptible: true
+  resource_group: production
+  coverage: '/Coverage: \\d+\\.\\d+%/'
+  script:
+    - echo metadata
+"""
+    )
+
+    assert jobs[0].retry == {"max": 2, "when": ["runner_system_failure"]}
+    assert jobs[0].timeout_seconds == 2700
+    assert jobs[0].interruptible is True
+    assert jobs[0].resource_group == "production"
+    assert jobs[0].coverage == "/Coverage: \\d+\\.\\d+%/"
+
+
+def test_parse_gitlab_ci_rejects_unsupported_retry_and_timeout_values():
+    invalid_retry_content = """
+bad_retry:
+  retry:
+    max: 3
+  script: echo retry
+"""
+    try:
+        parse_gitlab_ci(invalid_retry_content)
+        assert False, "Expected unsupported retry max to fail"
+    except ValueError as exc:
+        assert "retry max must be between 0 and 2" in str(exc)
+
+    retry_exit_codes_content = """
+bad_retry:
+  retry:
+    max: 1
+    exit_codes: [137]
+  script: echo retry
+"""
+    try:
+        parse_gitlab_ci(retry_exit_codes_content)
+        assert False, "Expected unsupported retry exit_codes to fail"
+    except ValueError as exc:
+        assert "retry exit_codes is not supported" in str(exc)
+
+    invalid_timeout_content = """
+bad_timeout:
+  timeout: later
+  script: echo timeout
+"""
+    try:
+        parse_gitlab_ci(invalid_timeout_content)
+        assert False, "Expected unsupported timeout to fail"
+    except ValueError as exc:
+        assert "timeout value is not supported" in str(exc)
+
+
 def test_parse_gitlab_ci_rejects_unknown_when_values():
     for content, detail in [
         (

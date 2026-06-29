@@ -77,6 +77,11 @@ class ParsedCiJob:
     when: str = "on_success"
     start_in_seconds: int | None = None
     allow_failure: bool = False
+    retry: dict = field(default_factory=dict)
+    timeout_seconds: int | None = None
+    interruptible: bool = False
+    resource_group: str | None = None
+    coverage: str | None = None
     environment: str | None = None
     secrets: dict[str, dict] = field(default_factory=dict)
 
@@ -451,6 +456,80 @@ def _start_in_seconds(value: Any) -> int:
     if amount <= 0:
         raise ValueError("start_in must be greater than zero")
     return amount * multiplier
+
+
+def _duration_seconds(value: Any, keyword: str) -> int:
+    if isinstance(value, int):
+        if value <= 0:
+            raise ValueError(f"{keyword} must be greater than zero")
+        return value
+    raw = str(value).strip().lower()
+    match = re.fullmatch(r"(\d+)\s*([a-z]+)", raw)
+    if not match:
+        raise ValueError(f"{keyword} value is not supported: {value}")
+    amount = int(match.group(1))
+    unit = match.group(2)
+    seconds_by_unit = {
+        "second": 1,
+        "seconds": 1,
+        "sec": 1,
+        "secs": 1,
+        "s": 1,
+        "minute": 60,
+        "minutes": 60,
+        "min": 60,
+        "mins": 60,
+        "m": 60,
+        "hour": 3600,
+        "hours": 3600,
+        "hr": 3600,
+        "hrs": 3600,
+        "h": 3600,
+        "day": 86400,
+        "days": 86400,
+        "d": 86400,
+        "week": 604800,
+        "weeks": 604800,
+        "w": 604800,
+    }
+    multiplier = seconds_by_unit.get(unit)
+    if multiplier is None:
+        raise ValueError(f"{keyword} unit is not supported: {unit}")
+    if amount <= 0:
+        raise ValueError(f"{keyword} must be greater than zero")
+    return amount * multiplier
+
+
+def _timeout_seconds(value: Any) -> int | None:
+    if value is None:
+        return None
+    return _duration_seconds(value, "timeout")
+
+
+def _retry_config(value: Any) -> dict:
+    if value is None:
+        return {}
+    if isinstance(value, int):
+        max_attempts = value
+        when: list[str] = []
+    elif isinstance(value, dict):
+        unsupported = set(value) - {"max", "when", "exit_codes"}
+        if unsupported:
+            names = ", ".join(sorted(str(item) for item in unsupported))
+            raise ValueError(f"retry option(s) not supported: {names}")
+        if "exit_codes" in value:
+            raise ValueError("retry exit_codes is not supported")
+        raw_max = value.get("max", 0)
+        try:
+            max_attempts = int(raw_max)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"retry max value is not supported: {raw_max}") from exc
+        when = _string_list(value.get("when"))
+    else:
+        raise ValueError("retry must be an integer or mapping")
+    if max_attempts < 0 or max_attempts > 2:
+        raise ValueError("retry max must be between 0 and 2")
+    return {"max": max_attempts, "when": when}
 
 
 def _delayed_start_in_seconds(config: dict, decision: _RuleDecision) -> int | None:
@@ -1055,6 +1134,15 @@ def parse_gitlab_ci(
                 when=decision.when,
                 start_in_seconds=_delayed_start_in_seconds(config, decision),
                 allow_failure=_allow_failure(config, decision),
+                retry=_retry_config(config.get("retry")),
+                timeout_seconds=_timeout_seconds(config.get("timeout")),
+                interruptible=bool(config.get("interruptible", False)),
+                resource_group=str(config["resource_group"])
+                if config.get("resource_group") is not None
+                else None,
+                coverage=str(config["coverage"])
+                if config.get("coverage") is not None
+                else None,
                 environment=_environment_name(config.get("environment")),
                 secrets=_secret_entries(config.get("secrets")),
             )

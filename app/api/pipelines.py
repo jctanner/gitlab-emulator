@@ -774,9 +774,14 @@ def _job_json(job: PipelineJob) -> dict:
         "tag_list": job.tags or [],
         "cache": job.cache or [],
         "when": job.when or "on_success",
+        "retry": job.retry_config or {},
+        "timeout": job.timeout_seconds,
+        "interruptible": bool(job.interruptible),
+        "resource_group": job.resource_group,
         "ref": job.pipeline.ref if job.pipeline else None,
         "tag": False,
         "coverage": None,
+        "coverage_regex": job.coverage_regex,
         "allow_failure": bool(job.allow_failure),
         "created_at": _fmt_dt(job.created_at),
         "scheduled_at": _fmt_dt(job.scheduled_at),
@@ -1050,6 +1055,11 @@ async def _create_pipeline(
             when=parsed_job.when,
             scheduled_at=job_scheduled_at,
             allow_failure=parsed_job.allow_failure,
+            retry_config=parsed_job.retry,
+            timeout_seconds=parsed_job.timeout_seconds,
+            interruptible=parsed_job.interruptible,
+            resource_group=parsed_job.resource_group,
+            coverage_regex=parsed_job.coverage,
             secret_metadata=[
                 ci_secret_metadata_entry(resolved_secret)
                 for resolved_secret in resolved_secrets

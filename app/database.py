@@ -70,6 +70,31 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "retry_config",
+        "retry_config JSON DEFAULT '{}'",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "timeout_seconds",
+        "timeout_seconds INTEGER",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "interruptible",
+        "interruptible BOOLEAN DEFAULT 0",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "resource_group",
+        "resource_group VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "coverage_regex",
+        "coverage_regex VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "when",
         '"when" VARCHAR DEFAULT \'on_success\'',
     )

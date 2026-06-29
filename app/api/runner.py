@@ -687,6 +687,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
     repo_url = f"{base_url}/{project.full_name}.git"
     authenticated_repo_url = _repo_url_with_job_token(repo_url, job.job_token)
     protected = False
+    timeout_seconds = job.timeout_seconds or 3600
     variables = {
         "CI": "true",
         "GITLAB_CI": "true",
@@ -740,14 +741,14 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
             "depth": 0,
             "protected": protected,
         },
-        "runner_info": {"timeout": 3600},
+        "runner_info": {"timeout": timeout_seconds},
         "inputs": [],
         "variables": _variables_from_dict(variables),
         "steps": [
             {
                 "name": "script",
                 "script": job.script or [],
-                "timeout": 3600,
+                "timeout": timeout_seconds,
                 "when": "on_success"
                 if (job.when or "on_success") == "delayed"
                 else job.when or "on_success",

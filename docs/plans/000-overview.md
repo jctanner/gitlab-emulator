@@ -72,7 +72,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   metadata, delayed jobs with `when: delayed`/`start_in`, clear rejection of
   unknown `when` values, list and
   file-derived keys, variable-expanded paths, keys,
-  policies, `when`, and fallback keys, deeper `extends` semantics, nested local
+  policies, `when`, and fallback keys, artifact metadata variable expansion,
+  parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
+  `resource_group`, and `coverage`, deeper `extends` semantics, nested local
   `include`, `include:project`, list-valued controlled `include:remote`, and
   list-valued built-in template includes.
 - Pipeline creation and runner job payloads merge pipeline-level variables,
@@ -207,12 +209,16 @@ behavior.
 
 Target areas:
 
-- deeper `rules` behavior beyond the current MVP expression grouping, exists,
-  changes, exists/changes path-object, variable-expanded rule paths,
-  mapping-form `only`/`except`, rule-variable, and remaining delayed/manual
-  scheduling edge cases
-- remaining richer cache policy/options beyond list and file-derived keys,
-  variable-expanded paths, keys, policies, `when`, and fallback keys
+- deeper `rules` / `only` / `except` edge cases beyond the currently covered
+  boolean expressions, regex operators and flags, `exists`, `changes`,
+  path-object rules, variable-expanded rule paths, mapping-form legacy filters,
+  rule variables, and delayed/manual scheduling
+- remaining execution semantics for parsed job metadata, including automatic
+  retry attempts, interruptible cancellation behavior, resource-group
+  serialization, and coverage extraction from traces
+- remaining richer cache edge cases beyond current variable-expanded paths,
+  list keys, prefix/files/files_commits keys, fallback keys, policy, `when`,
+  clear unsupported option rejection, and MinIO-backed runner validation
 
 Done when:
 
