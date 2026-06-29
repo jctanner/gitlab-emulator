@@ -26,7 +26,7 @@ same-ref cancellation, richer
 `needs`, including clear rejection of unsupported `needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries, clear rejection of unsupported cross-ref
-`rules:changes:compare_to` and `rules:exists` project/ref options,
+`rules:exists` project/ref options, accepted `rules:changes:compare_to`,
 trigger tokens, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped

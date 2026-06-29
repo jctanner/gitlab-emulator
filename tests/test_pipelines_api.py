@@ -1565,7 +1565,7 @@ deploy_downstream:
     assert "trigger" in resp.text
 
 
-async def test_create_pipeline_rejects_unsupported_rules_path_option(
+async def test_create_pipeline_accepts_rules_changes_compare_to_option(
     client, test_token
 ):
     project = await _create_project(client, test_token)
@@ -1577,13 +1577,13 @@ compare_to_job:
     - changes:
         compare_to: refs/heads/main
         paths:
-          - docs/**
+          - .gitlab-ci.yml
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
         json={
-            "message": "add unsupported rules path option",
+            "message": "add compare_to rules option",
             "content": base64.b64encode(ci_yaml.encode()).decode(),
             "branch": "main",
         },
@@ -1595,9 +1595,13 @@ compare_to_job:
         json={"ref": "main"},
         headers=auth_headers(test_token),
     )
-    assert resp.status_code == 400
-    assert "rules:changes option(s) not supported" in resp.text
-    assert "compare_to" in resp.text
+    assert resp.status_code == 201
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{resp.json()['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert jobs.json()[0]["name"] == "compare_to_job"
 
 
 async def test_create_pipeline_rejects_unsupported_cache_option(client, test_token):

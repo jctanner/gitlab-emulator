@@ -723,7 +723,8 @@ def _rule_path_patterns(
     rule_name: str,
 ) -> list[str]:
     if isinstance(value, dict):
-        unsupported_keys = set(value) - {"paths"}
+        supported_keys = {"paths", "compare_to"} if rule_name == "changes" else {"paths"}
+        unsupported_keys = set(value) - supported_keys
         if unsupported_keys:
             unsupported = ", ".join(sorted(unsupported_keys))
             raise ValueError(f"rules:{rule_name} option(s) not supported: {unsupported}")
