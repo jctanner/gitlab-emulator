@@ -112,7 +112,9 @@ Already working:
   applies to `retry`, `timeout`, and `interruptible`; job hooks for
   `pre_get_sources_script` and `post_get_sources_script` are parsed,
   variable-expanded, persisted, and exposed in official-runner `hooks`
-  payloads; runner payloads use the
+  payloads; YAML `id_tokens` are parsed and emitted as masked JWT-style runner
+  variables with emulator issuer/audience/project/job/ref claims; runner
+  payloads use the
   parsed job timeout for runner and step timeout fields, and job traces are
   scanned with the configured coverage regex to populate the job API `coverage`
   field; job API payloads compute `duration` and `queued_duration` from

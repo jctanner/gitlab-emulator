@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import fnmatch
+import json
 import os
 import secrets
 import ssl
@@ -191,6 +193,64 @@ def _pipeline_context_variable_entries(
 
 def _simple_variable_values(entries: dict[str, dict]) -> dict[str, str]:
     return {key: str(entry.get("value", "")) for key, entry in entries.items()}
+
+
+def _jwt_segment(value: dict) -> str:
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(value, separators=(",", ":"), sort_keys=True).encode()
+    ).decode()
+    return encoded.rstrip("=")
+
+
+def _emulator_id_token(
+    *,
+    project: Project,
+    pipeline: Pipeline,
+    job: PipelineJob,
+    audiences: list[str],
+) -> str:
+    now = int(datetime.now(timezone.utc).timestamp())
+    ref_type = "tag" if pipeline.ref.startswith("refs/tags/") else "branch"
+    header = {"alg": "none", "typ": "JWT"}
+    payload = {
+        "aud": audiences[0] if len(audiences) == 1 else audiences,
+        "iss": settings.BASE_URL.rstrip("/"),
+        "sub": f"project_path:{project.full_name}:ref_type:{ref_type}:ref:{pipeline.ref}",
+        "project_id": str(project.id),
+        "project_path": project.full_name,
+        "pipeline_id": str(pipeline.id),
+        "job_id": str(job.id),
+        "job_name": job.name,
+        "ref": pipeline.ref,
+        "ref_type": ref_type,
+        "iat": now,
+        "nbf": now,
+        "exp": now + 3600,
+    }
+    return f"{_jwt_segment(header)}.{_jwt_segment(payload)}."
+
+
+def _id_token_variable_entries(
+    *,
+    project: Project,
+    pipeline: Pipeline,
+    job: PipelineJob,
+    id_tokens: dict[str, dict],
+) -> dict[str, dict]:
+    entries: dict[str, dict] = {}
+    for key, config in id_tokens.items():
+        audiences = [str(value) for value in config.get("aud", [])]
+        entries[str(key)] = _variable_entry(
+            _emulator_id_token(
+                project=project,
+                pipeline=pipeline,
+                job=job,
+                audiences=audiences,
+            ),
+            masked=True,
+            public=False,
+        )
+    return entries
 
 
 def _expand_ci_rule_value(value: str, variables: dict[str, str]) -> str:
@@ -1695,6 +1755,16 @@ async def _create_pipeline(
         )
         db.add(job)
         await db.flush()
+        if parsed_job.id_tokens:
+            job.variables = {
+                **(job.variables or {}),
+                **_id_token_variable_entries(
+                    project=project,
+                    pipeline=pipeline,
+                    job=job,
+                    id_tokens=parsed_job.id_tokens,
+                ),
+            }
         now = datetime.now(timezone.utc)
         for resolved_secret in resolved_secrets:
             resolved_secret.secret.last_accessed_at = now

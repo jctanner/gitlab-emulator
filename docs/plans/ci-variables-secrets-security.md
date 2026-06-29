@@ -61,6 +61,8 @@ Already implemented:
 - Pipeline-level variables for trigger/schedule/API/manual contexts.
 - Minimal metadata preservation for raw, masked/public, and file variables in
   runner payloads.
+- YAML `id_tokens` are parsed and delivered as masked JWT-style variables with
+  emulator issuer/audience/project/job/ref claims.
 - Official runner VM validation for variable delivery.
 - Trigger token and schedule paths that create persisted pipelines.
 - Runner trace append APIs where log redaction can be enforced centrally.

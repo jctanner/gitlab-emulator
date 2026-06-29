@@ -1469,6 +1469,78 @@ hooked_job:
     ]
 
 
+async def test_id_tokens_reach_runner_payload_as_masked_variables(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: never
+
+oidc_job:
+  image: alpine:3.20
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://vault.example.test
+    MULTI_AUDIENCE_TOKEN:
+      aud:
+        - https://one.example.test
+        - https://two.example.test
+  script:
+    - echo oidc
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add id tokens ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    variables = {item["key"]: item for item in request.json()["variables"]}
+    vault_token = variables["VAULT_ID_TOKEN"]
+    assert vault_token["masked"] is True
+    assert vault_token["public"] is False
+    assert vault_token["file"] is False
+    assert vault_token["value"].count(".") == 2
+
+    payload_segment = vault_token["value"].split(".")[1]
+    padding = "=" * (-len(payload_segment) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(payload_segment + padding))
+    assert payload["aud"] == "https://vault.example.test"
+    assert payload["iss"] == "http://testserver"
+    assert payload["project_id"] == str(project["id"])
+    assert payload["project_path"] == "testuser/ci-repo"
+    assert payload["job_name"] == "oidc_job"
+    assert payload["ref"] == "main"
+    assert payload["ref_type"] == "branch"
+    assert payload["exp"] > payload["iat"]
+
+    multi_segment = variables["MULTI_AUDIENCE_TOKEN"]["value"].split(".")[1]
+    padding = "=" * (-len(multi_segment) % 4)
+    multi_payload = json.loads(base64.urlsafe_b64decode(multi_segment + padding))
+    assert multi_payload["aud"] == [
+        "https://one.example.test",
+        "https://two.example.test",
+    ]
+
+
 async def test_services_reach_api_and_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
@@ -3391,6 +3463,11 @@ precedence_probe:
 async def test_variable_metadata_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: never
+
 variables:
   YAML_RAW:
     value: "$PIPELINE_FILE-literal"
@@ -3462,6 +3539,11 @@ metadata_probe:
 async def test_project_variable_metadata_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: never
+
 metadata_probe:
   script:
     - echo project metadata

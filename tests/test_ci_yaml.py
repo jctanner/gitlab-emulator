@@ -311,6 +311,50 @@ secret_probe:
     }
 
 
+def test_parse_gitlab_ci_preserves_id_token_requests():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  AUDIENCE_HOST: vault.example.test
+
+oidc_probe:
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: "https://$AUDIENCE_HOST"
+    MULTI_AUDIENCE_TOKEN:
+      aud:
+        - https://one.example.test
+        - https://two.example.test
+  script:
+    - echo oidc
+"""
+    )
+
+    assert jobs[0].id_tokens == {
+        "VAULT_ID_TOKEN": {"aud": ["https://vault.example.test"]},
+        "MULTI_AUDIENCE_TOKEN": {
+            "aud": ["https://one.example.test", "https://two.example.test"]
+        },
+    }
+
+
+def test_parse_gitlab_ci_rejects_id_tokens_without_audience():
+    try:
+        parse_gitlab_ci(
+            """
+oidc_probe:
+  id_tokens:
+    BROKEN_TOKEN: {}
+  script:
+    - echo oidc
+"""
+        )
+    except ValueError as exc:
+        assert "id_tokens.BROKEN_TOKEN.aud is required" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_rejects_empty_pipeline():
     try:
         parse_gitlab_ci("stages: [test]\n")

@@ -19,6 +19,7 @@ RESERVED_TOP_LEVEL_KEYS = {
     "default",
     "except",
     "include",
+    "id_tokens",
     "image",
     "only",
     "secrets",
@@ -138,6 +139,7 @@ class ParsedCiJob:
     environment_url: str | None = None
     environment_action: str | None = None
     hooks: list[dict] = field(default_factory=list)
+    id_tokens: dict[str, dict] = field(default_factory=dict)
     secrets: dict[str, dict] = field(default_factory=dict)
     trigger: dict | None = None
 
@@ -357,6 +359,20 @@ def _secret_entries(value: Any) -> dict[str, dict]:
             )
         if provider_config.get("branch_scope"):
             entries[variable_key]["branch_scope"] = str(provider_config["branch_scope"])
+    return entries
+
+
+def _id_token_entries(value: Any, variables: dict[str, str]) -> dict[str, dict]:
+    if not isinstance(value, dict):
+        return {}
+    entries: dict[str, dict] = {}
+    for key, raw_value in value.items():
+        token_key = str(key)
+        raw_audience = raw_value.get("aud") if isinstance(raw_value, dict) else raw_value
+        audiences = _expand_string_list(raw_audience, variables)
+        if not audiences:
+            raise ValueError(f"id_tokens.{token_key}.aud is required")
+        entries[token_key] = {"aud": audiences}
     return entries
 
 
@@ -1754,6 +1770,7 @@ def parse_gitlab_ci(
         artifact_config = _artifact_config(config.get("artifacts"), artifact_variables)
         artifact_paths = artifact_config.get("paths", [])
         hooks = _hooks_config(config.get("hooks"), artifact_variables)
+        id_tokens = _id_token_entries(config.get("id_tokens"), artifact_variables)
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
         cache = (
             _cache_entries(
@@ -1820,6 +1837,7 @@ def parse_gitlab_ci(
                     environment_url=environment_config["url"],
                     environment_action=environment_config["action"],
                     hooks=hooks,
+                    id_tokens=id_tokens,
                     secrets=_secret_entries(config.get("secrets")),
                     trigger=trigger,
                 )
