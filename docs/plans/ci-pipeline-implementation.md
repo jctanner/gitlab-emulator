@@ -64,7 +64,8 @@ Already working:
   variables, and `workflow:name` is expanded, persisted on the pipeline, and
   exposed in pipeline API responses. Boolean `allow_failure` and
   `allow_failure:exit_codes` matching against runner-reported exit codes are
-  supported for jobs and rules. Current
+  supported for jobs and rules. Matching rule-level `needs` and
+  `interruptible` override job-level metadata. Current
   `only`/`except` support covers scalar/list branch, tag, and pipeline-source
   refs including common source aliases, glob-style ref patterns, plus
   mapping-form `refs`, `variables`, and `changes`. Rules can evaluate common
@@ -464,7 +465,7 @@ Implemented:
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
   including MVP `if` with unary negation, `exists`, `changes`, `never`,
   `manual`, `when: always`, `when: on_failure`, boolean `allow_failure`,
-  rule-level `needs`, clear delayed-job and unknown-`when` rejection,
+  rule-level `needs`, rule-level `interruptible`, clear delayed-job and unknown-`when` rejection,
   branch/tag, and pipeline-source legacy filter behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`

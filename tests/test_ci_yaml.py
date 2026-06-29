@@ -1827,6 +1827,41 @@ optional_probe:
     assert jobs[0].variable_metadata["RULE_TARGET"]["value"] == "from-rule"
 
 
+def test_parse_gitlab_ci_applies_rule_interruptible_override():
+    jobs = parse_gitlab_ci(
+        """
+default:
+  interruptible: true
+
+rule_interruptible:
+  interruptible: false
+  script: echo rule interruptible
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      interruptible: true
+
+rule_non_interruptible:
+  script: echo rule non interruptible
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      interruptible: false
+
+fallback_interruptible:
+  interruptible: false
+  script: echo fallback
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "feature"'
+      interruptible: true
+    - when: always
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["rule_interruptible"].interruptible is True
+    assert by_name["rule_non_interruptible"].interruptible is False
+    assert by_name["fallback_interruptible"].interruptible is False
+
+
 def test_parse_gitlab_ci_supports_allow_failure_exit_codes():
     jobs = parse_gitlab_ci(
         """

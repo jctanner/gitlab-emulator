@@ -63,8 +63,9 @@ harness architecture.
   `rules:exists`, commit-local `changes`, `rules:changes:compare_to`,
   `when: never`, `when: always`, `when: on_failure`, persisted
   non-runnable `manual` jobs, boolean `allow_failure`,
-  `allow_failure:exit_codes` matching against runner-reported exit codes, and
-  matched workflow-level variables. Unsupported delayed jobs are rejected
+  `allow_failure:exit_codes` matching against runner-reported exit codes,
+  matching rule-level `needs` and `interruptible` overrides, and matched
+  workflow-level variables. Unsupported delayed jobs are rejected
   clearly instead of running
   immediately. Legacy `only`/`except` filters are
   branch/tag/source-aware, and tag-ref pipelines expose `CI_COMMIT_TAG` while

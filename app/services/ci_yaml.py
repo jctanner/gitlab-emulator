@@ -779,6 +779,7 @@ class _RuleDecision:
     start_in: str | None = None
     allow_failure: bool | None = None
     allow_failure_exit_codes: list[int] | None = None
+    interruptible: bool | None = None
     variables: dict[str, dict] = field(default_factory=dict)
     needs: Any = None
     needs_set: bool = False
@@ -1347,6 +1348,9 @@ def _job_rule_decision(
                 start_in=rule.get("start_in"),
                 allow_failure=allow_failure_enabled,
                 allow_failure_exit_codes=allow_failure_exit_codes,
+                interruptible=_bool_value(rule.get("interruptible"), variables)
+                if "interruptible" in rule
+                else None,
                 variables=rule_variables,
                 needs=rule.get("needs"),
                 needs_set="needs" in rule,
@@ -1826,7 +1830,9 @@ def parse_gitlab_ci(
                     allow_failure_exit_codes=_allow_failure_exit_codes(config, decision),
                     retry=_retry_config(config.get("retry")),
                     timeout_seconds=_timeout_seconds(config.get("timeout")),
-                    interruptible=bool(config.get("interruptible", False)),
+                    interruptible=decision.interruptible
+                    if decision.interruptible is not None
+                    else bool(config.get("interruptible", False)),
                     resource_group=str(config["resource_group"])
                     if config.get("resource_group") is not None
                     else None,

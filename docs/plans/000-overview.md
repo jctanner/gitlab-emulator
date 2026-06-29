@@ -73,7 +73,7 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   branch/tag/source-aware
   `only`/`except` filters including common source aliases, glob-style refs, and
   mapping forms, workflow/rule-level variables, boolean `allow_failure`
-  and rule-level `needs`, boolean `allow_failure`
+  and rule-level `needs`/`interruptible`, boolean `allow_failure`
   scheduling/status behavior, `allow_failure:exit_codes` matching against
   runner-reported exit codes,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
@@ -239,7 +239,7 @@ Target areas:
 - deeper `rules` / `only` / `except` edge cases beyond the currently covered
   boolean expressions, regex operators and flags, `exists`, `changes`,
   path-object rules, variable-expanded rule paths, mapping-form legacy filters,
-  rule variables, and delayed/manual scheduling
+  rule variables, rule-level `needs`/`interruptible`, and delayed/manual scheduling
 - remaining execution semantics for parsed job metadata beyond the current
   retry, timeout, resource-group, coverage, interruptible, and image/service
   executor option support
