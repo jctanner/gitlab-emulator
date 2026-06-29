@@ -81,9 +81,10 @@ and cache APIs for controlled integration testing.
 - stale running jobs are exposed in pipeline/CI Lab diagnostics; recovery is
   manual through the CI Lab requeue action or, for GitLab-shaped clients,
   cancel followed by retry
-- unsupported execution-affecting CI syntax such as bridge `trigger` jobs,
-  and `parallel` expansion fails pipeline creation with a clear 400 response
-  instead of being silently ignored
+- unsupported execution-affecting CI syntax such as bridge `trigger` jobs fails
+  pipeline creation with a clear 400 response instead of being silently ignored;
+  integer `parallel` jobs expand into per-node persisted jobs, while matrix
+  forms remain out of scope for the MVP
 
 ## Remaining CI Work
 

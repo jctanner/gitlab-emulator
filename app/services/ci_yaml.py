@@ -40,7 +40,6 @@ DEFAULT_INHERITABLE_KEYS = {
 }
 MAX_EXTENDS_DEPTH = 11
 UNSUPPORTED_JOB_KEYS = {
-    "parallel": "parallel job expansion is not supported",
     "trigger": "bridge/downstream pipeline trigger jobs are not supported",
 }
 SUPPORTED_SERVICE_ENTRY_KEYS = {
@@ -638,6 +637,20 @@ def _timeout_seconds(value: Any) -> int | None:
     if value is None:
         return None
     return _duration_seconds(value, "timeout")
+
+
+def _parallel_count(value: Any) -> int:
+    if value is None:
+        return 1
+    if isinstance(value, bool) or isinstance(value, dict) or isinstance(value, list):
+        raise ValueError("parallel value is not supported")
+    try:
+        count = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"parallel value is not supported: {value}") from exc
+    if count < 1 or count > 200:
+        raise ValueError("parallel must be between 1 and 200")
+    return count
 
 
 def _exit_codes(value: Any, keyword: str) -> list[int]:
@@ -1370,41 +1383,72 @@ def parse_gitlab_ci(
             if raw_services is not None
             else []
         )
-
-        jobs.append(
-            ParsedCiJob(
-                name=str(name),
-                stage=stage,
-                stage_index=stage_order.get(stage, len(stage_order)),
-                image=image,
-                image_config=image_config,
-                script=before + script + after,
-                variables=variables,
-                variable_metadata=merged_variable_entries,
-                needs=_needs(config.get("needs")),
-                dependencies=_dependencies(config.get("dependencies")),
-                tags=_string_list(config.get("tags", global_tags)),
-                services=services,
-                cache=cache,
-                artifacts_paths=artifact_paths,
-                artifacts=artifact_config,
-                when=decision.when,
-                start_in_seconds=_delayed_start_in_seconds(config, decision),
-                allow_failure=_allow_failure(config, decision),
-                allow_failure_exit_codes=_allow_failure_exit_codes(config, decision),
-                retry=_retry_config(config.get("retry")),
-                timeout_seconds=_timeout_seconds(config.get("timeout")),
-                interruptible=bool(config.get("interruptible", False)),
-                resource_group=str(config["resource_group"])
-                if config.get("resource_group") is not None
-                else None,
-                coverage=str(config["coverage"])
-                if config.get("coverage") is not None
-                else None,
-                environment=_environment_name(config.get("environment")),
-                secrets=_secret_entries(config.get("secrets")),
+        parallel_count = _parallel_count(config.get("parallel"))
+        for parallel_index in range(1, parallel_count + 1):
+            expanded_name = (
+                f"{name} {parallel_index}/{parallel_count}"
+                if parallel_count > 1
+                else str(name)
             )
-        )
+            expanded_variables = variables
+            expanded_variable_metadata = merged_variable_entries
+            if parallel_count > 1:
+                node_variables = {
+                    "CI_NODE_INDEX": {
+                        "value": str(parallel_index),
+                        "file": False,
+                        "masked": False,
+                        "raw": False,
+                        "public": True,
+                    },
+                    "CI_NODE_TOTAL": {
+                        "value": str(parallel_count),
+                        "file": False,
+                        "masked": False,
+                        "raw": False,
+                        "public": True,
+                    },
+                }
+                expanded_variable_metadata = {
+                    **merged_variable_entries,
+                    **node_variables,
+                }
+                expanded_variables = _variable_values(expanded_variable_metadata)
+
+            jobs.append(
+                ParsedCiJob(
+                    name=expanded_name,
+                    stage=stage,
+                    stage_index=stage_order.get(stage, len(stage_order)),
+                    image=image,
+                    image_config=image_config,
+                    script=before + script + after,
+                    variables=expanded_variables,
+                    variable_metadata=expanded_variable_metadata,
+                    needs=_needs(config.get("needs")),
+                    dependencies=_dependencies(config.get("dependencies")),
+                    tags=_string_list(config.get("tags", global_tags)),
+                    services=services,
+                    cache=cache,
+                    artifacts_paths=artifact_paths,
+                    artifacts=artifact_config,
+                    when=decision.when,
+                    start_in_seconds=_delayed_start_in_seconds(config, decision),
+                    allow_failure=_allow_failure(config, decision),
+                    allow_failure_exit_codes=_allow_failure_exit_codes(config, decision),
+                    retry=_retry_config(config.get("retry")),
+                    timeout_seconds=_timeout_seconds(config.get("timeout")),
+                    interruptible=bool(config.get("interruptible", False)),
+                    resource_group=str(config["resource_group"])
+                    if config.get("resource_group") is not None
+                    else None,
+                    coverage=str(config["coverage"])
+                    if config.get("coverage") is not None
+                    else None,
+                    environment=_environment_name(config.get("environment")),
+                    secrets=_secret_entries(config.get("secrets")),
+                )
+            )
 
     if not jobs:
         raise ValueError(".gitlab-ci.yml does not define any runnable jobs")

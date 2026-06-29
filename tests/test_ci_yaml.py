@@ -424,26 +424,38 @@ unit:
 
 
 def test_parse_gitlab_ci_rejects_unsupported_execution_keywords():
-    for keyword, content in {
-        "trigger": """
+    content = """
 deploy_downstream:
   trigger:
     project: group/downstream
-""",
-        "parallel": """
+"""
+    try:
+        parse_gitlab_ci(content)
+    except ValueError as exc:
+        message = str(exc)
+        assert "unsupported GitLab CI keyword" in message
+        assert "trigger" in message
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_parse_gitlab_ci_expands_integer_parallel_jobs():
+    jobs = parse_gitlab_ci(
+        """
 matrix_job:
   parallel: 3
   script: echo matrix
-""",
-    }.items():
-        try:
-            parse_gitlab_ci(content)
-        except ValueError as exc:
-            message = str(exc)
-            assert "unsupported GitLab CI keyword" in message
-            assert keyword in message
-        else:
-            raise AssertionError("expected ValueError")
+"""
+    )
+
+    assert [job.name for job in jobs] == [
+        "matrix_job 1/3",
+        "matrix_job 2/3",
+        "matrix_job 3/3",
+    ]
+    assert [job.variables["CI_NODE_INDEX"] for job in jobs] == ["1", "2", "3"]
+    assert [job.variables["CI_NODE_TOTAL"] for job in jobs] == ["3", "3", "3"]
+    assert jobs[0].variable_metadata["CI_NODE_INDEX"]["value"] == "1"
 
 
 def test_parse_gitlab_ci_preserves_service_containers():
