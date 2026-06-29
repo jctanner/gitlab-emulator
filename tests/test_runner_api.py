@@ -191,6 +191,9 @@ async def test_runner_inspection_endpoints(client, test_token):
     assert job["status"] == "running"
     assert job["ref"] == "main"
     assert job["environment"] is None
+    assert job["duration"] is None
+    assert isinstance(job["queued_duration"], int)
+    assert job["queued_duration"] >= 0
     assert job["pipeline"]["id"] == pipeline.json()["id"]
     assert job["pipeline"]["project_id"] == project.json()["id"]
     assert job["commit"]["id"] == pipeline.json()["sha"]

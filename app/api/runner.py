@@ -175,8 +175,12 @@ def _runner_json(runner: CiRunner, *, include_token: bool = False) -> dict:
 
 def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
     duration = None
+    queued_duration = None
+    queued = _aware_utc(job.queued_at)
     started = _aware_utc(job.started_at)
     finished = _aware_utc(job.finished_at)
+    if queued and started:
+        queued_duration = max(0, int((started - queued).total_seconds()))
     if started and finished:
         duration = max(0, int((finished - started).total_seconds()))
     artifacts = [
@@ -205,7 +209,7 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "started_at": _iso_utc(job.started_at),
         "finished_at": _iso_utc(job.finished_at),
         "duration": duration,
-        "queued_duration": None,
+        "queued_duration": queued_duration,
         "user": None,
         "commit": {"id": job.pipeline.sha, "short_id": job.pipeline.sha[:8]}
         if job.pipeline
