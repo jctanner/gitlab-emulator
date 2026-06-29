@@ -91,6 +91,9 @@ harness architecture.
   code, and pipeline retry requeues failed, canceled, and skipped jobs
   through the persisted runner coordinator. Persisted job failure reasons are
   exposed in project job and runner-inspection job API responses.
+- GitLab-style job erase exists for terminal jobs. It records `erased_at`,
+  clears stored trace content and runner trace metadata, removes persisted
+  artifact records and files, and makes project artifact downloads return 404.
 - The admin CI Lab exposes runner diagnostics, pending-job eligibility reasons,
   and a requeue control for pending/running jobs so stuck jobs can be diagnosed
   and recovered from the operator UI.

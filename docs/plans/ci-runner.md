@@ -124,8 +124,10 @@ and cache APIs for controlled integration testing.
 - expose additional runner/job/pipeline inspection APIs in GitLab-compatible
   shapes where target clients require them; runner job inspection now returns
   GitLab job-shaped fields including pipeline, commit, runner, artifacts,
-  timestamps, duration, queued duration, tags, status, web URL, and pagination
-  headers
+  timestamps, duration, queued duration, tags, status, erased state, web URL,
+  and pagination headers
+- project job erase records `erased_at`, clears stored traces, and removes
+  persisted artifacts for terminal jobs
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

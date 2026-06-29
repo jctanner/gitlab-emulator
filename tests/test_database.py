@@ -41,6 +41,7 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         assert "trigger_ref" in columns
         assert "trigger_strategy" in columns
         assert "downstream_pipeline_id" in columns
+        assert "erased_at" in columns
 
         result = await conn.execute(text("PRAGMA table_info(pipelines)"))
         pipeline_columns = {row[1] for row in result.fetchall()}

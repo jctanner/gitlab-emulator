@@ -194,6 +194,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         "scheduled_at DATETIME",
     )
     await ensure_column(
+        "pipeline_jobs",
+        "erased_at",
+        "erased_at DATETIME",
+    )
+    await ensure_column(
         "pipeline_schedules",
         "next_run_at",
         "next_run_at DATETIME",

@@ -277,6 +277,7 @@ class PipelineJob(Base):
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     trace_checksum: Mapped[str | None] = mapped_column(String, nullable=True)
     trace_size: Mapped[int] = mapped_column(Integer, default=0)
+    erased_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     queued_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

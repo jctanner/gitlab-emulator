@@ -227,6 +227,7 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "scheduled_at": _iso_utc(job.scheduled_at),
         "started_at": _iso_utc(job.started_at),
         "finished_at": _iso_utc(job.finished_at),
+        "erased_at": _iso_utc(job.erased_at),
         "duration": duration,
         "queued_duration": queued_duration,
         "user": None,

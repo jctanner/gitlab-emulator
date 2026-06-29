@@ -1182,6 +1182,24 @@ def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
         job.trace.size = 0
 
 
+async def _erase_job_trace_and_artifacts(job: PipelineJob, db: DbSession) -> None:
+    job.trace_checksum = None
+    job.trace_size = 0
+    job.erased_at = datetime.now(timezone.utc)
+    if job.trace:
+        job.trace.content = ""
+        job.trace.size = 0
+
+    for artifact in list(job.artifacts):
+        if artifact.storage_path:
+            try:
+                os.remove(artifact.storage_path)
+            except FileNotFoundError:
+                pass
+        await db.delete(artifact)
+    job.artifacts.clear()
+
+
 def _requeue_stale_or_pending_job(job: PipelineJob, now: datetime) -> dict:
     """Reset a pending/running/scheduled job for another runner poll.
 
@@ -1341,7 +1359,7 @@ def _job_json(job: PipelineJob) -> dict:
         "scheduled_at": _fmt_dt(job.scheduled_at),
         "started_at": _fmt_dt(job.started_at),
         "finished_at": _fmt_dt(job.finished_at),
-        "erased_at": None,
+        "erased_at": _fmt_dt(job.erased_at),
         "duration": _elapsed_seconds(job.started_at, job.finished_at),
         "queued_duration": _elapsed_seconds(job.queued_at, job.started_at),
         "user": None,
@@ -2451,6 +2469,23 @@ async def play_project_job(
         if job.pipeline.status in {"pending", "running"}
         else job.pipeline.finished_at
     )
+    await db.commit()
+    await db.refresh(job)
+    return _job_json(job)
+
+
+@router.post("/projects/{project_ref:path}/jobs/{job_id}/erase")
+async def erase_project_job(
+    project_ref: str,
+    job_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    job = await _get_job_for_project_ref(project_ref, job_id, db)
+    await require_project_access(job.project, current_user, db, DEVELOPER)
+    if job.status in {"pending", "running", "manual", "scheduled"}:
+        raise HTTPException(status_code=400, detail="Job is not erasable")
+    await _erase_job_trace_and_artifacts(job, db)
     await db.commit()
     await db.refresh(job)
     return _job_json(job)

@@ -1418,6 +1418,93 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
     assert artifact_download.content == archive
 
 
+async def test_erase_project_job_clears_trace_and_artifacts(client, test_token):
+    project = await _create_project(client, test_token)
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {
+                "name": "erase_me",
+                "image": "alpine:3.20",
+                "script": ["echo erase"],
+                "artifacts_paths": ["out/result.txt"],
+            },
+        },
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN, "info": {"name": "erase-runner"}},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    job_id = payload["id"]
+    job_token = payload["token"]
+
+    trace = await client.patch(
+        f"{API}/jobs/{job_id}/trace?debug_trace=false",
+        headers={"JOB-TOKEN": job_token, "Content-Range": "0-8"},
+        content=b"erase me",
+    )
+    assert trace.status_code == 202
+
+    archive_buffer = io.BytesIO()
+    with zipfile.ZipFile(archive_buffer, "w") as archive_file:
+        archive_file.writestr("out/result.txt", "artifact content\n")
+    archive = archive_buffer.getvalue()
+    artifact_upload = await client.post(
+        f"{API}/jobs/{job_id}/artifacts?artifact_format=zip&artifact_type=archive",
+        headers={"JOB-TOKEN": job_token, "Content-Type": "application/zip"},
+        content=archive,
+    )
+    assert artifact_upload.status_code == 201
+
+    update = await client.put(
+        f"{API}/jobs/{job_id}",
+        headers={"JOB-TOKEN": job_token},
+        json={"token": job_token, "state": "success", "exit_code": 0},
+    )
+    assert update.status_code == 200
+
+    artifact_download = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts"
+    )
+    assert artifact_download.status_code == 200
+    assert artifact_download.content == archive
+
+    erase = await client.post(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/erase",
+        headers=auth_headers(test_token),
+    )
+    assert erase.status_code == 200
+    erased = erase.json()
+    assert erased["erased_at"] is not None
+    assert erased["artifacts"] == []
+
+    job_after_erase = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}",
+        headers=auth_headers(test_token),
+    )
+    assert job_after_erase.status_code == 200
+    assert job_after_erase.json()["erased_at"] == erased["erased_at"]
+    assert job_after_erase.json()["artifacts"] == []
+
+    raw_trace = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/trace"
+    )
+    assert raw_trace.status_code == 200
+    assert raw_trace.text == ""
+
+    missing_artifact = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts"
+    )
+    assert missing_artifact.status_code == 404
+
+
 async def test_artifact_metadata_reaches_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
