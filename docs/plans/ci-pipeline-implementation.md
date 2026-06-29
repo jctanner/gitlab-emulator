@@ -36,6 +36,8 @@ Already working:
 - minimal `needs` and common rules/ref filters are implemented: jobs can unlock
   from named dependencies, `needs: []` can run immediately, invalid needs are
   rejected early, `needs:artifacts` dependencies follow declared needs order,
+  `needs:parallel:true` selects all expanded same-pipeline integer parallel
+  jobs, `needs:parallel:matrix` selects expanded same-pipeline matrix jobs,
   `needs:project` and `needs:pipeline:job` resolve successful stored artifact
   jobs into official runner dependency payloads, and pipeline creation applies
   `rules`, `only`, and `except` filters. Current
@@ -437,6 +439,8 @@ Implemented:
 - support `needs: [{ job: ..., optional: true }]` for missing optional jobs
 - reject pipelines with missing required `needs` references
 - reject duplicate needs, self-needs, and future-stage same-pipeline needs
+- support `needs:parallel:true` for selecting all expanded same-pipeline
+  integer parallel jobs
 - support `needs:parallel:matrix` for selecting expanded same-pipeline matrix
   jobs
 - support `needs:project` and `needs:pipeline:job` for artifact dependency

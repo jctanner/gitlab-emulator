@@ -5549,6 +5549,103 @@ unit:
     ]
 
 
+async def test_needs_parallel_true_expands_to_integer_parallel_jobs(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages:
+  - build
+  - test
+
+compile:
+  stage: build
+  parallel: 2
+  script:
+    - echo compile
+  artifacts:
+    paths:
+      - out.txt
+
+consume:
+  stage: test
+  needs:
+    - job: compile
+      parallel: true
+      artifacts: true
+  script:
+    - echo consume
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add needs parallel true ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["consume"]["needs"] == ["compile 1/2", "compile 2/2"]
+
+    compile_jobs = {}
+    for _ in range(2):
+        request = await client.post(
+            f"{API}/jobs/request",
+            headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+            json={"token": RUNNER_TOKEN},
+        )
+        assert request.status_code == 201
+        payload = request.json()
+        compile_jobs[payload["job_info"]["name"]] = payload
+        archive = f"artifact {payload['job_info']['name']}".encode()
+        upload = await client.post(
+            f"{API}/jobs/{payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
+            headers={
+                "JOB-TOKEN": payload["token"],
+                "Content-Type": "application/zip",
+            },
+            content=archive,
+        )
+        assert upload.status_code == 201
+        finish = await client.put(
+            f"{API}/jobs/{payload['id']}",
+            headers={"JOB-TOKEN": payload["token"]},
+            json={"token": payload["token"], "state": "success", "exit_code": 0},
+        )
+        assert finish.status_code == 200
+
+    consume = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume.status_code == 201
+    assert consume.json()["job_info"]["name"] == "consume"
+    assert [item["name"] for item in consume.json()["dependencies"]] == [
+        "compile 1/2",
+        "compile 2/2",
+    ]
+    assert [item["id"] for item in consume.json()["dependencies"]] == [
+        compile_jobs["compile 1/2"]["id"],
+        compile_jobs["compile 2/2"]["id"],
+    ]
+
+
 async def test_same_stage_needs_are_allowed(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

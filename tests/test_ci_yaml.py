@@ -471,6 +471,27 @@ unit:
     ]
 
 
+def test_parse_gitlab_ci_expands_needs_parallel_true():
+    content = """
+compile:
+  parallel: 3
+  script: echo compile
+
+unit:
+  needs:
+    - job: compile
+      parallel: true
+  script: echo unit
+"""
+    jobs = parse_gitlab_ci(content)
+    by_name = {job.name: job for job in jobs}
+    assert [need["job"] for need in by_name["unit"].needs] == [
+        "compile 1/3",
+        "compile 2/3",
+        "compile 3/3",
+    ]
+
+
 def test_parse_gitlab_ci_preserves_bridge_trigger_jobs():
     jobs = parse_gitlab_ci(
         """

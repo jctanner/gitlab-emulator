@@ -30,7 +30,8 @@ same-ref cancellation, common CI service container definitions that are parsed,
 persisted, exposed through job APIs, and sent to runner job payloads,
 structured global/default/job `image:` metadata for `entrypoint` and
 `pull_policy` in job APIs and runner payloads, richer
-`needs`, including same-pipeline `needs:parallel:matrix`, deeper
+`needs`, including same-pipeline `needs:parallel:true` and
+`needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries and `include:rules` filtering, cross-project/ref
 `rules:exists` path lookups, accepted `rules:changes:compare_to`,

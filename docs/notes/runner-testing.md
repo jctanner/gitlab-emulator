@@ -490,8 +490,9 @@ runner dependency payloads.
 Missing behavior for fuller GitLab CI execution:
 
 - broader `.gitlab-ci.yml` support such as richer `needs` edge cases beyond
-  current same-pipeline validation, same-pipeline `needs:parallel:matrix`
-  expansion, and stored-artifact `needs:project` / `needs:pipeline:job`,
+  current same-pipeline validation, same-pipeline `needs:parallel:true`,
+  same-pipeline `needs:parallel:matrix`, and stored-artifact
+  `needs:project` / `needs:pipeline:job`,
   plus remaining long-tail `rules`, `extends`, and `include` semantics beyond
   the current local/project/remote/template include coverage, list-valued
   include entries, and `include:rules`

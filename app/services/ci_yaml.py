@@ -338,7 +338,11 @@ def _secret_entries(value: Any) -> dict[str, dict]:
     return entries
 
 
-def _needs(value: Any) -> list[dict] | None:
+def _needs(
+    value: Any,
+    parallel_job_names: dict[str, list[str]] | None = None,
+) -> list[dict] | None:
+    parallel_job_names = parallel_job_names or {}
     if value is None:
         return None
     if value == []:
@@ -351,7 +355,7 @@ def _needs(value: Any) -> list[dict] | None:
         if value.get("pipeline"):
             return [_pipeline_need_entry(value)]
         if value.get("job"):
-            return _need_entries_from_mapping(value)
+            return _need_entries_from_mapping(value, parallel_job_names)
         raise ValueError("needs entries must define a job")
     if isinstance(value, list):
         parsed: list[dict] = []
@@ -369,7 +373,7 @@ def _needs(value: Any) -> list[dict] | None:
                 continue
             if not item.get("job"):
                 raise ValueError("needs entries must define a job")
-            parsed.extend(_need_entries_from_mapping(item))
+            parsed.extend(_need_entries_from_mapping(item, parallel_job_names))
         return parsed
     raise ValueError("needs must be a string, mapping, or list")
 
@@ -405,13 +409,22 @@ def _pipeline_need_entry(value: dict) -> dict:
     }
 
 
-def _need_entries_from_mapping(value: dict) -> list[dict]:
+def _need_entries_from_mapping(
+    value: dict,
+    parallel_job_names: dict[str, list[str]] | None = None,
+) -> list[dict]:
+    parallel_job_names = parallel_job_names or {}
     job_name = str(value["job"])
     optional = bool(value.get("optional", False))
     artifacts = bool(value.get("artifacts", True))
     parallel = value.get("parallel")
     if parallel is None:
         return [{"job": job_name, "optional": optional, "artifacts": artifacts}]
+    if parallel is True:
+        return [
+            {"job": expanded_name, "optional": optional, "artifacts": artifacts}
+            for expanded_name in parallel_job_names.get(job_name, [job_name])
+        ]
     if not isinstance(parallel, dict) or set(parallel) - {"matrix"}:
         raise ValueError("needs parallel value is not supported")
     matrix = parallel.get("matrix")
@@ -806,6 +819,29 @@ def _parallel_expansions(value: Any) -> list[tuple[str | None, dict[str, dict]]]
         )
         for parallel_index in range(1, count + 1)
     ]
+
+
+def _parallel_job_names(parsed: dict) -> dict[str, list[str]]:
+    names: dict[str, list[str]] = {}
+    resolved_configs: dict[str, dict] = {}
+    default = parsed.get("default") if isinstance(parsed.get("default"), dict) else {}
+    for name, raw_config in parsed.items():
+        if name in RESERVED_TOP_LEVEL_KEYS or str(name).startswith("."):
+            continue
+        if not isinstance(raw_config, dict):
+            continue
+        config = _apply_default_config(
+            _resolve_job_config(str(name), parsed, resolved=resolved_configs),
+            default,
+        )
+        if "script" not in config and config.get("trigger") is None:
+            continue
+        expanded_names = [
+            f"{name} {suffix}" if suffix else str(name)
+            for suffix, _variables in _parallel_expansions(config.get("parallel"))
+        ]
+        names[str(name)] = expanded_names or [str(name)]
+    return names
 
 
 def _exit_codes(value: Any, keyword: str) -> list[int]:
@@ -1484,6 +1520,7 @@ def parse_gitlab_ci(
         }
 
     jobs: list[ParsedCiJob] = []
+    parallel_job_names = _parallel_job_names(parsed)
     resolved_configs: dict[str, dict] = {}
     for name, raw_config in parsed.items():
         if name in RESERVED_TOP_LEVEL_KEYS or str(name).startswith("."):
@@ -1599,7 +1636,7 @@ def parse_gitlab_ci(
                 script=before + script + after,
                     variables=expanded_variables,
                     variable_metadata=expanded_variable_metadata,
-                    needs=_needs(config.get("needs")),
+                    needs=_needs(config.get("needs"), parallel_job_names),
                     dependencies=_dependencies(config.get("dependencies")),
                     tags=_string_list(config.get("tags", global_tags)),
                     services=services,
