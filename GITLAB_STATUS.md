@@ -134,11 +134,12 @@ harness architecture.
 - Cache key parsing supports list-form keys, common `key: { prefix, files }`,
   and `files_commits` forms. Pipeline creation derives `files` keys from the
   referenced files' repository blob state and `files_commits` keys from the
-  latest commit touching each referenced file. Cache paths/keys/policies/when/
-  fallback keys expand variables before reaching runner payloads, and the
-  emulator cache endpoints support fallback-key lookup for API-level cache
-  coverage. Official runner cache validation still uses GitLab Runner's S3
-  adapter backed by MinIO.
+  latest commit touching each referenced file, with absent referenced files
+  falling back to `default`. Cache paths/keys/policies/when/fallback keys
+  expand variables before reaching runner payloads, and the emulator cache
+  endpoints support fallback-key lookup for API-level cache coverage. Official
+  runner cache validation still uses GitLab Runner's S3 adapter backed by
+  MinIO.
 - User responses now include GitLab-native fields such as `username`, `web_url`,
   `state`, `locked`, and `is_admin`, while retaining legacy compatibility
   fields. Public users can be looked up by numeric ID or username, and newly

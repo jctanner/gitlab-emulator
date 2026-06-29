@@ -1753,7 +1753,7 @@ cache_probe:
     assert request.status_code == 201
     assert request.json()["cache"] == [
         {
-            "key": "main-uv.lock",
+            "key": "main-default",
             "untracked": False,
             "unprotect": False,
             "policy": "push",
@@ -1799,6 +1799,12 @@ cache_probe:
           - lockfile.txt
       paths:
         - .cache/commits
+    - key:
+        prefix: missing
+        files:
+          - absent.lock
+      paths:
+        - .cache/missing
   script:
     - echo cache
 """
@@ -1830,6 +1836,7 @@ cache_probe:
     assert first_cache[0]["key"] != "content-package.json"
     assert first_cache[1]["key"].startswith("commits-")
     assert first_cache[1]["key"] != "commits-lockfile.txt"
+    assert first_cache[2]["key"] == "missing-default"
 
     finish = await client.put(
         f"{API}/jobs/{first_request.json()['id']}",
@@ -1867,6 +1874,7 @@ cache_probe:
 
     assert second_cache[0]["key"] != first_cache[0]["key"]
     assert second_cache[1]["key"] == first_cache[1]["key"]
+    assert second_cache[2]["key"] == "missing-default"
 
 
 async def test_expired_artifact_upload_is_not_downloadable(client, test_token):

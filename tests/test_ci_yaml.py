@@ -1804,6 +1804,40 @@ cache_probe:
     assert jobs[0].cache[0]["key"] == f"commits-{expected}"
 
 
+def test_parse_gitlab_ci_uses_default_for_missing_repository_cache_key_files():
+    jobs = parse_gitlab_ci(
+        """
+cache_files:
+  cache:
+    key:
+      prefix: deps
+      files:
+        - missing.lock
+    paths:
+      - .cache/uv
+  script:
+    - echo cache
+
+cache_commits:
+  cache:
+    key:
+      prefix: commits
+      files_commits:
+        - missing.lock
+    paths:
+      - .cache/uv
+  script:
+    - echo cache
+""",
+        cache_key_files={},
+        cache_key_files_commits={},
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["cache_files"].cache[0]["key"] == "deps-default"
+    assert by_name["cache_commits"].cache[0]["key"] == "commits-default"
+
+
 def test_parse_gitlab_ci_expands_variables_in_cache_metadata():
     jobs = parse_gitlab_ci(
         """

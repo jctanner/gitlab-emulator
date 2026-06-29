@@ -514,6 +514,12 @@ def _cache_key_digest(paths: list[str], key_map: dict[str, str] | None) -> str |
     return hashlib.sha256("\0".join(values).encode("utf-8")).hexdigest()
 
 
+def _cache_key_from_paths(paths: list[str], key_map: dict[str, str] | None) -> str:
+    if key_map is None:
+        return "-".join(paths) if paths else "default"
+    return _cache_key_digest(paths, key_map) or "default"
+
+
 def _cache_key(
     value: Any,
     variables: dict[str, str] | None = None,
@@ -536,14 +542,11 @@ def _cache_key(
             return f"{prefix}-{key}" if prefix else key
         files = _expand_string_list(value.get("files"), variables)
         if files:
-            key = _cache_key_digest(files, cache_key_files) or "-".join(files)
+            key = _cache_key_from_paths(files, cache_key_files)
             return f"{prefix}-{key}" if prefix else key
         files_commits = _expand_string_list(value.get("files_commits"), variables)
         if files_commits:
-            key = (
-                _cache_key_digest(files_commits, cache_key_files_commits)
-                or "-".join(files_commits)
-            )
+            key = _cache_key_from_paths(files_commits, cache_key_files_commits)
             return f"{prefix}-{key}" if prefix else key
         if prefix:
             return prefix
