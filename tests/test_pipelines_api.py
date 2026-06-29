@@ -3777,6 +3777,20 @@ review_job:
     assert search.status_code == 200
     assert [environment["name"] for environment in search.json()] == ["review/main"]
 
+    detail = await client.get(
+        f"{API}/projects/{project['id']}/environments/{by_name['production']['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert detail.status_code == 200
+    assert detail.json()["name"] == "production"
+    assert detail.json()["last_deployment"]["deployable"]["name"] == "production_job"
+
+    missing = await client.get(
+        f"{API}/projects/{project['id']}/environments/999999999",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
 
 async def test_job_secrets_resolve_to_runner_payload_and_access_events(
     client, test_token, db_session

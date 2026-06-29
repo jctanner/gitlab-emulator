@@ -1121,6 +1121,35 @@ def _environment_json(name: str, job: PipelineJob) -> dict:
     }
 
 
+async def _latest_environment_jobs(
+    project: Project,
+    db: DbSession,
+    *,
+    search: str | None = None,
+) -> dict[str, PipelineJob]:
+    result = await db.execute(
+        select(PipelineJob)
+        .options(
+            selectinload(PipelineJob.pipeline),
+            selectinload(PipelineJob.project),
+            selectinload(PipelineJob.artifacts),
+        )
+        .where(
+            PipelineJob.project_id == project.id,
+            PipelineJob.environment.is_not(None),
+        )
+        .order_by(PipelineJob.id.desc())
+    )
+    latest_by_environment: dict[str, PipelineJob] = {}
+    for job in result.scalars().all():
+        if not job.environment:
+            continue
+        if search and search.lower() not in job.environment.lower():
+            continue
+        latest_by_environment.setdefault(job.environment, job)
+    return latest_by_environment
+
+
 def _empty_test_report() -> dict:
     return {
         "total_time": 0.0,
@@ -2428,26 +2457,7 @@ async def list_project_environments(
     project = await _get_project_ref(
         project_ref, db, current_user, enforce_read_access=True
     )
-    result = await db.execute(
-        select(PipelineJob)
-        .options(
-            selectinload(PipelineJob.pipeline),
-            selectinload(PipelineJob.project),
-            selectinload(PipelineJob.artifacts),
-        )
-        .where(
-            PipelineJob.project_id == project.id,
-            PipelineJob.environment.is_not(None),
-        )
-        .order_by(PipelineJob.id.desc())
-    )
-    latest_by_environment: dict[str, PipelineJob] = {}
-    for job in result.scalars().all():
-        if not job.environment:
-            continue
-        if search and search.lower() not in job.environment.lower():
-            continue
-        latest_by_environment.setdefault(job.environment, job)
+    latest_by_environment = await _latest_environment_jobs(project, db, search=search)
     environments = [
         _environment_json(name, job)
         for name, job in sorted(latest_by_environment.items())
@@ -2461,6 +2471,23 @@ async def list_project_environments(
         per_page,
         total,
     )
+
+
+@router.get("/projects/{project_ref:path}/environments/{environment_id}")
+async def get_project_environment(
+    project_ref: str,
+    environment_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    latest_by_environment = await _latest_environment_jobs(project, db)
+    for name, job in latest_by_environment.items():
+        if _environment_id(name) == environment_id:
+            return _environment_json(name, job)
+    raise HTTPException(status_code=404, detail="Environment Not Found")
 
 
 @router.get("/projects/{project_ref:path}/pipelines/latest")
