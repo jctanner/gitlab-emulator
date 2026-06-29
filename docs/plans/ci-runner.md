@@ -80,6 +80,7 @@ and cache APIs for controlled integration testing.
 - runner job payloads advertise the GitLab Runner failure-reason vocabulary
   used for retry/failure mapping
 - project job and runner-inspection job APIs expose persisted failure reasons
+- project job and runner-inspection job APIs mark tag-ref jobs with `tag: true`
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing, GitLab Runner-style cache archive key
   sanitization, and emulator cache fallback-key lookup

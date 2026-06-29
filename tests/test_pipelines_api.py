@@ -2468,6 +2468,12 @@ skip_tag:
     )
     assert jobs.status_code == 200
     assert [job["name"] for job in jobs.json()] == ["tag_only"]
+    assert jobs.json()[0]["tag"] is True
+
+    project_jobs = await client.get(f"{API}/projects/{project['id']}/jobs")
+    assert project_jobs.status_code == 200
+    assert project_jobs.json()[0]["name"] == "tag_only"
+    assert project_jobs.json()[0]["tag"] is True
 
     request = await client.post(
         f"{API}/jobs/request",
@@ -2481,6 +2487,11 @@ skip_tag:
     assert variables["CI_COMMIT_REF_NAME"] == "v1.2.3"
     assert variables["CI_COMMIT_TAG"] == "v1.2.3"
     assert "CI_COMMIT_BRANCH" not in variables
+
+    runner_jobs = await client.get(f"{API}/runners/1/jobs")
+    assert runner_jobs.status_code == 200
+    assert runner_jobs.json()[0]["name"] == "tag_only"
+    assert runner_jobs.json()[0]["tag"] is True
 
 
 async def test_create_pipeline_bridge_trigger_creates_downstream_pipeline(

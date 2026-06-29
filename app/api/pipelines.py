@@ -1317,7 +1317,7 @@ def _job_json(job: PipelineJob) -> dict:
         "interruptible": bool(job.interruptible),
         "resource_group": job.resource_group,
         "ref": job.pipeline.ref if job.pipeline else None,
-        "tag": False,
+        "tag": bool((job.variables or {}).get("CI_COMMIT_TAG")),
         "coverage": job.coverage,
         "coverage_regex": job.coverage_regex,
         "environment": job.environment,

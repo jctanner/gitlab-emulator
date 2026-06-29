@@ -219,7 +219,7 @@ def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
         "environment": job.environment,
         "environment_url": job.environment_url,
         "environment_action": job.environment_action,
-        "tag": False,
+        "tag": bool((job.variables or {}).get("CI_COMMIT_TAG")),
         "coverage": job.coverage,
         "allow_failure": bool(job.allow_failure),
         "allow_failure_exit_codes": job.allow_failure_exit_codes or [],
