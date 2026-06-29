@@ -48,9 +48,9 @@ Already working:
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
   directory-style `rules:exists` patterns ending in `/`, bare-directory path
   matching for `rules:changes` and legacy `only`/`except:changes`,
-  cross-project/ref `rules:exists` path lookups, accepted
-  `rules:changes:compare_to` syntax evaluated against emulator-local changed
-  paths, `when: never`,
+  cross-project/ref `rules:exists` path lookups,
+  `rules:changes:compare_to` evaluated against the requested comparison ref,
+  `when: never`,
   `when: always`, `when: on_failure`, persisted non-runnable `manual` jobs,
   and `when: delayed` jobs with `start_in`. Delayed jobs persist as
   `scheduled` with `scheduled_at`, stay out of runner assignment until due,

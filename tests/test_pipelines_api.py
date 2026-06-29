@@ -2164,14 +2164,23 @@ async def test_create_pipeline_accepts_rules_changes_compare_to_option(
 ):
     project = await _create_project(client, test_token)
     ci_yaml = """
-compare_to_job:
+docs_compare_to:
   script:
-    - echo compare-to
+    - echo docs
   rules:
     - changes:
         compare_to: refs/heads/main
         paths:
-          - .gitlab-ci.yml
+          - docs/**
+
+src_compare_to:
+  script:
+    - echo src
+  rules:
+    - changes:
+        compare_to: refs/heads/main
+        paths:
+          - src/**
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
@@ -2184,9 +2193,21 @@ compare_to_job:
     )
     assert write.status_code == 201
 
+    feature_doc = await client.post(
+        f"{API}/projects/{project['id']}/repository/files/{quote('docs/readme.md', safe='')}",
+        headers=auth_headers(test_token),
+        json={
+            "branch": "feature/compare",
+            "start_branch": "main",
+            "commit_message": "add docs on feature branch",
+            "content": "feature docs\n",
+        },
+    )
+    assert feature_doc.status_code == 201
+
     resp = await client.post(
         f"{API}/projects/{project['id']}/pipeline",
-        json={"ref": "main"},
+        json={"ref": "feature/compare"},
         headers=auth_headers(test_token),
     )
     assert resp.status_code == 201
@@ -2195,7 +2216,7 @@ compare_to_job:
         headers=auth_headers(test_token),
     )
     assert jobs.status_code == 200
-    assert jobs.json()[0]["name"] == "compare_to_job"
+    assert [job["name"] for job in jobs.json()] == ["docs_compare_to"]
 
 
 async def test_create_pipeline_rejects_unsupported_cache_option(client, test_token):

@@ -60,8 +60,8 @@ harness architecture.
   `rules` support includes common `if` expressions, `&&`/`||`, grouped
   boolean expressions, unary negation, null and empty-string variable
   comparisons, regex match/non-match operators, local and project/ref
-  `rules:exists`, commit-local `changes`, `when: never`, `when: always`,
-  `when: on_failure`, persisted
+  `rules:exists`, commit-local `changes`, `rules:changes:compare_to`,
+  `when: never`, `when: always`, `when: on_failure`, persisted
   non-runnable `manual` jobs, boolean `allow_failure`,
   `allow_failure:exit_codes` matching against runner-reported exit codes, and
   matched workflow-level variables. Unsupported delayed jobs are rejected

@@ -1089,6 +1089,7 @@ def _rule_paths_match(
     *,
     current_ref: str,
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
+    changed_path_sets: dict[str, set[str]] | None = None,
 ) -> bool:
     if rule_name == "exists" and isinstance(value, dict):
         project = value.get("project")
@@ -1100,6 +1101,9 @@ def _rule_paths_match(
             )
             ref_name = _expand_ci_variables(str(ref), variables) if ref else current_ref
             paths = path_sets.get((project_name, ref_name), set())
+    if rule_name == "changes" and isinstance(value, dict) and value.get("compare_to"):
+        compare_ref = _expand_ci_variables(str(value["compare_to"]), variables)
+        paths = (changed_path_sets or {}).get(compare_ref, paths)
     patterns = _rule_path_patterns(value, variables, rule_name)
     if not patterns:
         return False
@@ -1162,6 +1166,7 @@ def _job_rule_decision(
     existing_paths: set[str],
     changed_paths: set[str],
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
+    changed_path_sets: dict[str, set[str]] | None = None,
 ) -> _RuleDecision:
     rules = config.get("rules")
     if isinstance(rules, list):
@@ -1185,6 +1190,7 @@ def _job_rule_decision(
                 variables,
                 "changes",
                 current_ref=ref,
+                changed_path_sets=changed_path_sets,
             ):
                 continue
             when = _when_setting(rule.get("when"))
@@ -1251,6 +1257,7 @@ def _workflow_rule_decision(
     existing_paths: set[str],
     changed_paths: set[str],
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
+    changed_path_sets: dict[str, set[str]] | None = None,
 ) -> _RuleDecision:
     workflow = parsed.get("workflow")
     if not isinstance(workflow, dict) or "rules" not in workflow:
@@ -1264,6 +1271,7 @@ def _workflow_rule_decision(
         existing_paths,
         changed_paths,
         existing_path_sets,
+        changed_path_sets,
     )
 
 
@@ -1290,6 +1298,7 @@ def parse_gitlab_ci_workflow_name(
     existing_paths: set[str] | None = None,
     changed_paths: set[str] | None = None,
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
+    changed_path_sets: dict[str, set[str]] | None = None,
 ) -> str | None:
     """Return the expanded `workflow:name` value for a parsed CI config."""
     parsed = yaml.safe_load(content) or {}
@@ -1317,6 +1326,7 @@ def parse_gitlab_ci_workflow_name(
         repository_paths,
         commit_changed_paths,
         existing_path_sets,
+        changed_path_sets,
     )
     if not decision.included:
         raise ValueError(".gitlab-ci.yml workflow rules skipped pipeline")
@@ -1457,6 +1467,7 @@ def parse_gitlab_ci(
     existing_paths: set[str] | None = None,
     changed_paths: set[str] | None = None,
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
+    changed_path_sets: dict[str, set[str]] | None = None,
 ) -> list[ParsedCiJob]:
     """Parse a small, runner-executable subset of `.gitlab-ci.yml`.
 
@@ -1510,6 +1521,7 @@ def parse_gitlab_ci(
         repository_paths,
         commit_changed_paths,
         existing_path_sets,
+        changed_path_sets,
     )
     if not workflow_decision.included:
         raise ValueError(".gitlab-ci.yml workflow rules skipped pipeline")
@@ -1557,6 +1569,7 @@ def parse_gitlab_ci(
             repository_paths,
             commit_changed_paths,
             existing_path_sets,
+            changed_path_sets,
         )
         if not decision.included:
             continue

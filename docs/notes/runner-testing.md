@@ -471,9 +471,10 @@ branch/tag/source-aware legacy `only`/`except` filters, boolean
 `allow_failure` scheduling/status behavior,
 `allow_failure:exit_codes` matching against runner-reported exit codes, and
 `retry:exit_codes` filtering of automatic retries are covered by local tests.
-Clear unsupported delayed-job and cross-ref `rules:changes:compare_to`
-handling are also covered by local tests. Cross-project/ref `rules:exists`
-path lookups are covered by local parser and API tests.
+Clear unsupported delayed-job handling is also covered by local tests.
+`rules:changes:compare_to` is evaluated against the requested comparison ref,
+and cross-project/ref `rules:exists` path lookups are covered by local parser
+and API tests.
 Runner tag matching is also covered by local API tests. The smoke queue is
 intentionally temporary. Cache metadata, list-form cache keys,
 variable-expanded cache paths/keys/policies/when/fallback keys, and archive

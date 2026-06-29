@@ -1336,7 +1336,8 @@ changes_compare_to:
         paths:
           - docs/**
 """,
-        changed_paths={"docs/readme.md"},
+        changed_paths=set(),
+        changed_path_sets={"refs/heads/main": {"docs/readme.md"}},
     )
 
     assert [job.name for job in jobs] == ["changes_compare_to"]

@@ -315,6 +315,66 @@ async def _changed_paths_at_sha(project: Project, sha: str) -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
+async def _changed_paths_from_ref(project: Project, compare_ref: str, sha: str) -> set[str]:
+    if (
+        not project.disk_path
+        or not compare_ref
+        or sha == "0000000000000000000000000000000000000000"
+    ):
+        return set()
+    output = await _git_output(
+        project.disk_path,
+        "diff",
+        "--name-only",
+        f"{compare_ref}...{sha}",
+    )
+    if not output:
+        return set()
+    return {line.strip() for line in output.splitlines() if line.strip()}
+
+
+def _collect_rules_changes_compare_refs(
+    value: Any,
+    variables: dict[str, str],
+) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(value, dict):
+        rules = value.get("rules")
+        if isinstance(rules, list):
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                changes = rule.get("changes")
+                if not isinstance(changes, dict) or not changes.get("compare_to"):
+                    continue
+                refs.add(_expand_ci_rule_value(str(changes["compare_to"]), variables))
+        for nested in value.values():
+            refs.update(_collect_rules_changes_compare_refs(nested, variables))
+    elif isinstance(value, list):
+        for item in value:
+            refs.update(_collect_rules_changes_compare_refs(item, variables))
+    return refs
+
+
+async def _rules_changes_path_sets(
+    content: str,
+    project: Project,
+    sha: str,
+    variables: dict[str, str],
+) -> dict[str, set[str]]:
+    parsed = yaml.safe_load(content) or {}
+    if not isinstance(parsed, dict):
+        return {}
+    path_sets: dict[str, set[str]] = {}
+    for compare_ref in _collect_rules_changes_compare_refs(parsed, variables):
+        path_sets[compare_ref] = await _changed_paths_from_ref(
+            project,
+            compare_ref,
+            sha,
+        )
+    return path_sets
+
+
 def _collect_rules_exists_refs(
     value: Any,
     variables: dict[str, str],
@@ -1421,6 +1481,12 @@ async def _create_pipeline(
                 rule_variables,
                 db,
             )
+            changed_path_sets = await _rules_changes_path_sets(
+                merged_ci_content,
+                project,
+                sha,
+                rule_variables,
+            )
             parsed_jobs = parse_gitlab_ci(
                 merged_ci_content,
                 ref=body.ref,
@@ -1429,6 +1495,7 @@ async def _create_pipeline(
                 existing_paths=existing_paths,
                 changed_paths=changed_paths,
                 existing_path_sets=existing_path_sets,
+                changed_path_sets=changed_path_sets,
             )
             pipeline_name = parse_gitlab_ci_workflow_name(
                 merged_ci_content,
@@ -1438,6 +1505,7 @@ async def _create_pipeline(
                 existing_paths=existing_paths,
                 changed_paths=changed_paths,
                 existing_path_sets=existing_path_sets,
+                changed_path_sets=changed_path_sets,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

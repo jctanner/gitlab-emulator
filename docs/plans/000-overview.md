@@ -69,7 +69,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   match/non-match operators including variable-backed regex patterns and common
   regex flags,
   `exists`/`changes` path-object rules including project/ref `rules:exists`,
-  variable-expanded rule path patterns, branch/tag/source-aware
+  `rules:changes:compare_to`, variable-expanded rule path patterns,
+  branch/tag/source-aware
   `only`/`except` filters including common source aliases, glob-style refs, and
   mapping forms, workflow/rule-level variables, boolean `allow_failure`
   scheduling/status behavior, `allow_failure:exit_codes` matching against

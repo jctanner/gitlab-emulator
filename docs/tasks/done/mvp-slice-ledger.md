@@ -34,7 +34,7 @@ structured global/default/job `image:` metadata for `entrypoint` and
 `needs:parallel:matrix`, deeper
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries and `include:rules` filtering, cross-project/ref
-`rules:exists` path lookups, accepted `rules:changes:compare_to`,
+`rules:exists` path lookups, `rules:changes:compare_to` comparison-ref diffs,
 trigger tokens, bridge `trigger` jobs creating same-emulator downstream
 `source=parent_pipeline` pipelines, push-created `source=push` pipelines after
 successful Git Smart HTTP and SSH branch pushes, pipeline schedules,
