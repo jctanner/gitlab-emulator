@@ -695,6 +695,8 @@ class _RuleDecision:
     allow_failure: bool | None = None
     allow_failure_exit_codes: list[int] | None = None
     variables: dict[str, dict] = field(default_factory=dict)
+    needs: Any = None
+    needs_set: bool = False
 
 
 def _allow_failure_config(value: Any) -> tuple[bool, list[int]]:
@@ -1261,6 +1263,8 @@ def _job_rule_decision(
                 allow_failure=allow_failure_enabled,
                 allow_failure_exit_codes=allow_failure_exit_codes,
                 variables=rule_variables,
+                needs=rule.get("needs"),
+                needs_set="needs" in rule,
             )
         return _RuleDecision(included=False)
 
@@ -1689,6 +1693,7 @@ def parse_gitlab_ci(
             else []
         )
         parallel_expansions = _parallel_expansions(config.get("parallel"))
+        raw_needs = decision.needs if decision.needs_set else config.get("needs")
         for parallel_suffix, parallel_variables in parallel_expansions:
             expanded_name = f"{name} {parallel_suffix}" if parallel_suffix else str(name)
             expanded_variables = variables
@@ -1710,7 +1715,7 @@ def parse_gitlab_ci(
                 script=before + script + after,
                     variables=expanded_variables,
                     variable_metadata=expanded_variable_metadata,
-                    needs=_needs(config.get("needs"), parallel_job_names),
+                    needs=_needs(raw_needs, parallel_job_names),
                     dependencies=_dependencies(config.get("dependencies")),
                     tags=_string_list(config.get("tags", global_tags)),
                     services=services,

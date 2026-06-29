@@ -73,6 +73,7 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   branch/tag/source-aware
   `only`/`except` filters including common source aliases, glob-style refs, and
   mapping forms, workflow/rule-level variables, boolean `allow_failure`
+  and rule-level `needs`, boolean `allow_failure`
   scheduling/status behavior, `allow_failure:exit_codes` matching against
   runner-reported exit codes,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache

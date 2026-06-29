@@ -500,6 +500,42 @@ unit:
     ]
 
 
+def test_parse_gitlab_ci_applies_rule_level_needs():
+    content = """
+compile:
+  stage: build
+  script: echo compile
+
+lint:
+  stage: build
+  script: echo lint
+
+unit:
+  stage: test
+  needs: [compile]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      needs:
+        - job: lint
+          artifacts: false
+  script: echo unit
+
+fast:
+  stage: test
+  needs: [compile]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      needs: []
+  script: echo fast
+"""
+    jobs = parse_gitlab_ci(content)
+    by_name = {job.name: job for job in jobs}
+    assert by_name["unit"].needs == [
+        {"job": "lint", "optional": False, "artifacts": False}
+    ]
+    assert by_name["fast"].needs == []
+
+
 def test_parse_gitlab_ci_preserves_bridge_trigger_jobs():
     jobs = parse_gitlab_ci(
         """

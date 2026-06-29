@@ -39,8 +39,9 @@ Already working:
   `needs:parallel:true` selects all expanded same-pipeline integer parallel
   jobs, `needs:parallel:matrix` selects expanded same-pipeline matrix jobs,
   `needs:project` and `needs:pipeline:job` resolve successful stored artifact
-  jobs into official runner dependency payloads, and pipeline creation applies
-  `rules`, `only`, and `except` filters. Current
+  jobs into official runner dependency payloads, matching rule-level `needs`
+  can override job-level `needs`, and pipeline creation applies `rules`,
+  `only`, and `except` filters. Current
   `rules` support covers common `if` expressions, unary negation, null and
   empty-string variable comparisons, regex match/non-match, simple boolean
   operators with grouped parentheses, common regex flags, `exists`,
@@ -454,9 +455,8 @@ Implemented:
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
   including MVP `if` with unary negation, `exists`, `changes`, `never`,
   `manual`, `when: always`, `when: on_failure`, boolean `allow_failure`,
-  clear delayed-job and unknown-`when` rejection, branch/tag, and
-  pipeline-source legacy filter
-  behavior
+  rule-level `needs`, clear delayed-job and unknown-`when` rejection,
+  branch/tag, and pipeline-source legacy filter behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in

@@ -5447,6 +5447,72 @@ unit:
     assert unit["needs"] == ["compile_a"]
 
 
+async def test_rule_level_needs_override_job_needs(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages:
+  - build
+  - test
+
+compile:
+  stage: build
+  script:
+    - echo compile
+
+lint:
+  stage: build
+  script:
+    - echo lint
+
+unit:
+  stage: test
+  needs:
+    - compile
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      needs:
+        - job: lint
+          artifacts: false
+  script:
+    - echo unit
+
+fast:
+  stage: test
+  needs:
+    - compile
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      needs: []
+  script:
+    - echo fast
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add rule needs ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    by_name = {job["name"]: job for job in jobs.json()}
+    assert by_name["unit"]["needs"] == ["lint"]
+    assert by_name["fast"]["needs"] == []
+
+
 async def test_optional_missing_needs_do_not_block_job(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
