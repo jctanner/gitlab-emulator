@@ -44,8 +44,8 @@ harness architecture.
   runnable before the pipeline finalizes. `when: on_failure` cleanup jobs wait
   for an earlier required failure and are skipped when previous dependencies
   finish successfully.
-- Integer `parallel` jobs are expanded into per-node persisted jobs with
-  `CI_NODE_INDEX` and `CI_NODE_TOTAL` runner variables.
+- Integer `parallel` and `parallel:matrix` jobs are expanded into per-node
+  persisted jobs with runner variables for each node or matrix value.
 - Minimal `needs` and rules/ref-filter support exists. Jobs can declare common
   `needs` forms to unlock from dependency completion instead of pure stage
   gating, `needs: []` can run immediately, optional missing needs do not block,

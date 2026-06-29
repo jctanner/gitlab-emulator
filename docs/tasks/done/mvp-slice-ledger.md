@@ -24,7 +24,7 @@ options and invalid cache policy/when values, parsed job runtime metadata for
 `retry`, `timeout`, `interruptible`, `resource_group`, and `coverage`,
 `default:` inheritance for `retry`, `timeout`, and `interruptible`, automatic
 failed-job retry attempts including `retry:exit_codes` filters,
-integer `parallel` job expansion, resource-group runner serialization, trace coverage
+integer `parallel` and `parallel:matrix` job expansion, resource-group runner serialization, trace coverage
 extraction, interruptible
 same-ref cancellation, common CI service container definitions that are parsed,
 persisted, exposed through job APIs, and sent to runner job payloads,

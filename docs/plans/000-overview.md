@@ -58,9 +58,10 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   using CI job tokens.
 - Minimal CI support exists for stages, image, structured image metadata
   (`entrypoint`, `pull_policy`), variables, before_script, script,
-  after_script, artifacts, stage gating, integer `parallel` expansion, needs,
-  needs:artifacts, needs validation edge cases including clear rejection of
-  unsupported `needs:parallel:matrix`, common ref filters, richer `rules` job selection with
+  after_script, artifacts, stage gating, integer `parallel` and
+  `parallel:matrix` expansion, needs, needs:artifacts, needs validation edge
+  cases including clear rejection of unsupported `needs:parallel:matrix`,
+  common ref filters, richer `rules` job selection with
   grouped boolean `if` expressions, unary negation, null/empty checks, and regex
   match/non-match operators including variable-backed regex patterns and common
   regex flags,

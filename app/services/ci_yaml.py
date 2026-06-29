@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import fnmatch
+from itertools import product
 import re
 from typing import Any
 
@@ -639,18 +640,67 @@ def _timeout_seconds(value: Any) -> int | None:
     return _duration_seconds(value, "timeout")
 
 
-def _parallel_count(value: Any) -> int:
+def _metadata_variable(value: Any) -> dict:
+    return {
+        "value": str(value),
+        "file": False,
+        "masked": False,
+        "raw": False,
+        "public": True,
+    }
+
+
+def _parallel_expansions(value: Any) -> list[tuple[str | None, dict[str, dict]]]:
     if value is None:
-        return 1
-    if isinstance(value, bool) or isinstance(value, dict) or isinstance(value, list):
+        return [(None, {})]
+    if isinstance(value, bool) or isinstance(value, list):
         raise ValueError("parallel value is not supported")
+    if isinstance(value, dict):
+        unsupported = set(value) - {"matrix"}
+        if unsupported:
+            names = ", ".join(sorted(str(item) for item in unsupported))
+            raise ValueError(f"parallel option(s) not supported: {names}")
+        raw_matrix = value.get("matrix")
+        if not isinstance(raw_matrix, list) or not raw_matrix:
+            raise ValueError("parallel matrix must be a non-empty list")
+        expansions: list[tuple[str | None, dict[str, dict]]] = []
+        for entry in raw_matrix:
+            if not isinstance(entry, dict) or not entry:
+                raise ValueError("parallel matrix entries must be mappings")
+            keys = [str(key) for key in entry]
+            values_by_key = [
+                raw_values if isinstance(raw_values, list) else [raw_values]
+                for raw_values in entry.values()
+            ]
+            for values in product(*values_by_key):
+                matrix_values = {
+                    key: _metadata_variable(value)
+                    for key, value in zip(keys, values, strict=True)
+                }
+                suffix = ", ".join(str(value) for value in values)
+                expansions.append((f"[{suffix}]", matrix_values))
+        if len(expansions) > 200:
+            raise ValueError("parallel matrix cannot expand beyond 200 jobs")
+        return expansions
+
     try:
         count = int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"parallel value is not supported: {value}") from exc
     if count < 1 or count > 200:
         raise ValueError("parallel must be between 1 and 200")
-    return count
+    return [
+        (
+            f"{parallel_index}/{count}" if count > 1 else None,
+            {
+                "CI_NODE_INDEX": _metadata_variable(parallel_index),
+                "CI_NODE_TOTAL": _metadata_variable(count),
+            }
+            if count > 1
+            else {},
+        )
+        for parallel_index in range(1, count + 1)
+    ]
 
 
 def _exit_codes(value: Any, keyword: str) -> list[int]:
@@ -1383,35 +1433,15 @@ def parse_gitlab_ci(
             if raw_services is not None
             else []
         )
-        parallel_count = _parallel_count(config.get("parallel"))
-        for parallel_index in range(1, parallel_count + 1):
-            expanded_name = (
-                f"{name} {parallel_index}/{parallel_count}"
-                if parallel_count > 1
-                else str(name)
-            )
+        parallel_expansions = _parallel_expansions(config.get("parallel"))
+        for parallel_suffix, parallel_variables in parallel_expansions:
+            expanded_name = f"{name} {parallel_suffix}" if parallel_suffix else str(name)
             expanded_variables = variables
             expanded_variable_metadata = merged_variable_entries
-            if parallel_count > 1:
-                node_variables = {
-                    "CI_NODE_INDEX": {
-                        "value": str(parallel_index),
-                        "file": False,
-                        "masked": False,
-                        "raw": False,
-                        "public": True,
-                    },
-                    "CI_NODE_TOTAL": {
-                        "value": str(parallel_count),
-                        "file": False,
-                        "masked": False,
-                        "raw": False,
-                        "public": True,
-                    },
-                }
+            if parallel_variables:
                 expanded_variable_metadata = {
                     **merged_variable_entries,
-                    **node_variables,
+                    **parallel_variables,
                 }
                 expanded_variables = _variable_values(expanded_variable_metadata)
 

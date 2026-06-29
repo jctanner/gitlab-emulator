@@ -31,8 +31,8 @@ Already working:
   `when: always` jobs remain runnable for cleanup after failed earlier stages;
   `when: on_failure` jobs wait for an earlier required failure and are skipped
   when previous dependencies finish successfully
-- integer `parallel` jobs expand into per-node persisted jobs with
-  `CI_NODE_INDEX` and `CI_NODE_TOTAL` runner variables
+- integer `parallel` and `parallel:matrix` jobs expand into per-node persisted
+  jobs with runner variables for each node or matrix value
 - minimal `needs` and common rules/ref filters are implemented: jobs can unlock
   from named dependencies, `needs: []` can run immediately, invalid needs are
   rejected early, `needs:artifacts` dependencies follow declared needs order,

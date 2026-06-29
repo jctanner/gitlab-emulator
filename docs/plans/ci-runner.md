@@ -83,8 +83,8 @@ and cache APIs for controlled integration testing.
   cancel followed by retry
 - unsupported execution-affecting CI syntax such as bridge `trigger` jobs fails
   pipeline creation with a clear 400 response instead of being silently ignored;
-  integer `parallel` jobs expand into per-node persisted jobs, while matrix
-  forms remain out of scope for the MVP
+  integer `parallel` and `parallel:matrix` jobs expand into per-node persisted
+  jobs, while `needs:parallel:matrix` remains out of scope for the MVP
 
 ## Remaining CI Work
 

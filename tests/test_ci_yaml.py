@@ -458,6 +458,29 @@ matrix_job:
     assert jobs[0].variable_metadata["CI_NODE_INDEX"]["value"] == "1"
 
 
+def test_parse_gitlab_ci_expands_parallel_matrix_jobs():
+    jobs = parse_gitlab_ci(
+        """
+matrix_job:
+  parallel:
+    matrix:
+      - PROVIDER: [aws, gcp]
+        STACK: [app1, app2]
+  script: echo matrix
+"""
+    )
+
+    assert [job.name for job in jobs] == [
+        "matrix_job [aws, app1]",
+        "matrix_job [aws, app2]",
+        "matrix_job [gcp, app1]",
+        "matrix_job [gcp, app2]",
+    ]
+    assert [job.variables["PROVIDER"] for job in jobs] == ["aws", "aws", "gcp", "gcp"]
+    assert [job.variables["STACK"] for job in jobs] == ["app1", "app2", "app1", "app2"]
+    assert jobs[0].variable_metadata["PROVIDER"]["value"] == "aws"
+
+
 def test_parse_gitlab_ci_preserves_service_containers():
     jobs = parse_gitlab_ci(
         """

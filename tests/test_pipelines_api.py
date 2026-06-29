@@ -2001,6 +2001,60 @@ parallel_test:
     assert variables["CI_NODE_TOTAL"] == "3"
 
 
+async def test_create_pipeline_expands_parallel_matrix_jobs(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+matrix_test:
+  parallel:
+    matrix:
+      - PROVIDER: [aws, gcp]
+        STACK: [app1, app2]
+  script:
+    - echo $PROVIDER $STACK
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add matrix ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+    pipeline = resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == [
+        "matrix_test [aws, app1]",
+        "matrix_test [aws, app2]",
+        "matrix_test [gcp, app1]",
+        "matrix_test [gcp, app2]",
+    ]
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == "matrix_test [aws, app1]"
+    variables = {item["key"]: item["value"] for item in payload["variables"]}
+    assert variables["PROVIDER"] == "aws"
+    assert variables["STACK"] == "app1"
+
+
 async def test_create_pipeline_accepts_rules_changes_compare_to_option(
     client, test_token
 ):
