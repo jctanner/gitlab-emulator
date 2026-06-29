@@ -632,10 +632,21 @@ def _service_payload(services: list[dict] | None) -> list[dict]:
             item["pull_policy"] = [
                 str(entry) for entry in service.get("pull_policy", [])
             ]
+        executor_opts = _executor_opts_payload(service)
+        if executor_opts:
+            item["executor_opts"] = executor_opts
         if service.get("variables"):
             item["variables"] = service.get("variables")
         payload.append(item)
     return payload
+
+
+def _executor_opts_payload(config: dict) -> dict:
+    executor_opts: dict = {}
+    for executor_name in ("docker", "kubernetes"):
+        if isinstance(config.get(executor_name), dict):
+            executor_opts[executor_name] = config[executor_name]
+    return executor_opts
 
 
 def _image_payload(job: PipelineJob) -> dict:
@@ -647,6 +658,9 @@ def _image_payload(job: PipelineJob) -> dict:
         payload["pull_policy"] = [
             str(entry) for entry in config.get("pull_policy", [])
         ]
+    executor_opts = _executor_opts_payload(config)
+    if executor_opts:
+        payload["executor_opts"] = executor_opts
     return payload
 
 

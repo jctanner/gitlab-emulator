@@ -480,7 +480,9 @@ endpoints are covered by local API tests, and unsupported cache entry options or
 invalid cache policy/when values are rejected before runner assignment. VM
 runner cache adapter configuration points at MinIO/S3 by default, and the
 official runner has validated cache upload/restore plus dependency artifact
-download across two-stage pipelines.
+download across two-stage pipelines. Image and service container Docker/
+Kubernetes executor option maps are parsed, persisted, and translated to the
+official runner `executor_opts` payload shape.
 
 Missing behavior for fuller GitLab CI execution:
 

@@ -513,8 +513,12 @@ service_job:
     - name: mysql:8
       alias: db mysql
       command: ["--default-authentication-plugin=mysql_native_password"]
+      docker:
+        platform: linux/amd64
       entrypoint:
         - docker-entrypoint.sh
+      kubernetes:
+        user: "1002"
       pull_policy: [if-not-present]
       variables:
         MYSQL_DATABASE: app
@@ -534,7 +538,9 @@ service_job:
             "name": "mysql:8",
             "alias": "db mysql",
             "command": ["--default-authentication-plugin=mysql_native_password"],
+            "docker": {"platform": "linux/amd64"},
             "entrypoint": ["docker-entrypoint.sh"],
+            "kubernetes": {"user": "1002"},
             "pull_policy": ["if-not-present"],
             "variables": [
                 {
@@ -578,6 +584,11 @@ override_image:
   image:
     name: python:3.12
     pull_policy: [if-not-present]
+    docker:
+      platform: arm64/v8
+      user: root
+    kubernetes:
+      user: "1001"
   script:
     - echo override image
 """
@@ -588,7 +599,9 @@ override_image:
     assert by_name["default_image"].image_config == {"entrypoint": ["/bin/sh"]}
     assert by_name["override_image"].image == "python:3.12"
     assert by_name["override_image"].image_config == {
-        "pull_policy": ["if-not-present"]
+        "pull_policy": ["if-not-present"],
+        "docker": {"platform": "arm64/v8", "user": "root"},
+        "kubernetes": {"user": "1001"},
     }
 
 
@@ -604,6 +617,10 @@ image:
     - -lc
   pull_policy:
     - if-not-present
+  docker:
+    platform: linux/amd64
+  kubernetes:
+    user: "1000:1000"
 
 global_image:
   script:
@@ -615,6 +632,8 @@ global_image:
     assert jobs[0].image_config == {
         "entrypoint": ["/bin/sh", "-lc"],
         "pull_policy": ["if-not-present"],
+        "docker": {"platform": "linux/amd64"},
+        "kubernetes": {"user": "1000:1000"},
     }
 
 
@@ -625,8 +644,7 @@ def test_parse_gitlab_ci_rejects_unsupported_image_options():
 image_job:
   image:
     name: alpine:3.20
-    docker:
-      user: root
+    ports: [8080]
   script:
     - echo image
 """
@@ -634,7 +652,7 @@ image_job:
     except ValueError as exc:
         message = str(exc)
         assert "image option(s) not supported" in message
-        assert "docker" in message
+        assert "ports" in message
     else:
         raise AssertionError("expected ValueError")
 

@@ -46,13 +46,17 @@ SUPPORTED_SERVICE_ENTRY_KEYS = {
     "name",
     "alias",
     "command",
+    "docker",
     "entrypoint",
+    "kubernetes",
     "variables",
     "pull_policy",
 }
 SUPPORTED_IMAGE_KEYS = {
     "name",
+    "docker",
     "entrypoint",
+    "kubernetes",
     "pull_policy",
 }
 SUPPORTED_CACHE_ENTRY_KEYS = {
@@ -200,6 +204,14 @@ def _image_config(value: Any, variables: dict[str, str]) -> dict:
         config["entrypoint"] = _expand_string_list(value.get("entrypoint"), variables)
     if value.get("pull_policy") is not None:
         config["pull_policy"] = _expand_string_list(value.get("pull_policy"), variables)
+    if value.get("docker") is not None:
+        config["docker"] = (
+            value.get("docker") if isinstance(value.get("docker"), dict) else {}
+        )
+    if value.get("kubernetes") is not None:
+        config["kubernetes"] = (
+            value.get("kubernetes") if isinstance(value.get("kubernetes"), dict) else {}
+        )
     return config
 
 
@@ -240,6 +252,18 @@ def _service_entry(raw_value: Any, variables: dict[str, str]) -> dict | None:
         service["pull_policy"] = _expand_string_list(
             raw_value.get("pull_policy"),
             variables,
+        )
+    if raw_value.get("docker") is not None:
+        service["docker"] = (
+            raw_value.get("docker")
+            if isinstance(raw_value.get("docker"), dict)
+            else {}
+        )
+    if raw_value.get("kubernetes") is not None:
+        service["kubernetes"] = (
+            raw_value.get("kubernetes")
+            if isinstance(raw_value.get("kubernetes"), dict)
+            else {}
         )
     if raw_value.get("variables") is not None:
         service["variables"] = [

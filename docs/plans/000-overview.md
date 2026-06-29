@@ -57,7 +57,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
 - Runner jobs can fetch private project repositories through Git Smart HTTP
   using CI job tokens.
 - Minimal CI support exists for stages, image, structured image metadata
-  (`entrypoint`, `pull_policy`), variables, before_script, script,
+  (`entrypoint`, `pull_policy`, Docker/Kubernetes executor options),
+  variables, before_script, script,
   after_script, artifacts, stage gating, integer `parallel` and
   `parallel:matrix` expansion, needs, needs:artifacts, needs validation edge
   cases including same-pipeline `needs:parallel:matrix`,
@@ -230,7 +231,8 @@ Target areas:
   path-object rules, variable-expanded rule paths, mapping-form legacy filters,
   rule variables, and delayed/manual scheduling
 - remaining execution semantics for parsed job metadata beyond the current
-  retry, timeout, resource-group, coverage, and interruptible support
+  retry, timeout, resource-group, coverage, interruptible, and image/service
+  executor option support
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, prefix/files/files_commits keys, fallback keys, policy, `when`,
   `unprotect`, clear unsupported option rejection, and MinIO-backed runner

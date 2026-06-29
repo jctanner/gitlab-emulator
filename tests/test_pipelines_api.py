@@ -1314,8 +1314,12 @@ service_job:
     - name: mysql:8
       alias: db mysql
       command: ["--default-authentication-plugin=mysql_native_password"]
+      docker:
+        platform: linux/amd64
       entrypoint:
         - docker-entrypoint.sh
+      kubernetes:
+        user: "1002"
       pull_policy: [if-not-present]
       variables:
         MYSQL_DATABASE: app
@@ -1347,7 +1351,9 @@ service_job:
             "name": "mysql:8",
             "alias": "db mysql",
             "command": ["--default-authentication-plugin=mysql_native_password"],
+            "docker": {"platform": "linux/amd64"},
             "entrypoint": ["docker-entrypoint.sh"],
+            "kubernetes": {"user": "1002"},
             "pull_policy": ["if-not-present"],
             "variables": [
                 {
@@ -1375,7 +1381,31 @@ service_job:
         json={"token": RUNNER_TOKEN},
     )
     assert request.status_code == 201
-    assert request.json()["services"] == expected_services
+    expected_runner_services = [
+        {"name": "postgres:16"},
+        {
+            "name": "mysql:8",
+            "alias": "db mysql",
+            "command": ["--default-authentication-plugin=mysql_native_password"],
+            "entrypoint": ["docker-entrypoint.sh"],
+            "pull_policy": ["if-not-present"],
+            "executor_opts": {
+                "docker": {"platform": "linux/amd64"},
+                "kubernetes": {"user": "1002"},
+            },
+            "variables": [
+                {
+                    "key": "MYSQL_DATABASE",
+                    "value": "app",
+                    "public": True,
+                    "file": False,
+                    "masked": False,
+                    "raw": False,
+                }
+            ],
+        },
+    ]
+    assert request.json()["services"] == expected_runner_services
 
 
 async def test_image_metadata_reaches_api_and_runner_payload(client, test_token):
@@ -1391,6 +1421,11 @@ image_job:
       - "$ENTRYPOINT"
       - -lc
     pull_policy: [if-not-present]
+    docker:
+      platform: arm64/v8
+      user: root
+    kubernetes:
+      user: "1001"
   script:
     - echo image
 """
@@ -1423,6 +1458,8 @@ image_job:
     assert job["image_config"] == {
         "entrypoint": ["/bin/sh", "-lc"],
         "pull_policy": ["if-not-present"],
+        "docker": {"platform": "arm64/v8", "user": "root"},
+        "kubernetes": {"user": "1001"},
     }
 
     request = await client.post(
@@ -1435,6 +1472,10 @@ image_job:
         "name": "alpine:3.20",
         "entrypoint": ["/bin/sh", "-lc"],
         "pull_policy": ["if-not-present"],
+        "executor_opts": {
+            "docker": {"platform": "arm64/v8", "user": "root"},
+            "kubernetes": {"user": "1001"},
+        },
     }
 
 
