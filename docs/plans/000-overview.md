@@ -74,7 +74,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   unknown `when` values, list and
   file-derived keys, variable-expanded paths, keys,
   policies, `when`, `unprotect`, and fallback keys, artifact metadata variable
-  expansion,
+  expansion, job `dependencies` artifact selection and default prior-stage
+  artifact dependency payloads,
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
   `resource_group`, and `coverage`, automatic failed-job retry attempts from
   `retry`, resource-group serialization for runner assignment, coverage

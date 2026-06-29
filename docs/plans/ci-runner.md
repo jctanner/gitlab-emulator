@@ -36,6 +36,8 @@ and cache APIs for controlled integration testing.
   validation
 - `needs:artifacts`
 - `needs:artifacts` dependency payloads follow declared needs order
+- job `dependencies` artifact selection, including `dependencies: []` and
+  default prior-stage artifact dependency payloads
 - common `rules`, `only`, and `except` filters
 - `rules:if` with variable truthiness, equality, inequality, regex, and simple
   `&&`/`||`

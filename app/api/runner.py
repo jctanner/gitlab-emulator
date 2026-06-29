@@ -732,16 +732,26 @@ def _need_items(needs: list | None) -> list[dict]:
 
 
 def _dependencies_payload(job: PipelineJob) -> list[dict]:
-    if job.needs is None:
-        return []
-    needed_artifact_jobs = [
-        need["job"] for need in _need_items(job.needs) if need.get("artifacts", True)
-    ]
-    if not needed_artifact_jobs:
+    if job.dependencies is not None:
+        dependency_names = [str(name) for name in job.dependencies]
+    elif job.needs is not None:
+        dependency_names = [
+            need["job"] for need in _need_items(job.needs) if need.get("artifacts", True)
+        ]
+    else:
+        dependency_names = [
+            peer.name
+            for peer in sorted(
+                job.pipeline.jobs,
+                key=lambda peer: (peer.stage_index, peer.id),
+            )
+            if peer.stage_index < job.stage_index
+        ]
+    if not dependency_names:
         return []
     peers_by_name = {peer.name: peer for peer in job.pipeline.jobs}
     dependencies: list[dict] = []
-    for needed_name in needed_artifact_jobs:
+    for needed_name in dependency_names:
         peer = peers_by_name.get(needed_name)
         if peer is None or not peer.artifacts:
             continue

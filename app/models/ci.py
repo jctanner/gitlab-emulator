@@ -241,6 +241,7 @@ class PipelineJob(Base):
     script: Mapped[list] = mapped_column(JSON, default=list)
     variables: Mapped[dict] = mapped_column(JSON, default=dict)
     needs: Mapped[list] = mapped_column(JSON, default=list)
+    dependencies: Mapped[list | None] = mapped_column(JSON, nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list)
     services: Mapped[list] = mapped_column(JSON, default=list)
     cache: Mapped[list] = mapped_column(JSON, default=list)

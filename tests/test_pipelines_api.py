@@ -4997,6 +4997,288 @@ consume:
     ]
 
 
+async def test_dependencies_populate_runner_artifact_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages:
+  - build
+  - test
+
+compile_a:
+  stage: build
+  script:
+    - echo a
+  artifacts:
+    paths:
+      - a.txt
+
+compile_b:
+  stage: build
+  script:
+    - echo b
+  artifacts:
+    paths:
+      - b.txt
+
+consume:
+  stage: test
+  dependencies:
+    - compile_b
+  script:
+    - echo consume
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add dependencies ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    consume_job = next(job for job in jobs.json() if job["name"] == "consume")
+    assert consume_job["dependencies"] == ["compile_b"]
+    assert consume_job["needs"] == []
+
+    first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    second = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+    compile_jobs = {
+        first.json()["job_info"]["name"]: first.json(),
+        second.json()["job_info"]["name"]: second.json(),
+    }
+
+    for name, payload in compile_jobs.items():
+        archive = f"artifact {name}".encode()
+        upload = await client.post(
+            f"{API}/jobs/{payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
+            headers={"JOB-TOKEN": payload["token"], "Content-Type": "application/zip"},
+            content=archive,
+        )
+        assert upload.status_code == 201
+        finish = await client.put(
+            f"{API}/jobs/{payload['id']}",
+            headers={"JOB-TOKEN": payload["token"]},
+            json={"token": payload["token"], "state": "success", "exit_code": 0},
+        )
+        assert finish.status_code == 200
+
+    consume = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume.status_code == 201
+    dependency_names = [item["name"] for item in consume.json()["dependencies"]]
+    assert dependency_names == ["compile_b"]
+
+
+async def test_empty_dependencies_disable_default_artifact_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages: [build, test]
+
+compile:
+  stage: build
+  script:
+    - echo build
+  artifacts:
+    paths:
+      - build.txt
+
+consume:
+  stage: test
+  dependencies: []
+  script:
+    - echo consume
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add empty dependencies ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    compile = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert compile.status_code == 201
+    compile_payload = compile.json()
+    upload = await client.post(
+        f"{API}/jobs/{compile_payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
+        headers={
+            "JOB-TOKEN": compile_payload["token"],
+            "Content-Type": "application/zip",
+        },
+        content=b"artifact",
+    )
+    assert upload.status_code == 201
+    finish = await client.put(
+        f"{API}/jobs/{compile_payload['id']}",
+        headers={"JOB-TOKEN": compile_payload["token"]},
+        json={"token": compile_payload["token"], "state": "success", "exit_code": 0},
+    )
+    assert finish.status_code == 200
+
+    consume = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume.status_code == 201
+    assert consume.json()["dependencies"] == []
+
+
+async def test_default_artifact_dependencies_include_prior_stages(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages: [build, test]
+
+compile:
+  stage: build
+  script:
+    - echo build
+  artifacts:
+    paths:
+      - build.txt
+
+consume:
+  stage: test
+  script:
+    - echo consume
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add default dependency ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    compile = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert compile.status_code == 201
+    compile_payload = compile.json()
+    upload = await client.post(
+        f"{API}/jobs/{compile_payload['id']}/artifacts?artifact_format=zip&artifact_type=archive",
+        headers={
+            "JOB-TOKEN": compile_payload["token"],
+            "Content-Type": "application/zip",
+        },
+        content=b"artifact",
+    )
+    assert upload.status_code == 201
+    finish = await client.put(
+        f"{API}/jobs/{compile_payload['id']}",
+        headers={"JOB-TOKEN": compile_payload["token"]},
+        json={"token": compile_payload["token"], "state": "success", "exit_code": 0},
+    )
+    assert finish.status_code == 200
+
+    consume = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert consume.status_code == 201
+    assert [item["name"] for item in consume.json()["dependencies"]] == ["compile"]
+
+
+async def test_invalid_dependencies_reject_pipeline(client, test_token):
+    project = await _create_project(client, test_token)
+    for ci_yaml, expected in [
+        (
+            """
+stages: [build, test]
+consume:
+  stage: test
+  dependencies:
+    - missing
+  script: echo consume
+""",
+            "dependencies missing job",
+        ),
+        (
+            """
+stages: [build, test]
+compile:
+  stage: build
+  dependencies:
+    - consume
+  script: echo compile
+consume:
+  stage: test
+  script: echo consume
+""",
+            "dependencies must be from earlier stages",
+        ),
+    ]:
+        write = await client.put(
+            f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+            headers=auth_headers(test_token),
+            json={
+                "message": "add invalid dependencies ci",
+                "content": base64.b64encode(ci_yaml.encode()).decode(),
+                "branch": "main",
+            },
+        )
+        assert write.status_code in {200, 201}
+        pipeline_resp = await client.post(
+            f"{API}/projects/{project['id']}/pipeline",
+            json={"ref": "main"},
+            headers=auth_headers(test_token),
+        )
+        assert pipeline_resp.status_code == 400
+        assert expected in pipeline_resp.text
+
+
 async def test_pipeline_ref_filters_jobs_from_gitlab_ci_yaml(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

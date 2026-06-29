@@ -70,6 +70,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "dependencies",
+        "dependencies JSON DEFAULT NULL",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "allow_failure",
         "allow_failure BOOLEAN DEFAULT 0",
     )

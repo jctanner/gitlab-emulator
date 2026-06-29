@@ -75,6 +75,10 @@ Already working:
   artifact name/path/exclude/expire_in metadata expands merged CI variables;
   uploaded artifacts store type/format/expiry metadata and expired artifacts
   return 404
+- job `dependencies` are parsed, persisted, validated against earlier-stage
+  jobs, exposed in job API payloads, and used to shape runner artifact
+  dependency payloads; explicit `dependencies: []` disables default artifact
+  downloads, while omitted dependencies use prior-stage artifacts when present
 - common job runtime metadata is parsed, persisted, and exposed in job API
   payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
   `coverage`; runner payloads use the parsed job timeout for runner and step

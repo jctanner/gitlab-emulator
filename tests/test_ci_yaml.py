@@ -289,6 +289,56 @@ unit:
     assert unit.needs == [{"job": "compile", "optional": False, "artifacts": False}]
 
 
+def test_parse_gitlab_ci_preserves_dependencies():
+    jobs = parse_gitlab_ci(
+        """
+stages: [build, test]
+
+compile:
+  stage: build
+  script: echo build
+
+unit:
+  stage: test
+  dependencies:
+    - compile
+  script: echo test
+
+no_artifacts:
+  stage: test
+  dependencies: []
+  script: echo none
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["compile"].dependencies is None
+    assert by_name["unit"].dependencies == ["compile"]
+    assert by_name["no_artifacts"].dependencies == []
+
+
+def test_parse_gitlab_ci_rejects_invalid_dependencies():
+    for content in [
+        """
+unit:
+  dependencies: compile
+  script: echo test
+""",
+        """
+unit:
+  dependencies:
+    - job: compile
+  script: echo test
+""",
+    ]:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            assert "dependencies" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_rejects_unsupported_needs_forms():
     for content in [
         """

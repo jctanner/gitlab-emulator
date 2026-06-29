@@ -22,6 +22,7 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         columns = {row[1] for row in result.fetchall()}
         assert "when" in columns
         assert "services" in columns
+        assert "dependencies" in columns
         assert "retry_config" in columns
         assert "retry_attempt" in columns
         assert "timeout_seconds" in columns

@@ -79,6 +79,7 @@ class ParsedCiJob:
     variables: dict[str, str] = field(default_factory=dict)
     variable_metadata: dict[str, dict] = field(default_factory=dict)
     needs: list[dict] | None = None
+    dependencies: list[str] | None = None
     tags: list[str] = field(default_factory=list)
     services: list[dict] = field(default_factory=list)
     cache: list[dict] = field(default_factory=list)
@@ -306,6 +307,21 @@ def _needs(value: Any) -> list[dict] | None:
             )
         return parsed
     raise ValueError("needs must be a string, mapping, or list")
+
+
+def _dependencies(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if value == []:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("dependencies must be a list of job names")
+    dependencies: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("dependencies entries must be job names")
+        dependencies.append(item)
+    return dependencies
 
 
 def _expand_ci_variables(value: str, variables: dict[str, str]) -> str:
@@ -1086,6 +1102,7 @@ def parse_gitlab_ci(
     - global/job `after_script`
     - job `stage`
     - job `needs`
+    - job `dependencies`
     - global/default/job `services`
     - global/job `cache`
     - job `artifacts.paths`
@@ -1228,6 +1245,7 @@ def parse_gitlab_ci(
                 variables=variables,
                 variable_metadata=merged_variable_entries,
                 needs=_needs(config.get("needs")),
+                dependencies=_dependencies(config.get("dependencies")),
                 tags=_string_list(config.get("tags", global_tags)),
                 services=services,
                 cache=cache,

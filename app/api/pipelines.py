@@ -94,6 +94,7 @@ class PipelineJobDefinition(BaseModel):
     )
     variables: dict[str, str] = Field(default_factory=dict)
     needs: list[str | dict] | None = None
+    dependencies: list[str] | None = None
     tags: list[str] = Field(default_factory=list)
     cache: list[dict] = Field(default_factory=list)
     artifacts_paths: list[str] = Field(default_factory=list)
@@ -753,6 +754,38 @@ def _validate_job_needs(parsed_jobs: list[ParsedCiJob]) -> None:
             )
 
 
+def _validate_job_dependencies(parsed_jobs: list[ParsedCiJob]) -> None:
+    jobs_by_name = {job.name: job for job in parsed_jobs}
+    for job in parsed_jobs:
+        if job.dependencies is None:
+            continue
+        missing = [
+            dependency
+            for dependency in job.dependencies
+            if dependency not in jobs_by_name
+        ]
+        if missing:
+            names = ", ".join(missing)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job {job.name} dependencies missing job(s): {names}",
+            )
+        invalid_stage = [
+            dependency
+            for dependency in job.dependencies
+            if jobs_by_name[dependency].stage_index >= job.stage_index
+        ]
+        if invalid_stage:
+            names = ", ".join(invalid_stage)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Job {job.name} dependencies must be from earlier stages: "
+                    f"{names}"
+                ),
+            )
+
+
 def _job_json(job: PipelineJob) -> dict:
     artifacts = [
         {
@@ -772,6 +805,7 @@ def _job_json(job: PipelineJob) -> dict:
         "stage_index": job.stage_index,
         "name": job.name,
         "needs": _need_names(job.needs),
+        "dependencies": job.dependencies,
         "tag_list": job.tags or [],
         "services": job.services or [],
         "cache": job.cache or [],
@@ -933,6 +967,7 @@ async def _create_pipeline(
                     for key, value in body.job.variables.items()
                 },
                 needs=body.job.needs,
+                dependencies=body.job.dependencies,
                 tags=body.job.tags,
                 cache=body.job.cache,
                 artifacts_paths=body.job.artifacts_paths,
@@ -990,6 +1025,7 @@ async def _create_pipeline(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     _validate_job_needs(parsed_jobs)
+    _validate_job_dependencies(parsed_jobs)
 
     max_iid = (
         await db.execute(
@@ -1083,6 +1119,7 @@ async def _create_pipeline(
             needs=_need_items(parsed_job.needs)
             if parsed_job.needs is not None
             else None,
+            dependencies=parsed_job.dependencies,
             tags=parsed_job.tags,
             services=parsed_job.services,
             cache=parsed_job.cache,
