@@ -13,11 +13,14 @@ Reference: https://git-scm.com/docs/http-protocol
 import asyncio
 import base64
 import os
+import shlex
+import stat
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.branch import Branch
@@ -29,6 +32,19 @@ from app.git.bare_repo import get_branches as get_disk_branches
 from app.services.permissions import DEVELOPER, REPORTER, project_access_level
 
 router = APIRouter()
+ZERO_SHA = "0000000000000000000000000000000000000000"
+
+
+class ProtectedBranchPushError(Exception):
+    def __init__(self, ref: str, branch_name: str, reason: str) -> None:
+        self.ref = ref
+        self.branch_name = branch_name
+        self.reason = reason
+        self.message = (
+            f"GitLab: You are not allowed to {reason} "
+            f"protected branch '{branch_name}'"
+        )
+        super().__init__(self.message)
 
 
 def pkt_line(data: str) -> bytes:
@@ -159,6 +175,222 @@ async def _run_git_command(
     )
     stdout, stderr = await proc.communicate(input=input_data)
     return stdout, stderr
+
+
+async def _run_git_command_with_status(
+    args: list[str],
+    repo_path: str,
+    input_data: bytes | None = None,
+) -> tuple[bytes, bytes, int]:
+    env = os.environ.copy()
+    env["GIT_DIR"] = repo_path
+
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdin=asyncio.subprocess.PIPE if input_data is not None else None,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, stderr = await proc.communicate(input=input_data)
+    return stdout, stderr, int(proc.returncode or 0)
+
+
+def _parse_receive_pack_commands(input_data: bytes) -> list[tuple[str, str, str]]:
+    """Return `(old_sha, new_sha, ref)` commands from a receive-pack request."""
+    commands: list[tuple[str, str, str]] = []
+    offset = 0
+    while offset + 4 <= len(input_data):
+        header = input_data[offset : offset + 4]
+        offset += 4
+        if header == b"0000":
+            break
+        try:
+            pkt_len = int(header.decode("ascii"), 16)
+        except ValueError:
+            break
+        if pkt_len < 4:
+            break
+        payload_len = pkt_len - 4
+        payload = input_data[offset : offset + payload_len]
+        offset += payload_len
+        command = payload.split(b"\0", 1)[0].decode("utf-8", errors="replace").strip()
+        parts = command.split()
+        if len(parts) >= 3:
+            commands.append((parts[0], parts[1], parts[2]))
+    return commands
+
+
+def _minimum_push_access_level(branch: Branch) -> int:
+    restrictions = branch.protection.restrictions if branch.protection else {}
+    entries = (restrictions or {}).get("push_access_levels") or [{"access_level": 40}]
+    levels = [
+        int(entry.get("access_level", 40))
+        for entry in entries
+        if isinstance(entry, dict) and int(entry.get("access_level", 40)) > 0
+    ]
+    return min(levels, default=40)
+
+
+def _protected_branch_rejection(
+    ref: str,
+    branch_name: str,
+    reason: str,
+) -> ProtectedBranchPushError:
+    return ProtectedBranchPushError(ref, branch_name, reason)
+
+
+def _receive_pack_rejection(error: ProtectedBranchPushError) -> bytes:
+    status_report = (
+        pkt_line("unpack ok\n")
+        + pkt_line(f"ng {error.ref} {error.message}\n")
+        + pkt_flush()
+    )
+    return pkt_line(b"\1" + status_report) + pkt_flush()
+
+
+async def _check_protected_branch_updates(
+    db: AsyncSession,
+    repository: Repository,
+    user: User,
+    input_data: bytes,
+) -> None:
+    """Reject receive-pack commands that mutate protected branches illegally."""
+    commands = [
+        (old_sha, new_sha, ref)
+        for old_sha, new_sha, ref in _parse_receive_pack_commands(input_data)
+        if ref.startswith("refs/heads/")
+    ]
+    if not commands:
+        return
+
+    branch_names = {ref.removeprefix("refs/heads/") for _old, _new, ref in commands}
+    result = await db.execute(
+        select(Branch)
+        .options(selectinload(Branch.protection))
+        .where(
+            Branch.repo_id == repository.id,
+            Branch.name.in_(branch_names),
+            Branch.protected.is_(True),
+        )
+    )
+    protected = {branch.name: branch for branch in result.scalars().all()}
+    if not protected:
+        return
+
+    access_level = await project_access_level(repository, user, db)
+    for old_sha, new_sha, ref in commands:
+        branch_name = ref.removeprefix("refs/heads/")
+        branch = protected.get(branch_name)
+        if branch is None:
+            continue
+        if access_level < _minimum_push_access_level(branch):
+            raise _protected_branch_rejection(ref, branch_name, "push to")
+        if new_sha == ZERO_SHA:
+            raise _protected_branch_rejection(ref, branch_name, "delete")
+
+
+async def _protected_branch_hook_script(
+    db: AsyncSession,
+    repository: Repository,
+    user: User,
+) -> str | None:
+    result = await db.execute(
+        select(Branch)
+        .options(selectinload(Branch.protection))
+        .where(Branch.repo_id == repository.id, Branch.protected.is_(True))
+    )
+    branches = result.scalars().all()
+    if not branches:
+        return None
+    access_level = await project_access_level(repository, user, db)
+    lines = [
+        "#!/bin/sh",
+        "zero='0000000000000000000000000000000000000000'",
+        "while read old new ref; do",
+        "  case \"$ref\" in",
+    ]
+    for branch in branches:
+        ref = f"refs/heads/{branch.name}"
+        minimum = _minimum_push_access_level(branch)
+        restrictions = branch.protection.restrictions if branch.protection else {}
+        allow_force = "1" if bool((restrictions or {}).get("allow_force_push")) else "0"
+        lines.extend(
+            [
+                f"    {shlex.quote(ref)})",
+                f"      if [ {access_level} -lt {minimum} ]; then",
+                "        echo "
+                + shlex.quote(
+                    f"GitLab: You are not allowed to push to protected branch "
+                    f"'{branch.name}'"
+                )
+                + " >&2",
+                "        exit 1",
+                "      fi",
+                '      if [ "$new" = "$zero" ]; then',
+                "        echo "
+                + shlex.quote(
+                    f"GitLab: You are not allowed to delete protected branch "
+                    f"'{branch.name}'"
+                )
+                + " >&2",
+                "        exit 1",
+                "      fi",
+                f"      if [ {allow_force} -ne 1 ] "
+                + '&& [ "$old" != "$zero" ] '
+                + '&& ! git merge-base --is-ancestor "$old" "$new"; then',
+                "        echo "
+                + shlex.quote(
+                    f"GitLab: You are not allowed to force push to protected branch "
+                    f"'{branch.name}'"
+                )
+                + " >&2",
+                "        exit 1",
+                "      fi",
+                "      ;;",
+            ]
+        )
+    lines.extend(["  esac", "done", "exit 0", ""])
+    return "\n".join(lines)
+
+
+async def _install_request_pre_receive_hook(
+    db: AsyncSession,
+    repository: Repository,
+    user: User,
+) -> tuple[str, bytes | None, int | None] | None:
+    script = await _protected_branch_hook_script(db, repository, user)
+    if script is None:
+        return None
+    hook_path = os.path.join(repository.disk_path, "hooks", "pre-receive")
+    previous_content: bytes | None = None
+    previous_mode: int | None = None
+    if os.path.exists(hook_path):
+        with open(hook_path, "rb") as existing:
+            previous_content = existing.read()
+        previous_mode = stat.S_IMODE(os.stat(hook_path).st_mode)
+    with open(hook_path, "w", encoding="utf-8") as hook:
+        hook.write(script)
+    os.chmod(hook_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+    return hook_path, previous_content, previous_mode
+
+
+def _restore_pre_receive_hook(
+    hook_state: tuple[str, bytes | None, int | None] | None,
+) -> None:
+    if hook_state is None:
+        return
+    hook_path, previous_content, previous_mode = hook_state
+    if previous_content is None:
+        try:
+            os.remove(hook_path)
+        except FileNotFoundError:
+            pass
+        return
+    with open(hook_path, "wb") as hook:
+        hook.write(previous_content)
+    if previous_mode is not None:
+        os.chmod(hook_path, previous_mode)
 
 
 async def _sync_branches_to_db(
@@ -366,15 +598,41 @@ async def git_receive_pack(
         raise HTTPException(status_code=404, detail="Repository not found on disk")
 
     input_data = await request.body()
+    try:
+        await _check_protected_branch_updates(db, repository, user, input_data)
+    except ProtectedBranchPushError as exc:
+        return Response(
+            content=_receive_pack_rejection(exc),
+            media_type="application/x-git-receive-pack-result",
+            headers={
+                "Cache-Control": "no-cache",
+                "Expires": "Fri, 01 Jan 1980 00:00:00 GMT",
+                "Pragma": "no-cache",
+            },
+        )
     before_branches = await get_disk_branches(repo_path)
     before_map = {branch["name"]: branch["sha"] for branch in before_branches}
 
-    # Run receive-pack
-    stdout, stderr = await _run_git_command(
-        ["git-receive-pack", "--stateless-rpc", repo_path],
-        repo_path,
-        input_data,
-    )
+    hook_state = await _install_request_pre_receive_hook(db, repository, user)
+    try:
+        stdout, stderr, return_code = await _run_git_command_with_status(
+            ["git-receive-pack", "--stateless-rpc", repo_path],
+            repo_path,
+            input_data,
+        )
+    finally:
+        _restore_pre_receive_hook(hook_state)
+
+    if return_code != 0:
+        return Response(
+            content=stdout,
+            media_type="application/x-git-receive-pack-result",
+            headers={
+                "Cache-Control": "no-cache",
+                "Expires": "Fri, 01 Jan 1980 00:00:00 GMT",
+                "Pragma": "no-cache",
+            },
+        )
 
     # Update pushed_at timestamp
     from datetime import datetime, timezone

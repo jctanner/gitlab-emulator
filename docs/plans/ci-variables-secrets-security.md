@@ -678,7 +678,8 @@ Deferred from this slice:
 - Should emulator-native secrets APIs intentionally differ from GitLab while
   GitLab Secrets Manager remains beta, or should we wait for a stable REST
   contract?
-- Should protected refs be modeled minimally as exact branch/tag names first,
-  or should this depend on the protected branches API work?
+- Protected refs are modeled through exact protected branch records for the
+  current MVP; tag protection remains future compatibility work if a target
+  workflow needs it.
 - Do we want security diagnostics to be warnings-only by default in every
   environment, or should CI Lab expose a strict-mode toggle first?

@@ -8,6 +8,7 @@ import pytest_asyncio
 import uvicorn
 
 from tests.conftest import auth_headers
+from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 
@@ -50,6 +51,24 @@ async def _run_git(*args: str, cwd: str | os.PathLike | None = None) -> str:
             f"stderr:\n{stderr.decode()}"
         )
     return stdout.decode()
+
+
+async def _run_git_failure(*args: str, cwd: str | os.PathLike | None = None) -> str:
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode == 0:
+        raise AssertionError(
+            f"git {' '.join(args)} unexpectedly succeeded\n"
+            f"stdout:\n{stdout.decode()}\n"
+            f"stderr:\n{stderr.decode()}"
+        )
+    return stderr.decode()
 
 
 @pytest.mark.asyncio
@@ -195,3 +214,77 @@ api_job:
     )
     assert request.status_code == 201
     assert request.json()["git_info"]["before_sha"] == before_sha.strip()
+
+
+@pytest.mark.asyncio
+async def test_git_smart_http_enforces_protected_branches(
+    client, db_session, test_user, test_token, live_server, tmp_path
+):
+    """Protected branches block unauthorized, force, and delete pushes."""
+    developer, developer_token = await _create_user_and_token(
+        db_session, "git-protected-developer"
+    )
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "git-protected-maintainer"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "live-protected-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    for user, level in ((developer, 30), (maintainer, 40)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    protected = await client.post(
+        f"{API}/projects/{project_id}/protected_branches",
+        json={"name": "main", "push_access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert protected.status_code == 201
+    assert protected.json()["allow_force_push"] is False
+
+    clone_url = f"{live_server}/testuser/live-protected-project.git"
+    worktree = tmp_path / "protected-worktree"
+    await _run_git("clone", clone_url, str(worktree))
+    await _run_git("config", "user.name", "Protected User", cwd=worktree)
+    await _run_git("config", "user.email", "protected@test.com", cwd=worktree)
+    await _run_git("config", "commit.gpgsign", "false", cwd=worktree)
+
+    (worktree / "protected.txt").write_text("protected branch update\n")
+    await _run_git("add", "protected.txt", cwd=worktree)
+    await _run_git("commit", "-m", "update protected branch", cwd=worktree)
+    developer_url = live_server.replace(
+        "http://",
+        f"http://git-protected-developer:{developer_token}@",
+    )
+    developer_url = f"{developer_url}/testuser/live-protected-project.git"
+    developer_error = await _run_git_failure(
+        "push", developer_url, "main", cwd=worktree
+    )
+    assert "protected branch 'main'" in developer_error
+
+    maintainer_url = live_server.replace(
+        "http://",
+        f"http://git-protected-maintainer:{maintainer_token}@",
+    )
+    maintainer_url = f"{maintainer_url}/testuser/live-protected-project.git"
+    await _run_git("push", maintainer_url, "main", cwd=worktree)
+
+    await _run_git("reset", "--hard", "HEAD~1", cwd=worktree)
+    force_error = await _run_git_failure(
+        "push", "--force", maintainer_url, "main", cwd=worktree
+    )
+    assert "force push to protected branch 'main'" in force_error
+
+    delete_error = await _run_git_failure(
+        "push", maintainer_url, ":main", cwd=worktree
+    )
+    assert "delete protected branch 'main'" in delete_error

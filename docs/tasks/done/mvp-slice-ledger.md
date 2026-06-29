@@ -260,10 +260,12 @@ Status: implemented.
 - Branch/tag create/get/delete behavior covers encoded project paths,
   duplicate refs, missing refs, and auth edge cases.
 - Protected branch responses include broader GitLab-shaped access metadata.
-- Git Smart HTTP enforcement remains deferred until a target workflow requires
-  actual push blocking.
+- Git Smart HTTP pushes enforce protected-branch push access levels, reject
+  protected branch deletion, and reject non-fast-forward protected branch
+  updates unless force-push is explicitly allowed.
 - Focused tests cover encoded project paths, existing/missing refs, protected
-  branch fields, and pagination headers.
+  branch fields, pagination headers, and live Git Smart HTTP protected-branch
+  push rejection.
 
 ### 2.6 Merge Requests Compatibility
 
