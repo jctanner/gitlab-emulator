@@ -1363,7 +1363,11 @@ metadata_job:
 """
     )
 
-    assert jobs[0].retry == {"max": 2, "when": ["runner_system_failure"]}
+    assert jobs[0].retry == {
+        "max": 2,
+        "when": ["runner_system_failure"],
+        "exit_codes": [],
+    }
     assert jobs[0].timeout_seconds == 2700
     assert jobs[0].interruptible is True
     assert jobs[0].resource_group == "production"
@@ -1394,10 +1398,14 @@ override:
     )
 
     by_name = {job.name: job for job in jobs}
-    assert by_name["defaulted"].retry == {"max": 1, "when": []}
+    assert by_name["defaulted"].retry == {"max": 1, "when": [], "exit_codes": []}
     assert by_name["defaulted"].timeout_seconds == 3600
     assert by_name["defaulted"].interruptible is True
-    assert by_name["override"].retry == {"max": 2, "when": ["script_failure"]}
+    assert by_name["override"].retry == {
+        "max": 2,
+        "when": ["script_failure"],
+        "exit_codes": [],
+    }
     assert by_name["override"].timeout_seconds == 1800
     assert by_name["override"].interruptible is False
 
@@ -1416,17 +1424,14 @@ bad_retry:
         assert "retry max must be between 0 and 2" in str(exc)
 
     retry_exit_codes_content = """
-bad_retry:
+retry_exit_code:
   retry:
     max: 1
     exit_codes: [137]
   script: echo retry
 """
-    try:
-        parse_gitlab_ci(retry_exit_codes_content)
-        assert False, "Expected unsupported retry exit_codes to fail"
-    except ValueError as exc:
-        assert "retry exit_codes is not supported" in str(exc)
+    retry_exit_code_job = parse_gitlab_ci(retry_exit_codes_content)[0]
+    assert retry_exit_code_job.retry == {"max": 1, "when": [], "exit_codes": [137]}
 
     invalid_timeout_content = """
 bad_timeout:

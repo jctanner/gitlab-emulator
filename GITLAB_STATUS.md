@@ -77,7 +77,8 @@ harness architecture.
   played manually to create `source=schedule` pipelines.
 - GitLab-style pipeline/job cancel and retry endpoints exist. Pipeline cancel
   marks runnable jobs canceled, job retry clears prior runner state and trace
-  content, and pipeline retry requeues failed, canceled, and skipped jobs
+  content, `retry:exit_codes` filters automatic retries by runner-reported exit
+  code, and pipeline retry requeues failed, canceled, and skipped jobs
   through the persisted runner coordinator.
 - The admin CI Lab exposes runner diagnostics, pending-job eligibility reasons,
   and a requeue control for pending/running jobs so stuck jobs can be diagnosed

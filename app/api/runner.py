@@ -705,7 +705,17 @@ def _retry_when_matches(configured: list[str], failure_reason: str | None) -> bo
     return "always" in configured or reason in configured
 
 
-def _should_auto_retry(job: PipelineJob, failure_reason: str | None) -> bool:
+def _retry_exit_code_matches(configured: list, exit_code: int | None) -> bool:
+    if not configured:
+        return True
+    if exit_code is None:
+        return False
+    return int(exit_code) in [int(code) for code in configured]
+
+
+def _should_auto_retry(
+    job: PipelineJob, failure_reason: str | None, exit_code: int | None
+) -> bool:
     config = job.retry_config or {}
     try:
         max_attempts = int(config.get("max") or 0)
@@ -718,7 +728,12 @@ def _should_auto_retry(job: PipelineJob, failure_reason: str | None) -> bool:
     configured_when = config.get("when") or []
     if isinstance(configured_when, str):
         configured_when = [configured_when]
-    return _retry_when_matches([str(item) for item in configured_when], failure_reason)
+    configured_exit_codes = config.get("exit_codes") or []
+    if not isinstance(configured_exit_codes, list):
+        configured_exit_codes = [configured_exit_codes]
+    return _retry_when_matches(
+        [str(item) for item in configured_when], failure_reason
+    ) and _retry_exit_code_matches(configured_exit_codes, exit_code)
 
 
 def _prepare_auto_retry(job: PipelineJob) -> None:
@@ -1488,7 +1503,7 @@ async def update_job(
             )
         auto_retry = (
             persisted_job.status == "failed"
-            and _should_auto_retry(persisted_job, body.failure_reason)
+            and _should_auto_retry(persisted_job, body.failure_reason, body.exit_code)
         )
         if auto_retry:
             _prepare_auto_retry(persisted_job)

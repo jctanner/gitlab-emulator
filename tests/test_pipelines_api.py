@@ -603,6 +603,122 @@ retry_me:
     assert terminal_job["retry_attempt"] == 1
 
 
+async def test_job_retry_exit_codes_filter_auto_retry(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+retry_match:
+  retry:
+    max: 1
+    when: script_failure
+    exit_codes: [137]
+  script:
+    - exit 137
+
+retry_miss:
+  retry:
+    max: 1
+    when: script_failure
+    exit_codes: [137]
+  script:
+    - exit 42
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add retry exit code ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    first = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first.status_code == 201
+    match_payload = first.json()
+    assert match_payload["job_info"]["name"] == "retry_match"
+    fail_match = await client.put(
+        f"{API}/jobs/{match_payload['id']}",
+        headers={"JOB-TOKEN": match_payload["token"]},
+        json={
+            "token": match_payload["token"],
+            "state": "failed",
+            "failure_reason": "script_failure",
+            "exit_code": 137,
+        },
+    )
+    assert fail_match.status_code == 200
+
+    after_match = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    by_name = {job["name"]: job for job in after_match.json()}
+    assert by_name["retry_match"]["status"] == "pending"
+    assert by_name["retry_match"]["retry_attempt"] == 1
+    assert by_name["retry_match"]["retry"]["exit_codes"] == [137]
+
+    retry_match = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert retry_match.status_code == 201
+    retry_match_payload = retry_match.json()
+    assert retry_match_payload["id"] == match_payload["id"]
+    succeed_match = await client.put(
+        f"{API}/jobs/{retry_match_payload['id']}",
+        headers={"JOB-TOKEN": retry_match_payload["token"]},
+        json={
+            "token": retry_match_payload["token"],
+            "state": "success",
+            "exit_code": 0,
+        },
+    )
+    assert succeed_match.status_code == 200
+
+    miss = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert miss.status_code == 201
+    miss_payload = miss.json()
+    assert miss_payload["job_info"]["name"] == "retry_miss"
+    fail_miss = await client.put(
+        f"{API}/jobs/{miss_payload['id']}",
+        headers={"JOB-TOKEN": miss_payload["token"]},
+        json={
+            "token": miss_payload["token"],
+            "state": "failed",
+            "failure_reason": "script_failure",
+            "exit_code": 42,
+        },
+    )
+    assert fail_miss.status_code == 200
+
+    after_miss = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    by_name = {job["name"]: job for job in after_miss.json()}
+    assert by_name["retry_miss"]["status"] == "failed"
+    assert by_name["retry_miss"]["retry_attempt"] == 0
+    pipeline_after = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert pipeline_after.json()["status"] == "failed"
+
+
 async def test_resource_group_serializes_runner_assignment(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
@@ -1362,7 +1478,11 @@ metadata_job:
     )
     assert jobs_resp.status_code == 200
     job = jobs_resp.json()[0]
-    assert job["retry"] == {"max": 2, "when": ["runner_system_failure"]}
+    assert job["retry"] == {
+        "max": 2,
+        "when": ["runner_system_failure"],
+        "exit_codes": [],
+    }
     assert job["retry_attempt"] == 0
     assert job["timeout"] == 2700
     assert job["interruptible"] is True
@@ -1489,7 +1609,7 @@ defaulted:
     )
     assert jobs.status_code == 200
     job = jobs.json()[0]
-    assert job["retry"] == {"max": 1, "when": []}
+    assert job["retry"] == {"max": 1, "when": [], "exit_codes": []}
     assert job["timeout"] == 3600
     assert job["interruptible"] is True
 

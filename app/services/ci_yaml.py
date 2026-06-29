@@ -640,30 +640,46 @@ def _timeout_seconds(value: Any) -> int | None:
     return _duration_seconds(value, "timeout")
 
 
+def _exit_codes(value: Any, keyword: str) -> list[int]:
+    if value is None:
+        return []
+    raw_codes = value if isinstance(value, list) else [value]
+    parsed_codes: list[int] = []
+    for code in raw_codes:
+        try:
+            parsed = int(code)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{keyword} exit code is not supported: {code}") from exc
+        if parsed < 0 or parsed > 255:
+            raise ValueError(f"{keyword} exit code must be between 0 and 255: {parsed}")
+        parsed_codes.append(parsed)
+    return parsed_codes
+
+
 def _retry_config(value: Any) -> dict:
     if value is None:
         return {}
     if isinstance(value, int):
         max_attempts = value
         when: list[str] = []
+        exit_codes: list[int] = []
     elif isinstance(value, dict):
         unsupported = set(value) - {"max", "when", "exit_codes"}
         if unsupported:
             names = ", ".join(sorted(str(item) for item in unsupported))
             raise ValueError(f"retry option(s) not supported: {names}")
-        if "exit_codes" in value:
-            raise ValueError("retry exit_codes is not supported")
         raw_max = value.get("max", 0)
         try:
             max_attempts = int(raw_max)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"retry max value is not supported: {raw_max}") from exc
         when = _string_list(value.get("when"))
+        exit_codes = _exit_codes(value.get("exit_codes"), "retry")
     else:
         raise ValueError("retry must be an integer or mapping")
     if max_attempts < 0 or max_attempts > 2:
         raise ValueError("retry max must be between 0 and 2")
-    return {"max": max_attempts, "when": when}
+    return {"max": max_attempts, "when": when, "exit_codes": exit_codes}
 
 
 def _delayed_start_in_seconds(config: dict, decision: _RuleDecision) -> int | None:

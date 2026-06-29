@@ -81,7 +81,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
   `resource_group`, and `coverage`, `default:` inheritance for `retry`,
   `timeout`, and `interruptible`, automatic failed-job retry attempts from
-  `retry`, resource-group serialization for runner assignment, coverage
+  `retry` including `retry:exit_codes` filters, resource-group serialization
+  for runner assignment, coverage
   extraction from traces, interruptible cancellation when a newer same-ref
   pipeline is created, common service container definitions that reach
   official-runner-shaped payloads, deeper `extends` semantics, nested local `include`,
