@@ -168,8 +168,9 @@ harness architecture.
   unprotect by numeric project ID or URL-encoded project path. Protection
   metadata reuses the existing branch protection storage and preserves common
   push, merge, unprotect, force-push, and code-owner approval settings for
-  client compatibility. Git Smart HTTP and SSH pushes enforce protected-branch
-  push access levels, reject protected branch deletion, and reject
+  client compatibility. Git Smart HTTP, SSH pushes, repository file writes,
+  and source-editor content writes enforce protected-branch push access
+  levels. Git transports also reject protected branch deletion and
   non-fast-forward protected branch updates unless force-push is explicitly
   allowed.
 - GitLab-shaped project release APIs exist for list, create, get, update, and

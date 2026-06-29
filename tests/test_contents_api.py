@@ -199,6 +199,49 @@ async def test_contents_write_requires_developer(
 
 
 @pytest.mark.asyncio
+async def test_contents_writes_honor_protected_branch_push_access(
+    client, db_session, test_user, test_token, test_repo_with_init
+):
+    """Source editor writes honor protected branch push levels."""
+    owner, repo_name, repo_data = test_repo_with_init
+    developer, developer_token = await _create_user_and_token(
+        db_session, "contents-protected-developer"
+    )
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "contents-protected-maintainer"
+    )
+    for user, level in ((developer, 30), (maintainer, 40)):
+        member = await client.post(
+            f"{API}/projects/{repo_data['id']}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    protected = await client.post(
+        f"{API}/projects/{repo_data['id']}/protected_branches",
+        json={"name": "main", "push_access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert protected.status_code == 201
+
+    content_b64 = base64.b64encode(b"protected contents\n").decode()
+    denied = await client.put(
+        f"{API}/repos/{owner}/{repo_name}/contents/protected-source.txt",
+        json={"message": "developer source write", "content": content_b64},
+        headers=auth_headers(developer_token),
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.put(
+        f"{API}/repos/{owner}/{repo_name}/contents/protected-source.txt",
+        json={"message": "maintainer source write", "content": content_b64},
+        headers=auth_headers(maintainer_token),
+    )
+    assert allowed.status_code == 201
+
+
+@pytest.mark.asyncio
 async def test_create_file_invalid_base64(client, test_user, test_token, test_repo_with_init):
     """PUT with invalid base64 returns 422."""
     owner, repo_name, _ = test_repo_with_init

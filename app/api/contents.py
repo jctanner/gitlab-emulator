@@ -13,6 +13,7 @@ from app.api.deps import AuthUser, CurrentUser, DbSession, get_repo_or_404
 from app.api.repository_files import _create_push_pipeline_for_file_commit
 from app.config import settings
 from app.schemas.user import _make_node_id
+from app.services.branch_protection import require_branch_push_access
 from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["contents"])
@@ -161,6 +162,7 @@ async def create_or_update_file(
     message = body.get("message", f"Update {path}")
     content_b64 = body.get("content", "")
     branch = body.get("branch", repository.default_branch)
+    await require_branch_push_access(repository, branch, user, db)
 
     try:
         content_bytes = base64.b64decode(content_b64)
@@ -246,6 +248,7 @@ async def delete_file(
     message = body.get("message", f"Delete {path}")
     expected_sha = body.get("sha")
     branch = body.get("branch") or repository.default_branch
+    await require_branch_push_access(repository, branch, user, db)
 
     if not repository.disk_path or not os.path.isdir(repository.disk_path):
         raise HTTPException(status_code=404, detail="Not Found")

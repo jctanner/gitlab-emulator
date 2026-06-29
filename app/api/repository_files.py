@@ -16,6 +16,7 @@ from app.api.pagination import paginated_json
 from app.api.projects import _get_project_or_404
 from app.config import settings
 from app.models.project import Project
+from app.services.branch_protection import require_branch_push_access
 from app.services.permissions import DEVELOPER, require_project_access
 
 router = APIRouter(tags=["repository-files"])
@@ -422,6 +423,7 @@ async def create_repository_file(
     await require_project_access(project, user, db, DEVELOPER)
     decoded_path = _normalize_file_path(file_path)
     branch = _branch_from_body(project, body)
+    await require_branch_push_access(project, branch, user, db)
     start_ref = _start_ref_from_body(body)
     read_ref = await _read_ref_for_change(project, branch, start_ref)
     message = str(body.get("commit_message") or f"Create {decoded_path}")
@@ -461,6 +463,7 @@ async def update_repository_file(
     await require_project_access(project, user, db, DEVELOPER)
     decoded_path = _normalize_file_path(file_path)
     branch = _branch_from_body(project, body)
+    await require_branch_push_access(project, branch, user, db)
     start_ref = _start_ref_from_body(body)
     read_ref = await _read_ref_for_change(project, branch, start_ref)
     message = str(body.get("commit_message") or f"Update {decoded_path}")
@@ -488,6 +491,7 @@ async def delete_repository_file(
     await require_project_access(project, user, db, DEVELOPER)
     decoded_path = _normalize_file_path(file_path)
     branch = _branch_from_body(project, body)
+    await require_branch_push_access(project, branch, user, db)
     start_ref = _start_ref_from_body(body)
     read_ref = await _read_ref_for_change(project, branch, start_ref)
     message = str(body.get("commit_message") or f"Delete {decoded_path}")

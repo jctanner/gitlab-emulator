@@ -160,6 +160,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   group namespaces and getting namespaces by numeric ID or full path.
 - Minimal GitLab repository files APIs exist for reading, creating, updating,
   and deleting files by numeric project ID or URL-encoded project path.
+  Repository file writes and source-editor content writes honor protected
+  branch push access levels.
 - Minimal GitLab repository commits APIs exist for listing commits, getting a
   commit, and reading commit diff metadata by numeric project ID or URL-encoded
   project path.
@@ -307,7 +309,8 @@ Target resource areas:
 - branches: MVP list/get/create/delete implemented
 - tags: MVP list/get/create/delete implemented
 - members: MVP project/group list/get/add/delete implemented
-- protected branches: MVP list/get/protect/unprotect implemented
+- protected branches: MVP list/get/protect/unprotect plus Git Smart HTTP, SSH,
+  repository file, and source-editor write enforcement implemented
 - releases: MVP list/create/get/update/delete and release asset link
   create/list/get/update/delete implemented
 - packages: MVP generic package upload/download implemented for

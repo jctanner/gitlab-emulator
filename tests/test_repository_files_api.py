@@ -392,6 +392,102 @@ async def test_repository_file_writes_require_developer_access(
 
 
 @pytest.mark.asyncio
+async def test_repository_file_writes_honor_protected_branch_push_access(
+    client, db_session, test_token
+):
+    from tests.test_projects_api import _create_user_and_token
+
+    developer, developer_token = await _create_user_and_token(
+        db_session, "file-protected-developer"
+    )
+    maintainer, maintainer_token = await _create_user_and_token(
+        db_session, "file-protected-maintainer"
+    )
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "protected-file-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    for user, level in ((developer, 30), (maintainer, 40)):
+        member = await client.post(
+            f"{API}/projects/{project_id}/members",
+            json={"user_id": user.id, "access_level": level},
+            headers=auth_headers(test_token),
+        )
+        assert member.status_code == 201
+
+    protected = await client.post(
+        f"{API}/projects/{project_id}/protected_branches",
+        json={"name": "main", "push_access_level": 40},
+        headers=auth_headers(test_token),
+    )
+    assert protected.status_code == 201
+
+    denied_create = await client.post(
+        f"{API}/projects/{project_id}/repository/files/protected.txt",
+        json={
+            "branch": "main",
+            "commit_message": "developer protected create",
+            "content": "denied\n",
+        },
+        headers=auth_headers(developer_token),
+    )
+    assert denied_create.status_code == 403
+    assert "protected branch 'main'" in denied_create.json()["message"]
+
+    create = await client.post(
+        f"{API}/projects/{project_id}/repository/files/protected.txt",
+        json={
+            "branch": "main",
+            "commit_message": "maintainer protected create",
+            "content": "created\n",
+        },
+        headers=auth_headers(maintainer_token),
+    )
+    assert create.status_code == 201
+
+    denied_update = await client.put(
+        f"{API}/projects/{project_id}/repository/files/protected.txt",
+        json={
+            "branch": "main",
+            "commit_message": "developer protected update",
+            "content": "denied\n",
+        },
+        headers=auth_headers(developer_token),
+    )
+    assert denied_update.status_code == 403
+
+    update = await client.put(
+        f"{API}/projects/{project_id}/repository/files/protected.txt",
+        json={
+            "branch": "main",
+            "commit_message": "maintainer protected update",
+            "content": "updated\n",
+        },
+        headers=auth_headers(maintainer_token),
+    )
+    assert update.status_code == 200
+
+    denied_delete = await client.request(
+        "DELETE",
+        f"{API}/projects/{project_id}/repository/files/protected.txt",
+        json={"branch": "main", "commit_message": "developer protected delete"},
+        headers=auth_headers(developer_token),
+    )
+    assert denied_delete.status_code == 403
+
+    delete = await client.request(
+        "DELETE",
+        f"{API}/projects/{project_id}/repository/files/protected.txt",
+        json={"branch": "main", "commit_message": "maintainer protected delete"},
+        headers=auth_headers(maintainer_token),
+    )
+    assert delete.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_repository_file_head_returns_gitlab_metadata_headers(client, test_token):
     project = await client.post(
         f"{API}/projects",

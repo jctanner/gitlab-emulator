@@ -261,8 +261,9 @@ Status: implemented.
 - Branch/tag create/get/delete behavior covers encoded project paths,
   duplicate refs, missing refs, and auth edge cases.
 - Protected branch responses include broader GitLab-shaped access metadata.
-- Git Smart HTTP and SSH pushes enforce protected-branch push access levels,
-  reject protected branch deletion, and reject non-fast-forward protected branch
+- Git Smart HTTP, SSH pushes, repository file writes, and source-editor content
+  writes enforce protected-branch push access levels. Git transports also
+  reject protected branch deletion and reject non-fast-forward protected branch
   updates unless force-push is explicitly allowed.
 - Focused tests cover encoded project paths, existing/missing refs, protected
   branch fields, pagination headers, and live Git Smart HTTP protected-branch

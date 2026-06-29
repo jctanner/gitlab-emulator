@@ -30,6 +30,7 @@ from app.models.user import User
 from app.api.deps import get_current_user
 from app.git.bare_repo import get_branches as get_disk_branches
 from app.git.bare_repo import get_tags as get_disk_tags
+from app.services.branch_protection import minimum_push_access_level
 from app.services.permissions import DEVELOPER, REPORTER, project_access_level
 
 router = APIRouter()
@@ -222,17 +223,6 @@ def _parse_receive_pack_commands(input_data: bytes) -> list[tuple[str, str, str]
     return commands
 
 
-def _minimum_push_access_level(branch: Branch) -> int:
-    restrictions = branch.protection.restrictions if branch.protection else {}
-    entries = (restrictions or {}).get("push_access_levels") or [{"access_level": 40}]
-    levels = [
-        int(entry.get("access_level", 40))
-        for entry in entries
-        if isinstance(entry, dict) and int(entry.get("access_level", 40)) > 0
-    ]
-    return min(levels, default=40)
-
-
 def _protected_branch_rejection(
     ref: str,
     branch_name: str,
@@ -285,7 +275,7 @@ async def _check_protected_branch_updates(
         branch = protected.get(branch_name)
         if branch is None:
             continue
-        if access_level < _minimum_push_access_level(branch):
+        if access_level < minimum_push_access_level(branch):
             raise _protected_branch_rejection(ref, branch_name, "push to")
         if new_sha == ZERO_SHA:
             raise _protected_branch_rejection(ref, branch_name, "delete")
@@ -313,7 +303,7 @@ async def _protected_branch_hook_script(
     ]
     for branch in branches:
         ref = f"refs/heads/{branch.name}"
-        minimum = _minimum_push_access_level(branch)
+        minimum = minimum_push_access_level(branch)
         restrictions = branch.protection.restrictions if branch.protection else {}
         allow_force = "1" if bool((restrictions or {}).get("allow_force_push")) else "0"
         lines.extend(
