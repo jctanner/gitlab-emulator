@@ -414,11 +414,11 @@ Done when:
   promotion of due delayed jobs, and runner-side pending-job eligibility.
   Broader production scheduling concerns such as distributed leader election
   remain deferred.
-- Production security hardening. Baseline browser security headers are enabled
-  across API, admin, web, and error responses. Admin bootstrap user/token
-  helper endpoints require an authenticated site admin. The emulator is still
-  intended for controlled integration testing environments rather than open
-  production exposure.
+- Production security hardening. Baseline browser security headers and
+  GitLab-style request ID headers are enabled across API, admin, web, and error
+  responses. Admin bootstrap user/token helper endpoints require an
+  authenticated site admin. The emulator is still intended for controlled
+  integration testing environments rather than open production exposure.
 
 ## High-Level Outcome
 

@@ -46,6 +46,8 @@ Important local coverage areas:
   `/projects/{project_ref:path}`
 - exact GitLab pagination headers and query-preserving `Link` headers for main
   GitLab-facing list endpoints
+- GitLab-style request ID response headers, including caller-provided
+  `X-Request-Id` propagation to `X-GitLab-Request-Id`
 
 ## VM Validation
 

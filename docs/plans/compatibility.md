@@ -71,7 +71,8 @@ Replace GitHub-shaped behavior with GitLab behavior for:
 - pagination
 - error payloads
 - auth token handling
-- response headers
+- response headers: MVP API version, rate limit, ETag, pagination, security,
+  `X-Request-Id`, and `X-GitLab-Request-Id` headers implemented
 - webhook event names and payloads
 - merge request behavior versus pull request behavior
 - project path and namespace handling

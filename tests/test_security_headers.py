@@ -16,11 +16,18 @@ def _assert_security_headers(resp) -> None:
         assert resp.headers[name] == value
 
 
+def _assert_request_id_headers(resp) -> None:
+    request_id = resp.headers["x-request-id"]
+    assert request_id
+    assert resp.headers["x-gitlab-request-id"] == request_id
+
+
 @pytest.mark.asyncio
 async def test_api_responses_include_security_headers(client):
     resp = await client.get("/api/v4/emojis")
     assert resp.status_code == 200
     _assert_security_headers(resp)
+    _assert_request_id_headers(resp)
 
 
 @pytest.mark.asyncio
@@ -43,3 +50,15 @@ async def test_error_responses_include_security_headers(client):
     resp = await client.get("/api/v4/does-not-exist")
     assert resp.status_code == 404
     _assert_security_headers(resp)
+    _assert_request_id_headers(resp)
+
+
+@pytest.mark.asyncio
+async def test_request_id_headers_preserve_incoming_request_id(client):
+    resp = await client.get(
+        "/api/v4/emojis",
+        headers={"X-Request-Id": "client-request-123"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["x-request-id"] == "client-request-123"
+    assert resp.headers["x-gitlab-request-id"] == "client-request-123"
