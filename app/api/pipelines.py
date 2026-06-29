@@ -6,9 +6,11 @@ import asyncio
 import base64
 import fnmatch
 import json
+import mimetypes
 import os
 import secrets
 import ssl
+import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -2561,3 +2563,49 @@ async def download_project_job_artifacts(
         media_type=artifact.content_type or "application/zip",
         filename=artifact.filename,
     )
+
+
+@router.get("/projects/{project_ref:path}/jobs/{job_id}/artifacts/{artifact_path:path}")
+async def download_project_job_artifact_file(
+    project_ref: str,
+    job_id: int,
+    artifact_path: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    result = await db.execute(
+        select(PipelineJob).where(
+            PipelineJob.project_id == project.id,
+            PipelineJob.id == job_id,
+        )
+    )
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job Not Found")
+    artifact = job.artifacts[0] if job.artifacts else None
+    if artifact is None or not artifact.storage_path:
+        raise HTTPException(status_code=404, detail="Artifacts Not Found")
+    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(
+        tzinfo=None
+    ):
+        raise HTTPException(status_code=404, detail="Artifacts Expired")
+    if not os.path.isfile(artifact.storage_path):
+        raise HTTPException(status_code=404, detail="Artifacts Not Found")
+    if artifact.file_format != "zip" and not artifact.filename.endswith(".zip"):
+        raise HTTPException(status_code=404, detail="Artifact File Not Found")
+    try:
+        with zipfile.ZipFile(artifact.storage_path) as archive:
+            try:
+                content = archive.read(artifact_path)
+            except KeyError:
+                raise HTTPException(
+                    status_code=404, detail="Artifact File Not Found"
+                ) from None
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=404, detail="Artifact File Not Found") from None
+
+    media_type = mimetypes.guess_type(artifact_path)[0] or "application/octet-stream"
+    return Response(content=content, media_type=media_type)

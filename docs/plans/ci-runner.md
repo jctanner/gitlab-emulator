@@ -129,6 +129,8 @@ and cache APIs for controlled integration testing.
 - project job erase records `erased_at`, clears stored traces, and removes
   persisted artifacts for terminal jobs
 - project job artifact keep clears artifact expiration timestamps
+- project job APIs can download individual files from stored ZIP artifact
+  archives
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

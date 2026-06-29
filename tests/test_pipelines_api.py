@@ -1283,6 +1283,17 @@ async def test_download_job_artifacts_by_encoded_project_path_and_ref(
     assert download.status_code == 200
     assert download.content == archive_bytes
 
+    file_download = await client.get(
+        f"{API}/projects/{project_ref}/jobs/{job_id}/artifacts/out/result.txt"
+    )
+    assert file_download.status_code == 200
+    assert file_download.text == "artifact content\n"
+
+    missing_file = await client.get(
+        f"{API}/projects/{project_ref}/jobs/{job_id}/artifacts/out/missing.txt"
+    )
+    assert missing_file.status_code == 404
+
 
 async def test_runner_executes_persisted_pipeline_job(client, test_token):
     project = await _create_project(client, test_token)
