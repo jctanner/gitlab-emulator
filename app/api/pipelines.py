@@ -1108,15 +1108,27 @@ def _environment_json(name: str, job: PipelineJob) -> dict:
         "state": "stopped" if job.environment_action == "stop" else "available",
         "created_at": _fmt_dt(job.created_at),
         "updated_at": _fmt_dt(job.updated_at),
-        "last_deployment": {
-            "id": job.id,
-            "iid": job.id,
-            "status": job.status,
-            "deployable": _job_json(job),
-            "environment": {"id": _environment_id(name), "name": name},
-            "created_at": _fmt_dt(job.created_at),
-            "updated_at": _fmt_dt(job.updated_at),
-            "finished_at": _fmt_dt(job.finished_at),
+        "last_deployment": _deployment_json(job),
+    }
+
+
+def _deployment_json(job: PipelineJob) -> dict:
+    environment_name = job.environment or ""
+    return {
+        "id": job.id,
+        "iid": job.id,
+        "ref": job.pipeline.ref if job.pipeline else None,
+        "sha": job.pipeline.sha if job.pipeline else None,
+        "status": job.status,
+        "created_at": _fmt_dt(job.created_at),
+        "updated_at": _fmt_dt(job.updated_at),
+        "finished_at": _fmt_dt(job.finished_at),
+        "deployable": _job_json(job),
+        "environment": {
+            "id": _environment_id(environment_name),
+            "name": environment_name,
+            "slug": _environment_slug(environment_name),
+            "external_url": job.environment_url,
         },
     }
 
@@ -2488,6 +2500,79 @@ async def get_project_environment(
         if _environment_id(name) == environment_id:
             return _environment_json(name, job)
     raise HTTPException(status_code=404, detail="Environment Not Found")
+
+
+@router.get("/projects/{project_ref:path}/deployments")
+async def list_project_deployments(
+    project_ref: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    environment: str | None = None,
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    query = (
+        select(PipelineJob)
+        .options(
+            selectinload(PipelineJob.pipeline),
+            selectinload(PipelineJob.project),
+            selectinload(PipelineJob.artifacts),
+        )
+        .where(
+            PipelineJob.project_id == project.id,
+            PipelineJob.environment.is_not(None),
+        )
+    )
+    if environment:
+        query = query.where(PipelineJob.environment == environment)
+    if status:
+        query = query.where(PipelineJob.status == status)
+    query = query.order_by(PipelineJob.id.desc())
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
+    result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
+    return paginated_json(
+        [_deployment_json(job) for job in result.scalars().all()],
+        request,
+        page,
+        per_page,
+        total,
+    )
+
+
+@router.get("/projects/{project_ref:path}/deployments/{deployment_id}")
+async def get_project_deployment(
+    project_ref: str,
+    deployment_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    result = await db.execute(
+        select(PipelineJob)
+        .options(
+            selectinload(PipelineJob.pipeline),
+            selectinload(PipelineJob.project),
+            selectinload(PipelineJob.artifacts),
+        )
+        .where(
+            PipelineJob.project_id == project.id,
+            PipelineJob.id == deployment_id,
+            PipelineJob.environment.is_not(None),
+        )
+    )
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Deployment Not Found")
+    return _deployment_json(job)
 
 
 @router.get("/projects/{project_ref:path}/pipelines/latest")

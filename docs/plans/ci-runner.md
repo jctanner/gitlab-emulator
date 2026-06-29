@@ -143,6 +143,8 @@ and cache APIs for controlled integration testing.
   matched their configured coverage regex
 - project environment list/detail APIs derive GitLab-shaped environments and latest
   deployment metadata from CI jobs with persisted environment metadata
+- project deployment list/detail APIs expose GitLab-shaped deployment records
+  derived from CI jobs with environment metadata
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

@@ -3791,6 +3791,46 @@ review_job:
     )
     assert missing.status_code == 404
 
+    deployments = await client.get(
+        f"{API}/projects/{project['id']}/deployments",
+        headers=auth_headers(test_token),
+    )
+    assert deployments.status_code == 200
+    deployments_by_name = {
+        deployment["environment"]["name"]: deployment
+        for deployment in deployments.json()
+    }
+    assert sorted(deployments_by_name) == ["production", "review/main", "staging"]
+    assert deployments_by_name["production"]["deployable"]["name"] == (
+        "production_job"
+    )
+    assert deployments_by_name["staging"]["environment"]["external_url"] == (
+        "https://staging.example.test"
+    )
+
+    deployment_detail = await client.get(
+        f"{API}/projects/{project['id']}/deployments/{deployments_by_name['production']['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert deployment_detail.status_code == 200
+    assert deployment_detail.json()["environment"]["name"] == "production"
+
+    deployment_filter = await client.get(
+        f"{API}/projects/{project['id']}/deployments",
+        params={"environment": "review/main"},
+        headers=auth_headers(test_token),
+    )
+    assert deployment_filter.status_code == 200
+    assert [
+        deployment["environment"]["name"] for deployment in deployment_filter.json()
+    ] == ["review/main"]
+
+    missing_deployment = await client.get(
+        f"{API}/projects/{project['id']}/deployments/999999999",
+        headers=auth_headers(test_token),
+    )
+    assert missing_deployment.status_code == 404
+
 
 async def test_job_secrets_resolve_to_runner_payload_and_access_events(
     client, test_token, db_session
