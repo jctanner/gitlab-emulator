@@ -275,7 +275,8 @@ Target resource areas:
 - tags: MVP list/get/create/delete implemented
 - members: MVP project/group list/get/add/delete implemented
 - protected branches: MVP list/get/protect/unprotect implemented
-- releases: MVP list/create/get/update/delete implemented
+- releases: MVP list/create/get/update/delete and release asset link
+  create/list/get/update/delete implemented
 - webhooks: MVP project/group list/create/get/update/delete implemented
 - labels: MVP project list/create/get/update/delete implemented with
   GitLab-shaped response fields, search, pagination, and issue counts

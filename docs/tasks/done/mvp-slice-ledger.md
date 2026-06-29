@@ -336,8 +336,10 @@ Done when:
   - `glab ci cancel job`
   - `glab ci retry`
   - `glab job artifact --list-paths`
-- `glab release` high-level create/view/delete is implemented in `make vm-test`;
-  add more release asset/package edge cases only if target workflows need them.
+- `glab release` high-level create/view/delete is implemented in `make vm-test`,
+  and `glab api` release asset link create/list/update/delete is covered.
+  Package-backed binary upload flows remain deferred until target workflows need
+  them.
 - REST support and high-level client-VM `glab` validation now exist for
   manual job trigger/play, pipeline/job cancel, and job retry.
 - Client-VM `glab api` validation now includes project labels and milestones:

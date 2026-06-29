@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from sqlalchemy import func as sa_func
@@ -79,14 +79,7 @@ def _gitlab_release_json(release: Release, project: Project, base_url: str) -> d
     if release.assets:
         for asset in release.assets:
             links.append(
-                {
-                    "id": asset.id,
-                    "name": asset.name,
-                    "url": asset.browser_download_url,
-                    "direct_asset_url": asset.browser_download_url,
-                    "link_type": "other",
-                    "external": False,
-                }
+                _release_asset_link_json(asset, project, release.tag_name, base_url)
             )
 
     return {
@@ -126,6 +119,23 @@ def _gitlab_release_json(release: Release, project: Project, base_url: str) -> d
     }
 
 
+def _release_asset_link_json(
+    asset: ReleaseAsset, project: Project, tag_name: str, base_url: str
+) -> dict:
+    parsed = urlparse(asset.browser_download_url)
+    base_netloc = urlparse(base_url).netloc
+    is_external = bool(parsed.scheme and parsed.netloc and parsed.netloc != base_netloc)
+    return {
+        "id": asset.id,
+        "name": asset.name,
+        "url": asset.browser_download_url,
+        "direct_asset_url": asset.browser_download_url,
+        "link_type": asset.label or "other",
+        "external": is_external,
+        "filepath": f"/{project.full_name}/-/releases/{tag_name}/downloads/{asset.name}",
+    }
+
+
 async def _get_project_release_or_404(
     project: Project,
     tag_name: str,
@@ -141,6 +151,65 @@ async def _get_project_release_or_404(
     if release is None:
         raise HTTPException(status_code=404, detail="404 Release Not Found")
     return release
+
+
+async def _get_release_asset_link_or_404(
+    release: Release,
+    link_id: int,
+    db: DbSession,
+) -> ReleaseAsset:
+    result = await db.execute(
+        select(ReleaseAsset).where(
+            ReleaseAsset.release_id == release.id,
+            ReleaseAsset.id == link_id,
+        )
+    )
+    asset = result.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="404 Release Asset Link Not Found")
+    return asset
+
+
+def _asset_url_for_body(body: dict, project: Project, tag_name: str) -> str:
+    direct_asset_path = str(body.get("direct_asset_path") or "").strip()
+    if direct_asset_path:
+        path = (
+            direct_asset_path
+            if direct_asset_path.startswith("/")
+            else f"/{direct_asset_path}"
+        )
+        return f"{BASE}/{project.full_name}/-/releases/{tag_name}/downloads{path}"
+    return str(body.get("url") or "").strip()
+
+
+async def _create_release_asset_link(
+    release: Release,
+    project: Project,
+    tag_name: str,
+    user: AuthUser,
+    db: DbSession,
+    body: dict,
+) -> ReleaseAsset:
+    name = str(body.get("name") or "").strip()
+    url = _asset_url_for_body(body, project, tag_name)
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required")
+    link_type = str(body.get("link_type") or "other").strip() or "other"
+    asset = ReleaseAsset(
+        release_id=release.id,
+        name=name,
+        label=link_type,
+        content_type="text/uri-list",
+        size=0,
+        download_count=0,
+        state="uploaded",
+        uploader_id=user.id,
+        browser_download_url=url,
+    )
+    db.add(asset)
+    return asset
 
 
 async def _ensure_release_tag(
@@ -225,9 +294,128 @@ async def create_project_release(
         published_at=now,
     )
     db.add(release)
+    await db.flush()
+    assets = body.get("assets") or {}
+    links = assets.get("links") if isinstance(assets, dict) else None
+    if isinstance(links, list):
+        for link in links:
+            if isinstance(link, dict):
+                await _create_release_asset_link(
+                    release, project, tag_name, user, db, link
+                )
     await db.commit()
     release = await _get_project_release_or_404(project, tag_name, db)
     return _gitlab_release_json(release, project, BASE)
+
+
+@router.get("/projects/{project_ref:path}/releases/{tag_name:path}/assets/links")
+async def list_project_release_asset_links(
+    project_ref: str,
+    tag_name: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    """List GitLab-shaped release asset links."""
+    project = await _get_project_or_404(project_ref, db, current_user)
+    release = await _get_project_release_or_404(project, tag_name, db)
+    return [
+        _release_asset_link_json(asset, project, release.tag_name, BASE)
+        for asset in release.assets
+    ]
+
+
+@router.post(
+    "/projects/{project_ref:path}/releases/{tag_name:path}/assets/links",
+    status_code=201,
+)
+async def create_project_release_asset_link(
+    project_ref: str,
+    tag_name: str,
+    user: AuthUser,
+    db: DbSession,
+    body: dict = Body(...),
+):
+    """Create a GitLab-shaped release asset link."""
+    project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
+    release = await _get_project_release_or_404(project, tag_name, db)
+    asset = await _create_release_asset_link(
+        release, project, release.tag_name, user, db, body
+    )
+    await db.commit()
+    await db.refresh(asset)
+    return _release_asset_link_json(asset, project, release.tag_name, BASE)
+
+
+@router.get(
+    "/projects/{project_ref:path}/releases/{tag_name:path}/assets/links/{link_id}"
+)
+async def get_project_release_asset_link(
+    project_ref: str,
+    tag_name: str,
+    link_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    """Get one GitLab-shaped release asset link."""
+    project = await _get_project_or_404(project_ref, db, current_user)
+    release = await _get_project_release_or_404(project, tag_name, db)
+    asset = await _get_release_asset_link_or_404(release, link_id, db)
+    return _release_asset_link_json(asset, project, release.tag_name, BASE)
+
+
+@router.put(
+    "/projects/{project_ref:path}/releases/{tag_name:path}/assets/links/{link_id}"
+)
+async def update_project_release_asset_link(
+    project_ref: str,
+    tag_name: str,
+    link_id: int,
+    user: AuthUser,
+    db: DbSession,
+    body: dict = Body(...),
+):
+    """Update a GitLab-shaped release asset link."""
+    project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
+    release = await _get_project_release_or_404(project, tag_name, db)
+    asset = await _get_release_asset_link_or_404(release, link_id, db)
+    if "name" in body:
+        name = str(body.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+        asset.name = name
+    if "url" in body or "direct_asset_path" in body:
+        url = _asset_url_for_body(body, project, release.tag_name)
+        if not url:
+            raise HTTPException(status_code=400, detail="url is required")
+        asset.browser_download_url = url
+    if "link_type" in body:
+        asset.label = str(body.get("link_type") or "other").strip() or "other"
+    await db.commit()
+    await db.refresh(asset)
+    return _release_asset_link_json(asset, project, release.tag_name, BASE)
+
+
+@router.delete(
+    "/projects/{project_ref:path}/releases/{tag_name:path}/assets/links/{link_id}"
+)
+async def delete_project_release_asset_link(
+    project_ref: str,
+    tag_name: str,
+    link_id: int,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Delete a GitLab-shaped release asset link."""
+    project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
+    release = await _get_project_release_or_404(project, tag_name, db)
+    asset = await _get_release_asset_link_or_404(release, link_id, db)
+    data = _release_asset_link_json(asset, project, release.tag_name, BASE)
+    await db.delete(asset)
+    await db.commit()
+    return data
 
 
 @router.get("/projects/{project_ref:path}/releases/{tag_name:path}")

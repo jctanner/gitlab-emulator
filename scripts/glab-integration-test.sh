@@ -557,6 +557,35 @@ fi
 release_json=$(glab_api "projects/$PROJECT_ID/releases/$release_tag")
 assert_json_field "glab api release get" "$release_json" ".tag_name == \"$release_tag\" and .name == \"Smoke Release\""
 
+asset_link_create=$(glab_api --method POST \
+    "projects/$PROJECT_ID/releases/$release_tag/assets/links" \
+    -f "name=smoke-runbook" \
+    -f "url=https://example.test/${RUN_ID}/runbook.md" \
+    -f "link_type=runbook")
+assert_json_field "glab api release asset link create" "$asset_link_create" \
+    '.name == "smoke-runbook" and .link_type == "runbook"'
+ASSET_LINK_ID=$(echo "$asset_link_create" | jq -r '.id // empty')
+if [ -n "$ASSET_LINK_ID" ]; then
+    asset_links=$(glab_api "projects/$PROJECT_ID/releases/$release_tag/assets/links")
+    assert_json_field "glab api release asset links list" "$asset_links" \
+        'map(.name) | index("smoke-runbook")'
+
+    asset_link_update=$(glab_api --method PUT \
+        "projects/$PROJECT_ID/releases/$release_tag/assets/links/$ASSET_LINK_ID" \
+        -f "name=smoke-binary" \
+        -f "direct_asset_path=smoke-binary-linux-amd64" \
+        -f "link_type=package")
+    assert_json_field "glab api release asset link update" "$asset_link_update" \
+        '.name == "smoke-binary" and .link_type == "package" and (.direct_asset_url | contains("/downloads/smoke-binary-linux-amd64"))'
+
+    asset_link_delete=$(glab_api --method DELETE \
+        "projects/$PROJECT_ID/releases/$release_tag/assets/links/$ASSET_LINK_ID")
+    assert_json_field "glab api release asset link delete" "$asset_link_delete" \
+        ".id == ($ASSET_LINK_ID | tonumber)"
+else
+    fail "glab api release asset link id missing: $asset_link_create"
+fi
+
 release_view=$("$GLAB" release view "$release_tag" --repo "admin/$PROJECT_PATH" 2>&1)
 if [ $? -eq 0 ]; then
     assert_contains "glab release view" "$release_view" "Smoke Release"

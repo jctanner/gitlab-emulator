@@ -77,6 +77,85 @@ async def test_gitlab_project_release_crud(client, test_user, test_token):
 
 
 @pytest.mark.asyncio
+async def test_gitlab_project_release_asset_links_crud(client, test_user, test_token):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "release-links-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    created = await client.post(
+        f"{API}/projects/{project_id}/releases",
+        json={
+            "name": "Version with links",
+            "tag_name": "v-links",
+            "ref": "main",
+            "assets": {
+                "links": [
+                    {
+                        "name": "runbook",
+                        "url": "https://example.test/runbook.md",
+                        "link_type": "runbook",
+                    }
+                ]
+            },
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json()["assets"]["links"][0]["name"] == "runbook"
+    assert created.json()["assets"]["links"][0]["link_type"] == "runbook"
+
+    listed = await client.get(
+        f"{API}/projects/{project_id}/releases/v-links/assets/links",
+        headers=auth_headers(test_token),
+    )
+    assert listed.status_code == 200
+    links = listed.json()
+    assert len(links) == 1
+    assert links[0]["url"] == "https://example.test/runbook.md"
+    link_id = links[0]["id"]
+
+    fetched = await client.get(
+        f"{API}/projects/{project_id}/releases/v-links/assets/links/{link_id}",
+        headers=auth_headers(test_token),
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["name"] == "runbook"
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}/releases/v-links/assets/links/{link_id}",
+        json={
+            "name": "binary",
+            "direct_asset_path": "tool-linux-amd64",
+            "link_type": "package",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "binary"
+    assert updated.json()["link_type"] == "package"
+    assert updated.json()["direct_asset_url"].endswith(
+        "/testuser/release-links-project/-/releases/v-links/downloads/tool-linux-amd64"
+    )
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/releases/v-links/assets/links/{link_id}",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["id"] == link_id
+
+    missing = await client.get(
+        f"{API}/projects/{project_id}/releases/v-links/assets/links/{link_id}",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_gitlab_project_release_writes_require_developer(
     client, db_session, test_user, test_token
 ):
