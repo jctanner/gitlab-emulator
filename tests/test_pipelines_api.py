@@ -1190,6 +1190,60 @@ unit:
     }
 
 
+async def test_project_and_pipeline_job_lists_filter_by_scope(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+stages: [build]
+compile:
+  stage: build
+  script:
+    - echo compile
+manual_gate:
+  stage: build
+  when: manual
+  script:
+    - echo manual
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add scoped jobs ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    manual_pipeline_jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        params=[("scope[]", "manual")],
+        headers=auth_headers(test_token),
+    )
+    assert manual_pipeline_jobs.status_code == 200
+    assert [
+        (job["name"], job["status"]) for job in manual_pipeline_jobs.json()
+    ] == [("manual_gate", "manual")]
+
+    project_jobs = await client.get(
+        f"{API}/projects/{project['id']}/jobs",
+        params={"scope": "pending,manual"},
+        headers=auth_headers(test_token),
+    )
+    assert project_jobs.status_code == 200
+    assert {job["name"]: job["status"] for job in project_jobs.json()} == {
+        "compile": "pending",
+        "manual_gate": "manual",
+    }
+
+
 async def test_pipeline_and_job_routes_accept_encoded_project_path(client, test_token):
     project = await client.post(
         f"{API}/projects",

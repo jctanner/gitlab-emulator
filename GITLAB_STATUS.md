@@ -150,6 +150,8 @@ harness architecture.
   files from stored ZIP artifact archives by job ID or by ref plus job name.
   Pipeline test report and test report summary APIs aggregate stored JUnit
   report artifacts into GitLab-shaped suite and test case counts.
+- Project, pipeline, and bridge job listing APIs support GitLab-shaped `scope`
+  and `scope[]` status filters.
 - Dotenv report artifacts from successful upstream dependency jobs are parsed
   and injected into downstream runner job variables.
 - Pipeline API payloads expose aggregate coverage from completed jobs that

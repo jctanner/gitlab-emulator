@@ -1370,6 +1370,20 @@ def _need_names(needs: list | None) -> list[str]:
     return [item["job"] for item in _need_items(needs)]
 
 
+def _scope_values(*values: Any) -> list[str]:
+    scopes: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        entries = value if isinstance(value, list) else [value]
+        for entry in entries:
+            for part in str(entry).split(","):
+                scope = part.strip()
+                if scope:
+                    scopes.append(scope)
+    return scopes
+
+
 def _is_external_need(need: dict) -> bool:
     return bool(need.get("project") or need.get("pipeline"))
 
@@ -2830,7 +2844,8 @@ async def list_pipeline_bridges(
     request: Request,
     db: DbSession,
     current_user: CurrentUser,
-    scope: str | None = None,
+    scope: list[str] | None = Query(None),
+    scope_array: list[str] | None = Query(None, alias="scope[]"),
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
@@ -2852,10 +2867,9 @@ async def list_pipeline_bridges(
         )
         .order_by(PipelineJob.id.asc())
     )
-    if scope:
-        scopes = [item.strip() for item in scope.split(",") if item.strip()]
-        if scopes:
-            query = query.where(PipelineJob.status.in_(scopes))
+    scopes = _scope_values(scope, scope_array)
+    if scopes:
+        query = query.where(PipelineJob.status.in_(scopes))
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar() or 0
@@ -2876,6 +2890,8 @@ async def list_pipeline_jobs(
     request: Request,
     db: DbSession,
     current_user: CurrentUser,
+    scope: list[str] | None = Query(None),
+    scope_array: list[str] | None = Query(None, alias="scope[]"),
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
@@ -2888,6 +2904,9 @@ async def list_pipeline_jobs(
         .where(Pipeline.project_id == project.id, Pipeline.id == pipeline_id)
         .order_by(PipelineJob.id.asc())
     )
+    scopes = _scope_values(scope, scope_array)
+    if scopes:
+        query = query.where(PipelineJob.status.in_(scopes))
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar() or 0
@@ -2907,6 +2926,8 @@ async def list_project_jobs(
     request: Request,
     db: DbSession,
     current_user: CurrentUser,
+    scope: list[str] | None = Query(None),
+    scope_array: list[str] | None = Query(None, alias="scope[]"),
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
@@ -2918,6 +2939,9 @@ async def list_project_jobs(
         .where(PipelineJob.project_id == project.id)
         .order_by(PipelineJob.id.desc())
     )
+    scopes = _scope_values(scope, scope_array)
+    if scopes:
+        query = query.where(PipelineJob.status.in_(scopes))
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar() or 0
