@@ -97,7 +97,8 @@ Already working:
   applies to `retry`, `timeout`, and `interruptible`; runner payloads use the
   parsed job timeout for runner and step timeout fields, and job traces are
   scanned with the configured coverage regex to populate the job API `coverage`
-  field
+  field; job API payloads compute `duration` and `queued_duration` from
+  persisted timestamps
 - failed jobs with matching `retry` metadata are automatically requeued until
   their configured retry attempt limit is reached
 - jobs with the same `resource_group` in a project are serialized during runner

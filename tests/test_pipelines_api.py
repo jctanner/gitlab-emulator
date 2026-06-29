@@ -1397,7 +1397,12 @@ metadata_job:
         headers=auth_headers(test_token),
     )
     assert completed_job_resp.status_code == 200
-    assert completed_job_resp.json()["coverage"] == "87.5"
+    completed_job = completed_job_resp.json()
+    assert completed_job["coverage"] == "87.5"
+    assert isinstance(completed_job["duration"], int)
+    assert completed_job["duration"] >= 0
+    assert isinstance(completed_job["queued_duration"], int)
+    assert completed_job["queued_duration"] >= 0
 
 
 async def test_compound_timeout_reaches_runner_payload(client, test_token):

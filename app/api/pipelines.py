@@ -677,6 +677,22 @@ def _need_names(needs: list | None) -> list[str]:
     return [item["job"] for item in _need_items(needs)]
 
 
+def _aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _elapsed_seconds(start: datetime | None, end: datetime | None) -> int | None:
+    started = _aware_utc(start)
+    finished = _aware_utc(end)
+    if started is None or finished is None:
+        return None
+    return max(0, int((finished - started).total_seconds()))
+
+
 def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
     job.status = "scheduled" if (job.when or "on_success") == "delayed" else "pending"
     job.job_token = f"gljt-persisted-{secrets.token_urlsafe(24)}"
@@ -838,8 +854,8 @@ def _job_json(job: PipelineJob) -> dict:
         "started_at": _fmt_dt(job.started_at),
         "finished_at": _fmt_dt(job.finished_at),
         "erased_at": None,
-        "duration": None,
-        "queued_duration": None,
+        "duration": _elapsed_seconds(job.started_at, job.finished_at),
+        "queued_duration": _elapsed_seconds(job.queued_at, job.started_at),
         "user": None,
         "commit": {"id": job.pipeline.sha, "short_id": job.pipeline.sha[:8]}
         if job.pipeline
