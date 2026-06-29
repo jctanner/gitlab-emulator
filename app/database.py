@@ -179,6 +179,16 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         '"when" VARCHAR DEFAULT \'on_success\'',
     )
     await ensure_column(
+        "ci_runners",
+        "runner_features",
+        "runner_features JSON DEFAULT '{}'",
+    )
+    await ensure_column(
+        "ci_runners",
+        "runner_config",
+        "runner_config JSON DEFAULT '{}'",
+    )
+    await ensure_column(
         "pipeline_jobs",
         "scheduled_at",
         "scheduled_at DATETIME",

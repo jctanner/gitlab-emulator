@@ -210,6 +210,8 @@ class CiRunner(Base):
     runner_platform: Mapped[str | None] = mapped_column(String, nullable=True)
     runner_architecture: Mapped[str | None] = mapped_column(String, nullable=True)
     runner_executor: Mapped[str | None] = mapped_column(String, nullable=True)
+    runner_features: Mapped[dict] = mapped_column(JSON, default=dict)
+    runner_config: Mapped[dict] = mapped_column(JSON, default=dict)
     system_id: Mapped[str | None] = mapped_column(String, nullable=True)
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

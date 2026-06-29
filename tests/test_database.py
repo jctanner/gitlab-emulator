@@ -15,6 +15,7 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         await conn.execute(text("CREATE TABLE pipelines (id INTEGER PRIMARY KEY)"))
         await conn.execute(text("CREATE TABLE collaborators (id INTEGER PRIMARY KEY)"))
         await conn.execute(text("CREATE TABLE pipeline_jobs (id INTEGER PRIMARY KEY)"))
+        await conn.execute(text("CREATE TABLE ci_runners (id INTEGER PRIMARY KEY)"))
 
         await _ensure_sqlite_compat_columns(conn)
 
@@ -45,5 +46,10 @@ async def test_sqlite_compat_columns_quote_reserved_when_column(tmp_path):
         pipeline_columns = {row[1] for row in result.fetchall()}
         assert "name" in pipeline_columns
         assert "before_sha" in pipeline_columns
+
+        result = await conn.execute(text("PRAGMA table_info(ci_runners)"))
+        runner_columns = {row[1] for row in result.fetchall()}
+        assert "runner_features" in runner_columns
+        assert "runner_config" in runner_columns
 
     await test_engine.dispose()

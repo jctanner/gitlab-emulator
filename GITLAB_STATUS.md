@@ -95,7 +95,8 @@ harness architecture.
   and recovered from the operator UI.
 - Runner registrations and diagnostics are persisted in `ci_runners`; runner
   registration, verify, unregister, and job polling update stored tags,
-  `run_untagged`, contact timestamps, runner metadata, and last assigned job.
+  `run_untagged`, contact timestamps, runner metadata, runner feature/config
+  maps, and last assigned job.
   CI Lab diagnostics now survive app restarts/deploys.
 - Minimal runner/pipeline inspection APIs exist: runners can be listed,
   fetched, and queried for recent jobs, and pipeline diagnostics expose shared

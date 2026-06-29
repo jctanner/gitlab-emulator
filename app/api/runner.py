@@ -160,6 +160,8 @@ def _runner_json(runner: CiRunner, *, include_token: bool = False) -> dict:
         "platform": runner.runner_platform,
         "architecture": runner.runner_architecture,
         "executor": runner.runner_executor,
+        "features": runner.runner_features or {},
+        "config": runner.runner_config or {},
         "system_id": runner.system_id,
         "contacted_at": runner.last_contact_at,
         "last_contact_at": runner.last_contact_at,
@@ -300,6 +302,8 @@ def _apply_runner_info(runner: CiRunner, info: RunnerInfo | None) -> None:
     runner.runner_platform = info.platform
     runner.runner_architecture = info.architecture
     runner.runner_executor = info.executor
+    runner.runner_features = info.features or {}
+    runner.runner_config = info.config or {}
 
 
 def _record_runner_contact(
@@ -346,6 +350,8 @@ async def registered_runner_diagnostics(db: DbSession) -> dict:
             "last_runner_name": None,
             "last_runner_version": None,
             "last_runner_executor": None,
+            "last_runner_features": {},
+            "last_runner_config": {},
         }
     return {
         "id": runner.id,
@@ -361,6 +367,8 @@ async def registered_runner_diagnostics(db: DbSession) -> dict:
         "last_runner_name": runner.runner_name,
         "last_runner_version": runner.runner_version,
         "last_runner_executor": runner.runner_executor,
+        "last_runner_features": runner.runner_features or {},
+        "last_runner_config": runner.runner_config or {},
     }
 
 

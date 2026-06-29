@@ -72,6 +72,9 @@ and cache APIs for controlled integration testing.
   source/target branch names and SHAs, source/target project IDs and paths,
   title, description, and labels
 - runner tag matching and `run_untagged`
+- runner registration, verification, and polling persist official runner
+  metadata, feature flags such as `fallback_cache_keys`, and runner config
+  maps for API/admin inspection
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing and emulator cache fallback-key lookup
 - MinIO-backed official runner cache upload/restore validation

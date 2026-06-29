@@ -23,6 +23,15 @@ async def test_runner_registration_exchanges_registration_token(client, db_sessi
                 "name": "persisted-runner",
                 "version": "19.0.1",
                 "executor": "docker",
+                "features": {
+                    "cache": True,
+                    "fallback_cache_keys": True,
+                    "raw_variables": True,
+                },
+                "config": {
+                    "tag_list": ["docker", "linux"],
+                    "run_untagged": False,
+                },
             },
         },
     )
@@ -41,6 +50,15 @@ async def test_runner_registration_exchanges_registration_token(client, db_sessi
     assert runner.runner_name == "persisted-runner"
     assert runner.runner_version == "19.0.1"
     assert runner.runner_executor == "docker"
+    assert runner.runner_features == {
+        "cache": True,
+        "fallback_cache_keys": True,
+        "raw_variables": True,
+    }
+    assert runner.runner_config == {
+        "tag_list": ["docker", "linux"],
+        "run_untagged": False,
+    }
     assert runner.last_contact_at is not None
 
 
@@ -92,6 +110,12 @@ async def test_runner_request_no_job_returns_204(client, db_session):
                 "name": "polling-runner",
                 "version": "19.0.1",
                 "executor": "docker",
+                "features": {
+                    "artifacts": True,
+                    "cache": True,
+                    "fallback_cache_keys": True,
+                },
+                "config": {"run_untagged": True},
             },
         },
     )
@@ -107,6 +131,8 @@ async def test_runner_request_no_job_returns_204(client, db_session):
     assert runner.last_poll_at is not None
     assert runner.system_id == "runner-system-1"
     assert runner.runner_name == "polling-runner"
+    assert runner.runner_features["fallback_cache_keys"] is True
+    assert runner.runner_config == {"run_untagged": True}
 
 
 async def test_runner_verify_updates_persisted_runner(client, db_session):
@@ -144,6 +170,8 @@ async def test_runner_inspection_endpoints(client, test_token):
                 "name": "inspect-runner",
                 "version": "19.0.1",
                 "executor": "docker",
+                "features": {"cache": True, "fallback_cache_keys": True},
+                "config": {"tag_list": ["docker", "vm"]},
             },
         },
     )
@@ -154,6 +182,11 @@ async def test_runner_inspection_endpoints(client, test_token):
     assert runners.status_code == 200
     assert runners.json()[0]["description"] == "inspect-runner"
     assert runners.json()[0]["tag_list"] == ["docker", "vm"]
+    assert runners.json()[0]["features"] == {
+        "cache": True,
+        "fallback_cache_keys": True,
+    }
+    assert runners.json()[0]["config"] == {"tag_list": ["docker", "vm"]}
     assert "token" not in runners.json()[0]
 
     runner = await client.get(f"{API}/runners/{runner_id}")
@@ -161,6 +194,8 @@ async def test_runner_inspection_endpoints(client, test_token):
     assert runner.json()["token"] == RUNNER_TOKEN
     assert runner.json()["version"] == "19.0.1"
     assert runner.json()["executor"] == "docker"
+    assert runner.json()["features"]["fallback_cache_keys"] is True
+    assert runner.json()["config"] == {"tag_list": ["docker", "vm"]}
 
     project = await client.post(
         f"{API}/user/repos",
