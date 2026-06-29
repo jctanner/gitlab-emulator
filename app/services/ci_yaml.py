@@ -51,6 +51,11 @@ SUPPORTED_SERVICE_ENTRY_KEYS = {
     "variables",
     "pull_policy",
 }
+SUPPORTED_IMAGE_KEYS = {
+    "name",
+    "entrypoint",
+    "pull_policy",
+}
 SUPPORTED_CACHE_ENTRY_KEYS = {
     "key",
     "paths",
@@ -101,6 +106,7 @@ class ParsedCiJob:
     stage: str = "test"
     stage_index: int = 0
     image: str = "alpine:3.20"
+    image_config: dict = field(default_factory=dict)
     script: list[str] = field(default_factory=list)
     variables: dict[str, str] = field(default_factory=dict)
     variable_metadata: dict[str, dict] = field(default_factory=dict)
@@ -176,6 +182,20 @@ def _image_name(value: Any, fallback: str) -> str:
     if isinstance(value, dict) and value.get("name"):
         return str(value["name"])
     return fallback
+
+
+def _image_config(value: Any, variables: dict[str, str]) -> dict:
+    if not isinstance(value, dict):
+        return {}
+    unsupported = sorted(set(value) - SUPPORTED_IMAGE_KEYS)
+    if unsupported:
+        raise ValueError(f"image option(s) not supported: {', '.join(unsupported)}")
+    config: dict[str, Any] = {}
+    if value.get("entrypoint") is not None:
+        config["entrypoint"] = _expand_string_list(value.get("entrypoint"), variables)
+    if value.get("pull_policy") is not None:
+        config["pull_policy"] = _expand_string_list(value.get("pull_policy"), variables)
+    return config
 
 
 def _environment_name(value: Any) -> str | None:
@@ -1094,7 +1114,8 @@ def parse_gitlab_ci(
 
     stages = _string_list(parsed.get("stages")) or ["test"]
     default = parsed.get("default") if isinstance(parsed.get("default"), dict) else {}
-    global_image = _image_name(parsed.get("image"), "alpine:3.20")
+    global_image_config = parsed.get("image")
+    global_image = _image_name(global_image_config, "alpine:3.20")
     global_variables = _variable_entries(parsed.get("variables"))
     global_before = _string_list(parsed.get("before_script"))
     global_after = _string_list(parsed.get("after_script"))
@@ -1175,8 +1196,17 @@ def parse_gitlab_ci(
             }
 
         stage = str(config.get("stage") or (stages[0] if stages else "test"))
-        image = _image_name(config.get("image"), global_image)
         variables = _variable_values(merged_variable_entries)
+        image_variables = {
+            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+            "CI_COMMIT_REF_NAME": ref,
+            **pipeline_variables,
+            **variables,
+        }
+        raw_image = config.get("image") if "image" in config else global_image_config
+        image = _image_name(raw_image, global_image)
+        image_config = _image_config(raw_image, image_variables)
         cache_variables = {
             "CI_COMMIT_BRANCH": ref,
             "CI_COMMIT_REF_NAME": ref,
@@ -1220,6 +1250,7 @@ def parse_gitlab_ci(
                 stage=stage,
                 stage_index=stage_order.get(stage, len(stage_order)),
                 image=image,
+                image_config=image_config,
                 script=before + script + after,
                 variables=variables,
                 variable_metadata=merged_variable_entries,

@@ -804,6 +804,8 @@ def _job_json(job: PipelineJob) -> dict:
         "stage": job.stage,
         "stage_index": job.stage_index,
         "name": job.name,
+        "image": job.image,
+        "image_config": job.image_config or {},
         "needs": _need_names(job.needs),
         "dependencies": job.dependencies,
         "tag_list": job.tags or [],
@@ -960,6 +962,7 @@ async def _create_pipeline(
                 stage=body.job.stage,
                 stage_index=body.job.stage_index,
                 image=body.job.image,
+                image_config={},
                 script=body.job.script,
                 variables=body.job.variables,
                 variable_metadata={
@@ -1114,6 +1117,7 @@ async def _create_pipeline(
             stage=parsed_job.stage,
             stage_index=parsed_job.stage_index,
             image=parsed_job.image,
+            image_config=parsed_job.image_config,
             script=parsed_job.script,
             variables=variables,
             needs=_need_items(parsed_job.needs)

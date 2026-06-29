@@ -572,6 +572,18 @@ def _service_payload(services: list[dict] | None) -> list[dict]:
     return payload
 
 
+def _image_payload(job: PipelineJob) -> dict:
+    payload = {"name": job.image}
+    config = job.image_config or {}
+    if config.get("entrypoint"):
+        payload["entrypoint"] = [str(entry) for entry in config.get("entrypoint", [])]
+    if config.get("pull_policy"):
+        payload["pull_policy"] = [
+            str(entry) for entry in config.get("pull_policy", [])
+        ]
+    return payload
+
+
 def _redact_trace_text(text: str, job: PipelineJob) -> str:
     return redact_trace_text(text, job.variables or {})
 
@@ -895,7 +907,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
                 "allow_failure": bool(job.allow_failure),
             }
         ],
-        "image": {"name": job.image},
+        "image": _image_payload(job),
         "services": _service_payload(job.services),
         "artifacts": _artifact_payload(job),
         "cache": _cache_payload(job.cache),

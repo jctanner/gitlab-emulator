@@ -61,6 +61,9 @@ Already working:
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
   matching runner tags, and untagged jobs honor the runner's `run_untagged`
   setting
+- structured image metadata is implemented for global, default, and job-level
+  `image:` mappings: `entrypoint` and `pull_policy` are parsed, persisted,
+  exposed in job API payloads, and sent to official-runner-shaped payloads
 - minimal cache support is implemented: jobs can carry GitLab Runner cache
   metadata, runner payloads include `cache` entries, and cache archives can be
   uploaded, inspected, and downloaded through project cache endpoints

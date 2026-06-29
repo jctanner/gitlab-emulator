@@ -70,6 +70,8 @@ and cache APIs for controlled integration testing.
 - cache metadata and archive upload/download endpoints
 - cache key prefix/files parsing and emulator cache fallback-key lookup
 - MinIO-backed official runner cache upload/restore validation
+- structured global/default/job `image:` metadata for `entrypoint` and
+  `pull_policy` in official-runner-shaped payloads
 - common CI service container definitions are parsed, persisted, exposed in
   job API payloads, and sent to official-runner-shaped job payloads for string
   entries and mapping entries with `name`, `alias`, `command`, `entrypoint`,

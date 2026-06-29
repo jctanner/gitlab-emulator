@@ -56,7 +56,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   job from inside k3s, with a separate CI job pod, trace, and artifacts.
 - Runner jobs can fetch private project repositories through Git Smart HTTP
   using CI job tokens.
-- Minimal CI support exists for stages, image, variables, before_script, script,
+- Minimal CI support exists for stages, image, structured image metadata
+  (`entrypoint`, `pull_policy`), variables, before_script, script,
   after_script, artifacts, stage gating, needs, needs:artifacts, needs
   validation edge cases including clear rejection of unsupported
   `needs:parallel:matrix`, common ref filters, richer `rules` job selection with

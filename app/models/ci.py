@@ -238,6 +238,7 @@ class PipelineJob(Base):
     stage_index: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String, default="pending")
     image: Mapped[str] = mapped_column(String, default="alpine:3.20")
+    image_config: Mapped[dict] = mapped_column(JSON, default=dict)
     script: Mapped[list] = mapped_column(JSON, default=list)
     variables: Mapped[dict] = mapped_column(JSON, default=dict)
     needs: Mapped[list] = mapped_column(JSON, default=list)

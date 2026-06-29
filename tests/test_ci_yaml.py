@@ -480,6 +480,87 @@ service_job:
     ]
 
 
+def test_parse_gitlab_ci_preserves_image_metadata():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  ENTRYPOINT: /bin/sh
+
+default:
+  image:
+    name: alpine:3.20
+    entrypoint:
+      - "$ENTRYPOINT"
+
+default_image:
+  script:
+    - echo default image
+
+override_image:
+  image:
+    name: python:3.12
+    pull_policy: [if-not-present]
+  script:
+    - echo override image
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["default_image"].image == "alpine:3.20"
+    assert by_name["default_image"].image_config == {"entrypoint": ["/bin/sh"]}
+    assert by_name["override_image"].image == "python:3.12"
+    assert by_name["override_image"].image_config == {
+        "pull_policy": ["if-not-present"]
+    }
+
+
+def test_parse_gitlab_ci_preserves_global_image_metadata():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  ENTRYPOINT: /bin/sh
+image:
+  name: alpine:3.20
+  entrypoint:
+    - "$ENTRYPOINT"
+    - -lc
+  pull_policy:
+    - if-not-present
+
+global_image:
+  script:
+    - echo global image
+"""
+    )
+
+    assert jobs[0].image == "alpine:3.20"
+    assert jobs[0].image_config == {
+        "entrypoint": ["/bin/sh", "-lc"],
+        "pull_policy": ["if-not-present"],
+    }
+
+
+def test_parse_gitlab_ci_rejects_unsupported_image_options():
+    try:
+        parse_gitlab_ci(
+            """
+image_job:
+  image:
+    name: alpine:3.20
+    docker:
+      user: root
+  script:
+    - echo image
+"""
+        )
+    except ValueError as exc:
+        message = str(exc)
+        assert "image option(s) not supported" in message
+        assert "docker" in message
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_gitlab_ci_rejects_unsupported_service_options():
     try:
         parse_gitlab_ci(

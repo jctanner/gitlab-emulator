@@ -1262,6 +1262,66 @@ service_job:
     assert request.json()["services"] == expected_services
 
 
+async def test_image_metadata_reaches_api_and_runner_payload(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+variables:
+  ENTRYPOINT: /bin/sh
+
+image_job:
+  image:
+    name: alpine:3.20
+    entrypoint:
+      - "$ENTRYPOINT"
+      - -lc
+    pull_policy: [if-not-present]
+  script:
+    - echo image
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add image metadata ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    job = jobs.json()[0]
+    assert job["image"] == "alpine:3.20"
+    assert job["image_config"] == {
+        "entrypoint": ["/bin/sh", "-lc"],
+        "pull_policy": ["if-not-present"],
+    }
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    assert request.json()["image"] == {
+        "name": "alpine:3.20",
+        "entrypoint": ["/bin/sh", "-lc"],
+        "pull_policy": ["if-not-present"],
+    }
+
+
 async def test_job_runtime_metadata_reaches_api_and_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
