@@ -152,6 +152,7 @@ def create_app() -> FastAPI:
     from app.api.statuses import router as statuses_router
     from app.api.check_runs import router as check_runs_router
     from app.api.releases import router as releases_router
+    from app.api.packages import router as packages_router
     from app.api.collaborators import router as collaborators_router
     from app.api.forks import router as forks_router
     from app.api.reactions import router as reactions_router
@@ -189,7 +190,7 @@ def create_app() -> FastAPI:
         comments_router, labels_router, milestones_router, branches_router,
         commits_router, contents_router, git_refs_router, git_commits_router,
         git_trees_router, git_blobs_router, git_tags_router, webhooks_router,
-        statuses_router, check_runs_router, releases_router,
+        statuses_router, check_runs_router, releases_router, packages_router,
         collaborators_router, forks_router, reactions_router, events_router,
         search_router, orgs_router, groups_router, namespaces_router,
         teams_router, notifications_router,

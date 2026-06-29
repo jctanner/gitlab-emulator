@@ -278,6 +278,8 @@ Target resource areas:
 - protected branches: MVP list/get/protect/unprotect implemented
 - releases: MVP list/create/get/update/delete and release asset link
   create/list/get/update/delete implemented
+- packages: MVP generic package upload/download implemented for
+  package-registry-backed release assets
 - webhooks: MVP project/group list/create/get/update/delete implemented
 - labels: MVP project list/create/get/update/delete implemented with
   GitLab-shaped response fields, search, pagination, and issue counts

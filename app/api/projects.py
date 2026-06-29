@@ -403,7 +403,7 @@ async def _project_json(project: Project, base_url: str, db: DbSession) -> dict:
         "can_create_merge_request_in": True,
         "request_access_enabled": False,
         "lfs_enabled": True,
-        "packages_enabled": False,
+        "packages_enabled": True,
         "shared_runners_enabled": True,
         "public_jobs": True,
         "only_allow_merge_if_pipeline_succeeds": False,

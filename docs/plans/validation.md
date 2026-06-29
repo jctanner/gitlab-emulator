@@ -173,13 +173,14 @@ Current client smoke coverage:
   `glab ci trigger`, `glab ci cancel pipeline`, `glab ci cancel job`,
   `glab ci retry`, and `glab job artifact --list-paths`
 - high-level `glab release create`, `glab release upload --assets-links`,
-  `glab release view`, and `glab release delete`
+  `glab release upload --use-package-registry`, `glab release view`, and
+  `glab release delete`
 - `glab api` release asset link create/list/update/delete coverage
 - `git clone`, `git fetch`, and `git push` over Git Smart HTTP
 
-Long-tail `glab` subcommands such as interactive views and package/release
-binary upload flows remain follow-up validation targets. The smoke keeps each
-high-level command tied to concrete GitLab REST compatibility gaps.
+Long-tail `glab` subcommands such as interactive views remain follow-up
+validation targets. The smoke keeps each high-level command tied to concrete
+GitLab REST compatibility gaps.
 
 ## Known Operational Risks
 
