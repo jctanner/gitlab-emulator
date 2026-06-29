@@ -366,23 +366,33 @@ def _ref_matches(pattern: str, ref: str, ref_kind: str, source: str) -> bool:
         return ref_kind == "tag"
     if pattern in {
         "api",
+        "chat",
         "external",
+        "external_pull_requests",
         "merge_requests",
+        "parent_pipelines",
         "pipelines",
         "pushes",
         "schedules",
+        "security_orchestration_policy",
         "triggers",
         "web",
+        "webide",
     }:
         expected_sources = {
             "api": {"api"},
+            "chat": {"chat"},
             "external": {"external"},
+            "external_pull_requests": {"external_pull_request_event"},
             "merge_requests": {"merge_request_event"},
+            "parent_pipelines": {"parent_pipeline"},
             "pipelines": {"pipeline"},
             "pushes": {"push"},
             "schedules": {"schedule"},
+            "security_orchestration_policy": {"security_orchestration_policy"},
             "triggers": {"trigger"},
             "web": {"web"},
+            "webide": {"webide"},
         }
         return source in expected_sources.get(pattern, set())
     if pattern == ref:

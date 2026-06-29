@@ -470,6 +470,57 @@ not_schedules:
 
     assert [job.name for job in jobs] == ["not_schedules", "trigger_only"]
 
+    merge_request_jobs = parse_gitlab_ci(
+        """
+merge_request_only:
+  script: echo merge request
+  only: [merge_requests]
+
+not_external_pull_request:
+  script: echo not external pull request
+  except: [external_pull_requests]
+""",
+        variables={"CI_PIPELINE_SOURCE": "merge_request_event"},
+    )
+    assert [job.name for job in merge_request_jobs] == [
+        "merge_request_only",
+        "not_external_pull_request",
+    ]
+
+    parent_pipeline_jobs = parse_gitlab_ci(
+        """
+parent_pipeline_only:
+  script: echo parent pipeline
+  only: [parent_pipelines]
+
+not_chat:
+  script: echo not chat
+  except: [chat]
+""",
+        variables={"CI_PIPELINE_SOURCE": "parent_pipeline"},
+    )
+    assert [job.name for job in parent_pipeline_jobs] == [
+        "not_chat",
+        "parent_pipeline_only",
+    ]
+
+    security_policy_jobs = parse_gitlab_ci(
+        """
+security_policy_only:
+  script: echo security policy
+  only: [security_orchestration_policy]
+
+not_webide:
+  script: echo not webide
+  except: [webide]
+""",
+        variables={"CI_PIPELINE_SOURCE": "security_orchestration_policy"},
+    )
+    assert [job.name for job in security_policy_jobs] == [
+        "not_webide",
+        "security_policy_only",
+    ]
+
 
 def test_parse_gitlab_ci_applies_mapping_only_except_filters():
     jobs = parse_gitlab_ci(

@@ -13,7 +13,8 @@ regex flags in `rules:if`,
 `exists`/`changes` path-object rules, variable-expanded rule path patterns,
 directory-style `rules:exists` patterns ending in `/`, mapping-form
 `only`/`except`,
-branch/tag/source-aware legacy `only`/`except` ref filters, cache
+branch/tag/source-aware legacy `only`/`except` ref filters with common source
+aliases, cache
 glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
 cache `key:files_commits`, cache path/key/policy/when/fallback-key variable
 expansion, artifact name/path/exclude/expire_in variable expansion, clear

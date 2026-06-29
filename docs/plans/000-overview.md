@@ -65,8 +65,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   regex flags,
   `exists`/`changes` path-object rules,
   variable-expanded rule path patterns, branch/tag/source-aware
-  `only`/`except` filters including glob-style refs and mapping forms, workflow/rule-level
-  variables, boolean `allow_failure` scheduling/status behavior with clear
+  `only`/`except` filters including common source aliases, glob-style refs, and
+  mapping forms, workflow/rule-level variables, boolean `allow_failure`
+  scheduling/status behavior with clear
   rejection of unsupported `allow_failure:exit_codes`,
   `when: always` and `when: on_failure` cleanup scheduling, runner tags, cache
   metadata, delayed jobs with `when: delayed`/`start_in`, clear rejection of

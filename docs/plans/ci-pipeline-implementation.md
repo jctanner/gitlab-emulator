@@ -53,8 +53,8 @@ Already working:
   variables. Boolean `allow_failure` is supported for jobs and rules, while
   unsupported `allow_failure:exit_codes` is rejected clearly. Current
   `only`/`except` support covers scalar/list branch, tag, and pipeline-source
-  refs, glob-style ref patterns, plus mapping-form `refs`, `variables`, and
-  `changes`.
+  refs including common source aliases, glob-style ref patterns, plus
+  mapping-form `refs`, `variables`, and `changes`.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
   matching runner tags, and untagged jobs honor the runner's `run_untagged`
   setting
