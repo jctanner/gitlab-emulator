@@ -120,7 +120,9 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   schedule APIs exist. Successful Git Smart HTTP and SSH branch pushes create
   `source=push` pipelines when `.gitlab-ci.yml` is present, trigger tokens can
   create `source=trigger` pipelines, and schedule `play` can create
-  `source=schedule` pipelines using the same persisted job/runner path.
+  `source=schedule` pipelines using the same persisted job/runner path. Bridge
+  `trigger` jobs create same-emulator downstream `source=parent_pipeline`
+  pipelines and expose their downstream pipeline IDs on the bridge job.
   Pipeline schedule CRUD, manual Play, next-run calculation, and automatic
   cron materialization of due schedules are implemented through the persisted
   job/runner path.

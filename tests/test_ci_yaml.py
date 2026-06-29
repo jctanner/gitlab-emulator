@@ -423,20 +423,26 @@ unit:
         raise AssertionError("expected ValueError")
 
 
-def test_parse_gitlab_ci_rejects_unsupported_execution_keywords():
-    content = """
+def test_parse_gitlab_ci_preserves_bridge_trigger_jobs():
+    jobs = parse_gitlab_ci(
+        """
 deploy_downstream:
+  stage: deploy
   trigger:
     project: group/downstream
+    branch: main
+    strategy: depend
 """
-    try:
-        parse_gitlab_ci(content)
-    except ValueError as exc:
-        message = str(exc)
-        assert "unsupported GitLab CI keyword" in message
-        assert "trigger" in message
-    else:
-        raise AssertionError("expected ValueError")
+    )
+
+    assert [job.name for job in jobs] == ["deploy_downstream"]
+    assert jobs[0].script == []
+    assert jobs[0].stage == "deploy"
+    assert jobs[0].trigger == {
+        "project": "group/downstream",
+        "ref": "main",
+        "strategy": "depend",
+    }
 
 
 def test_parse_gitlab_ci_expands_integer_parallel_jobs():

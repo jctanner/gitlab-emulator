@@ -861,6 +861,18 @@ def _job_json(job: PipelineJob) -> dict:
         "environment": job.environment,
         "allow_failure": bool(job.allow_failure),
         "allow_failure_exit_codes": job.allow_failure_exit_codes or [],
+        "trigger": {
+            "project": job.trigger_project,
+            "ref": job.trigger_ref,
+            "strategy": job.trigger_strategy,
+        }
+        if job.trigger_project
+        else None,
+        "downstream_pipeline": (
+            {"id": job.downstream_pipeline_id}
+            if job.downstream_pipeline_id is not None
+            else None
+        ),
         "created_at": _fmt_dt(job.created_at),
         "scheduled_at": _fmt_dt(job.scheduled_at),
         "started_at": _fmt_dt(job.started_at),
@@ -932,6 +944,33 @@ async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
         pipeline.finished_at = pipeline.finished_at or now
     else:
         pipeline.status = "pending"
+
+
+async def _resolve_bridge_target(
+    project: Project,
+    parsed_job: ParsedCiJob,
+    ref: str,
+    db: DbSession,
+) -> Project | None:
+    if not parsed_job.trigger:
+        return None
+    target_ref = str(parsed_job.trigger["ref"])
+    target_name = str(parsed_job.trigger["project"]).strip("/")
+    result = await db.execute(
+        select(Project).where(Project.full_name == unquote(target_name).strip("/"))
+    )
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bridge job {parsed_job.name} target project not found: {target_name}",
+        )
+    if target.id == project.id and target_ref == ref:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bridge job {parsed_job.name} cannot trigger the same project/ref",
+        )
+    return target
 
 
 async def _cancel_interruptible_jobs_for_new_pipeline(
@@ -1085,6 +1124,11 @@ async def _create_pipeline(
 
     _validate_job_needs(parsed_jobs)
     _validate_job_dependencies(parsed_jobs)
+    bridge_targets: dict[str, Project] = {}
+    for parsed_job in parsed_jobs:
+        target = await _resolve_bridge_target(project, parsed_job, body.ref, db)
+        if target is not None:
+            bridge_targets[parsed_job.name] = target
 
     max_iid = (
         await db.execute(
@@ -1171,6 +1215,8 @@ async def _create_pipeline(
             else "scheduled"
             if parsed_job.when == "delayed"
             else "pending"
+            if parsed_job.trigger
+            else "pending"
         )
         job = PipelineJob(
             pipeline_id=pipeline.id,
@@ -1201,6 +1247,11 @@ async def _create_pipeline(
             resource_group=parsed_job.resource_group,
             coverage_regex=parsed_job.coverage,
             environment=parsed_job.environment,
+            trigger_project=parsed_job.trigger["project"] if parsed_job.trigger else None,
+            trigger_ref=parsed_job.trigger["ref"] if parsed_job.trigger else None,
+            trigger_strategy=parsed_job.trigger["strategy"]
+            if parsed_job.trigger
+            else None,
             secret_metadata=[
                 ci_secret_metadata_entry(resolved_secret)
                 for resolved_secret in resolved_secrets
@@ -1231,6 +1282,28 @@ async def _create_pipeline(
     )
     await db.commit()
     await db.refresh(pipeline)
+    if bridge_targets:
+        await db.refresh(pipeline, attribute_names=["jobs"])
+        now = datetime.now(timezone.utc)
+        for job in pipeline.jobs:
+            if not job.trigger_project or job.downstream_pipeline_id is not None:
+                continue
+            target = bridge_targets.get(job.name)
+            if target is None:
+                continue
+            downstream = await _create_pipeline(
+                target.id,
+                CreatePipelineRequest(ref=job.trigger_ref or body.ref),
+                db,
+                source="parent_pipeline",
+            )
+            job.downstream_pipeline_id = downstream.id
+            job.status = "success"
+            job.started_at = job.started_at or now
+            job.finished_at = now
+        await _derive_pipeline_status(pipeline, db)
+        await db.commit()
+        await db.refresh(pipeline)
     return pipeline
 
 

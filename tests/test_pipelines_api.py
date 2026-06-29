@@ -1921,20 +1921,49 @@ skip_tag:
     assert "CI_COMMIT_BRANCH" not in variables
 
 
-async def test_create_pipeline_rejects_unsupported_gitlab_ci_execution_keyword(
+async def test_create_pipeline_bridge_trigger_creates_downstream_pipeline(
     client, test_token
 ):
     project = await _create_project(client, test_token)
+    downstream_project = await client.post(
+        f"{API}/user/repos",
+        json={"name": "downstream", "auto_init": True},
+        headers=auth_headers(test_token),
+    )
+    assert downstream_project.status_code == 201
+    downstream = downstream_project.json()
+    downstream_ci = """
+child_job:
+  script:
+    - echo child
+"""
+    write_downstream = await client.put(
+        f"{API}/repos/testuser/downstream/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add child ci",
+            "content": base64.b64encode(downstream_ci.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write_downstream.status_code == 201
+
     ci_yaml = """
+stages:
+  - deploy
+
 deploy_downstream:
+  stage: deploy
   trigger:
-    project: group/downstream
+    project: testuser/downstream
+    branch: main
+    strategy: depend
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
         headers=auth_headers(test_token),
         json={
-            "message": "add unsupported ci",
+            "message": "add bridge ci",
             "content": base64.b64encode(ci_yaml.encode()).decode(),
             "branch": "main",
         },
@@ -1946,9 +1975,33 @@ deploy_downstream:
         json={"ref": "main"},
         headers=auth_headers(test_token),
     )
-    assert resp.status_code == 400
-    assert "unsupported GitLab CI keyword" in resp.text
-    assert "trigger" in resp.text
+    assert resp.status_code == 201
+    parent_pipeline = resp.json()
+    assert parent_pipeline["status"] == "success"
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{parent_pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    bridge = jobs.json()[0]
+    assert bridge["name"] == "deploy_downstream"
+    assert bridge["status"] == "success"
+    assert bridge["trigger"] == {
+        "project": "testuser/downstream",
+        "ref": "main",
+        "strategy": "depend",
+    }
+    assert bridge["downstream_pipeline"]["id"] is not None
+
+    downstream_pipeline = await client.get(
+        f"{API}/projects/{downstream['id']}/pipelines/{bridge['downstream_pipeline']['id']}"
+    )
+    assert downstream_pipeline.status_code == 200
+    assert downstream_pipeline.json()["source"] == "parent_pipeline"
+    downstream_jobs = await client.get(
+        f"{API}/projects/{downstream['id']}/pipelines/{bridge['downstream_pipeline']['id']}/jobs"
+    )
+    assert [job["name"] for job in downstream_jobs.json()] == ["child_job"]
 
 
 async def test_create_pipeline_expands_integer_parallel_jobs(client, test_token):

@@ -122,6 +122,9 @@ Already working:
 - Pipeline trigger tokens and pipeline schedules are persisted. Trigger tokens
   can create `source=trigger` pipelines, and schedule `play` creates
   `source=schedule` pipelines using the same persisted runner job path.
+- Bridge `trigger` jobs create same-emulator downstream
+  `source=parent_pipeline` pipelines, mark the bridge job successful, and
+  expose the downstream pipeline ID in job API payloads.
 
 Temporary parts replaced:
 

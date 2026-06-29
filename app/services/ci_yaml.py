@@ -41,7 +41,6 @@ DEFAULT_INHERITABLE_KEYS = {
 }
 MAX_EXTENDS_DEPTH = 11
 UNSUPPORTED_JOB_KEYS = {
-    "trigger": "bridge/downstream pipeline trigger jobs are not supported",
 }
 SUPPORTED_SERVICE_ENTRY_KEYS = {
     "name",
@@ -128,6 +127,7 @@ class ParsedCiJob:
     coverage: str | None = None
     environment: str | None = None
     secrets: dict[str, dict] = field(default_factory=dict)
+    trigger: dict | None = None
 
 
 def _string_list(value: Any) -> list[str]:
@@ -638,6 +638,32 @@ def _timeout_seconds(value: Any) -> int | None:
     if value is None:
         return None
     return _duration_seconds(value, "timeout")
+
+
+def _trigger_config(value: Any, ref: str) -> dict | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        project = value.strip()
+        if not project:
+            raise ValueError("trigger project is required")
+        return {"project": project, "ref": ref, "strategy": None}
+    if not isinstance(value, dict):
+        raise ValueError("trigger value is not supported")
+    unsupported = set(value) - {"project", "branch", "ref", "strategy"}
+    if unsupported:
+        names = ", ".join(sorted(str(item) for item in unsupported))
+        raise ValueError(f"trigger option(s) not supported: {names}")
+    project = str(value.get("project") or "").strip()
+    if not project:
+        raise ValueError("trigger project is required")
+    trigger_ref = str(value.get("branch") or value.get("ref") or ref).strip()
+    if not trigger_ref:
+        raise ValueError("trigger ref is required")
+    strategy = value.get("strategy")
+    if strategy is not None and str(strategy) not in {"depend"}:
+        raise ValueError(f"trigger strategy is not supported: {strategy}")
+    return {"project": project, "ref": trigger_ref, "strategy": strategy}
 
 
 def _metadata_variable(value: Any) -> dict:
@@ -1353,7 +1379,8 @@ def parse_gitlab_ci(
             default,
         )
         _unsupported_job_keys(str(name), config)
-        if "script" not in config:
+        trigger = _trigger_config(config.get("trigger"), ref)
+        if "script" not in config and trigger is None:
             continue
         inherited_global_variables = _global_variables_for_job(config, global_variables)
         job_variable_entries = _variable_entries(config.get("variables"))
@@ -1452,7 +1479,7 @@ def parse_gitlab_ci(
                     stage_index=stage_order.get(stage, len(stage_order)),
                     image=image,
                     image_config=image_config,
-                    script=before + script + after,
+                script=before + script + after,
                     variables=expanded_variables,
                     variable_metadata=expanded_variable_metadata,
                     needs=_needs(config.get("needs")),
@@ -1477,6 +1504,7 @@ def parse_gitlab_ci(
                     else None,
                     environment=_environment_name(config.get("environment")),
                     secrets=_secret_entries(config.get("secrets")),
+                    trigger=trigger,
                 )
             )
 

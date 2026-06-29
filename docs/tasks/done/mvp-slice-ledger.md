@@ -34,8 +34,9 @@ structured global/default/job `image:` metadata for `entrypoint` and
 `extends`, local/project/remote/template includes with list-valued
 remote/template entries, clear rejection of unsupported cross-ref
 `rules:exists` project/ref options, accepted `rules:changes:compare_to`,
-trigger tokens, push-created `source=push` pipelines after successful Git
-Smart HTTP and SSH branch pushes, pipeline schedules,
+trigger tokens, bridge `trigger` jobs creating same-emulator downstream
+`source=parent_pipeline` pipelines, push-created `source=push` pipelines after
+successful Git Smart HTTP and SSH branch pushes, pipeline schedules,
 persisted-only runner coordination, GitLab-shaped users/auth, GitLab-shaped
 project issues, GitLab-shaped project/group members, and GitLab-shaped
 protected branches, GitLab-shaped releases, and GitLab-shaped webhooks.

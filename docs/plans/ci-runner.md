@@ -81,10 +81,11 @@ and cache APIs for controlled integration testing.
 - stale running jobs are exposed in pipeline/CI Lab diagnostics; recovery is
   manual through the CI Lab requeue action or, for GitLab-shaped clients,
   cancel followed by retry
-- unsupported execution-affecting CI syntax such as bridge `trigger` jobs fails
-  pipeline creation with a clear 400 response instead of being silently ignored;
-  integer `parallel` and `parallel:matrix` jobs expand into per-node persisted
-  jobs, while `needs:parallel:matrix` remains out of scope for the MVP
+- bridge `trigger` jobs create same-emulator downstream
+  `source=parent_pipeline` pipelines and expose the downstream pipeline ID on
+  the bridge job; integer `parallel` and `parallel:matrix` jobs expand into
+  per-node persisted jobs, while `needs:parallel:matrix` remains out of scope
+  for the MVP
 
 ## Remaining CI Work
 

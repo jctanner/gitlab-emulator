@@ -140,6 +140,26 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipeline_jobs",
+        "trigger_project",
+        "trigger_project VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "trigger_ref",
+        "trigger_ref VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "trigger_strategy",
+        "trigger_strategy VARCHAR",
+    )
+    await ensure_column(
+        "pipeline_jobs",
+        "downstream_pipeline_id",
+        "downstream_pipeline_id INTEGER",
+    )
+    await ensure_column(
+        "pipeline_jobs",
         "when",
         '"when" VARCHAR DEFAULT \'on_success\'',
     )
