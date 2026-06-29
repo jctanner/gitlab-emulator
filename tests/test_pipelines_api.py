@@ -2411,6 +2411,65 @@ async def test_expired_artifact_upload_is_not_downloadable(client, test_token):
     assert artifact_download.status_code == 404
 
 
+async def test_keep_project_job_artifacts_clears_expiration(client, test_token):
+    project = await _create_project(client, test_token)
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {
+                "name": "keep_artifact",
+                "image": "alpine:3.20",
+                "script": ["echo keep"],
+                "artifacts_paths": ["out/result.txt"],
+                "artifacts": {
+                    "name": "kept",
+                    "paths": ["out/result.txt"],
+                    "expire_in": "1 hour",
+                },
+            },
+        },
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    job_id = payload["id"]
+    job_token = payload["token"]
+
+    artifact_upload = await client.post(
+        f"{API}/jobs/{job_id}/artifacts?artifact_format=zip&artifact_type=archive",
+        headers={"JOB-TOKEN": job_token, "Content-Type": "application/zip"},
+        content=b"kept artifact",
+    )
+    assert artifact_upload.status_code == 201
+
+    job_after_artifact = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}"
+    )
+    assert job_after_artifact.status_code == 200
+    assert job_after_artifact.json()["artifacts"][0]["expire_at"] is not None
+
+    keep = await client.post(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts/keep",
+        headers=auth_headers(test_token),
+    )
+    assert keep.status_code == 200
+    assert keep.json()["artifacts"][0]["expire_at"] is None
+
+    artifact_download = await client.get(
+        f"{API}/projects/{project['id']}/jobs/{job_id}/artifacts"
+    )
+    assert artifact_download.status_code == 200
+    assert artifact_download.content == b"kept artifact"
+
+
 async def test_create_pipeline_from_gitlab_ci_yaml(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

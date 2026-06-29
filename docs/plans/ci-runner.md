@@ -128,6 +128,7 @@ and cache APIs for controlled integration testing.
   and pagination headers
 - project job erase records `erased_at`, clears stored traces, and removes
   persisted artifacts for terminal jobs
+- project job artifact keep clears artifact expiration timestamps
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

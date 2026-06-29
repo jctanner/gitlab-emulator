@@ -2513,6 +2513,24 @@ async def get_project_job_trace(
     )
 
 
+@router.post("/projects/{project_ref:path}/jobs/{job_id}/artifacts/keep")
+async def keep_project_job_artifacts(
+    project_ref: str,
+    job_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    job = await _get_job_for_project_ref(project_ref, job_id, db)
+    await require_project_access(job.project, current_user, db, DEVELOPER)
+    if not job.artifacts:
+        raise HTTPException(status_code=404, detail="Artifacts Not Found")
+    for artifact in job.artifacts:
+        artifact.expire_at = None
+    await db.commit()
+    await db.refresh(job)
+    return _job_json(job)
+
+
 @router.get("/projects/{project_ref:path}/jobs/{job_id}/artifacts")
 async def download_project_job_artifacts(
     project_ref: str, job_id: int, db: DbSession, current_user: CurrentUser
