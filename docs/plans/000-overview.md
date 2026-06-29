@@ -131,7 +131,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   pipelines, and schedule `play` can create
   `source=schedule` pipelines using the same persisted job/runner path. Bridge
   `trigger` jobs create same-emulator downstream `source=parent_pipeline`
-  pipelines and expose their downstream pipeline IDs on the bridge job.
+  pipelines and expose their downstream pipeline IDs on the bridge job and the
+  pipeline bridges API.
   Pipeline schedule CRUD, manual Play, next-run calculation, and automatic
   cron materialization of due schedules are implemented through the persisted
   job/runner path.

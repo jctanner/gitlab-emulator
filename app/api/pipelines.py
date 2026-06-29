@@ -2823,6 +2823,52 @@ async def get_pipeline_diagnostics(
     }
 
 
+@router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/bridges")
+async def list_pipeline_bridges(
+    project_ref: str,
+    pipeline_id: int,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    scope: str | None = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
+    project = await _get_project_ref(
+        project_ref, db, current_user, enforce_read_access=True
+    )
+    query = (
+        select(PipelineJob)
+        .join(Pipeline)
+        .options(
+            selectinload(PipelineJob.pipeline),
+            selectinload(PipelineJob.project),
+            selectinload(PipelineJob.artifacts),
+        )
+        .where(
+            Pipeline.project_id == project.id,
+            Pipeline.id == pipeline_id,
+            PipelineJob.trigger_project.is_not(None),
+        )
+        .order_by(PipelineJob.id.asc())
+    )
+    if scope:
+        scopes = [item.strip() for item in scope.split(",") if item.strip()]
+        if scopes:
+            query = query.where(PipelineJob.status.in_(scopes))
+    total = (
+        await db.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar() or 0
+    result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
+    return paginated_json(
+        [_job_json(job) for job in result.scalars().all()],
+        request,
+        page,
+        per_page,
+        total,
+    )
+
+
 @router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/jobs")
 async def list_pipeline_jobs(
     project_ref: str,

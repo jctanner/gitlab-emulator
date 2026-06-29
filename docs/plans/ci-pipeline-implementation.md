@@ -149,7 +149,8 @@ Already working:
   `source=schedule` pipelines using the same persisted runner job path.
 - Bridge `trigger` jobs create same-emulator downstream
   `source=parent_pipeline` pipelines, mark the bridge job successful, and
-  expose the downstream pipeline ID in job API payloads.
+  expose the downstream pipeline ID in job API payloads and the pipeline
+  bridges API.
 
 Temporary parts replaced:
 

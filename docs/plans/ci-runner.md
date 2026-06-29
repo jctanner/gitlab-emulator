@@ -102,10 +102,10 @@ and cache APIs for controlled integration testing.
   cancel followed by retry
 - bridge `trigger` jobs create same-emulator downstream
   `source=parent_pipeline` pipelines and expose the downstream pipeline ID on
-  the bridge job; integer `parallel` and `parallel:matrix` jobs expand into
-  per-node persisted jobs, same-pipeline `needs:parallel:true` expands to all
-  integer parallel jobs, and same-pipeline `needs:parallel:matrix` expands to
-  the selected matrix job names
+  the bridge job and the pipeline bridges API; integer `parallel` and
+  `parallel:matrix` jobs expand into per-node persisted jobs, same-pipeline
+  `needs:parallel:true` expands to all integer parallel jobs, and same-pipeline
+  `needs:parallel:matrix` expands to the selected matrix job names
 
 ## Remaining CI Work
 

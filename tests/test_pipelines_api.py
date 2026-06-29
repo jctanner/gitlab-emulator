@@ -2996,6 +2996,33 @@ deploy_downstream:
     }
     assert bridge["downstream_pipeline"]["id"] is not None
 
+    bridges = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{parent_pipeline['id']}/bridges",
+        params={"per_page": 1},
+        headers=auth_headers(test_token),
+    )
+    assert bridges.status_code == 200
+    assert bridges.headers["x-total"] == "1"
+    assert bridges.headers["x-page"] == "1"
+    bridge_payload = bridges.json()[0]
+    assert bridge_payload["id"] == bridge["id"]
+    assert bridge_payload["name"] == "deploy_downstream"
+    assert bridge_payload["status"] == "success"
+    assert bridge_payload["trigger"] == {
+        "project": "testuser/downstream",
+        "ref": "main",
+        "strategy": "depend",
+    }
+    assert bridge_payload["downstream_pipeline"] == bridge["downstream_pipeline"]
+
+    no_failed_bridges = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{parent_pipeline['id']}/bridges",
+        params={"scope": "failed"},
+        headers=auth_headers(test_token),
+    )
+    assert no_failed_bridges.status_code == 200
+    assert no_failed_bridges.json() == []
+
     downstream_pipeline = await client.get(
         f"{API}/projects/{downstream['id']}/pipelines/{bridge['downstream_pipeline']['id']}"
     )
