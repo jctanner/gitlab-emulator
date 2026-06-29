@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import fnmatch
+import hashlib
 from itertools import product
 import re
 from typing import Any
@@ -500,7 +501,26 @@ def _bool_value(value: Any, variables: dict[str, str] | None = None) -> bool:
     return bool(value)
 
 
-def _cache_key(value: Any, variables: dict[str, str] | None = None) -> str:
+def _cache_key_digest(paths: list[str], key_map: dict[str, str] | None) -> str | None:
+    if not paths or not key_map:
+        return None
+    values = [
+        f"{path}\0{key_map[path]}"
+        for path in paths
+        if path in key_map and key_map[path]
+    ]
+    if not values:
+        return None
+    return hashlib.sha256("\0".join(values).encode("utf-8")).hexdigest()
+
+
+def _cache_key(
+    value: Any,
+    variables: dict[str, str] | None = None,
+    *,
+    cache_key_files: dict[str, str] | None = None,
+    cache_key_files_commits: dict[str, str] | None = None,
+) -> str:
     variables = variables or {}
     if value is None:
         return "default"
@@ -516,18 +536,27 @@ def _cache_key(value: Any, variables: dict[str, str] | None = None) -> str:
             return f"{prefix}-{key}" if prefix else key
         files = _expand_string_list(value.get("files"), variables)
         if files:
-            key = "-".join(files)
+            key = _cache_key_digest(files, cache_key_files) or "-".join(files)
             return f"{prefix}-{key}" if prefix else key
         files_commits = _expand_string_list(value.get("files_commits"), variables)
         if files_commits:
-            key = "-".join(files_commits)
+            key = (
+                _cache_key_digest(files_commits, cache_key_files_commits)
+                or "-".join(files_commits)
+            )
             return f"{prefix}-{key}" if prefix else key
         if prefix:
             return prefix
     return "default"
 
 
-def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[dict]:
+def _cache_entries(
+    value: Any,
+    variables: dict[str, str] | None = None,
+    *,
+    cache_key_files: dict[str, str] | None = None,
+    cache_key_files_commits: dict[str, str] | None = None,
+) -> list[dict]:
     if value is None or value is False:
         return []
     variables = variables or {}
@@ -557,7 +586,12 @@ def _cache_entries(value: Any, variables: dict[str, str] | None = None) -> list[
             raise ValueError(f"cache when is not supported: {when}")
         entries.append(
             {
-                "key": _cache_key(raw_entry.get("key"), variables),
+                "key": _cache_key(
+                    raw_entry.get("key"),
+                    variables,
+                    cache_key_files=cache_key_files,
+                    cache_key_files_commits=cache_key_files_commits,
+                ),
                 "untracked": untracked,
                 "unprotect": _bool_value(raw_entry.get("unprotect", False), variables),
                 "policy": policy,
@@ -1483,6 +1517,8 @@ def parse_gitlab_ci(
     changed_paths: set[str] | None = None,
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
     changed_path_sets: dict[str, set[str]] | None = None,
+    cache_key_files: dict[str, str] | None = None,
+    cache_key_files_commits: dict[str, str] | None = None,
 ) -> list[ParsedCiJob]:
     """Parse a small, runner-executable subset of `.gitlab-ci.yml`.
 
@@ -1632,7 +1668,14 @@ def parse_gitlab_ci(
         artifact_paths = artifact_config.get("paths", [])
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
         cache = (
-            _cache_entries(raw_cache, cache_variables) if raw_cache is not None else []
+            _cache_entries(
+                raw_cache,
+                cache_variables,
+                cache_key_files=cache_key_files,
+                cache_key_files_commits=cache_key_files_commits,
+            )
+            if raw_cache is not None
+            else []
         )
         raw_services = (
             config.get("services") if "services" in config else global_services_config

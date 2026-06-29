@@ -237,9 +237,9 @@ Target areas:
   retry, timeout, resource-group, coverage, interruptible, and image/service
   executor option support
 - remaining richer cache edge cases beyond current variable-expanded paths,
-  list keys, prefix/files/files_commits keys, fallback keys, policy, `when`,
-  `unprotect`, clear unsupported option rejection, and MinIO-backed runner
-  validation
+  list keys, repository-derived prefix/files/files_commits keys, fallback keys,
+  policy, `when`, `untracked`, `unprotect`, clear unsupported option rejection,
+  and MinIO-backed runner validation
 
 Done when:
 

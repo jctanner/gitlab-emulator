@@ -81,10 +81,12 @@ Already working:
   metadata, runner payloads include `cache` entries, and cache archives can be
   uploaded, inspected, and downloaded through project cache endpoints
 - cache key list, prefix/files/files_commits parsing, and emulator cache
-  fallback-key lookup are implemented for API-level cache coverage; cache
-  paths, keys, cache policies, `when`, `untracked`, `unprotect`, and fallback
-  keys expand merged CI variables before reaching the runner payload, including
-  false-like boolean strings; unsupported cache entry options and invalid cache
+  fallback-key lookup are implemented for API-level cache coverage; pipeline
+  creation derives `files` keys from repository blob state and `files_commits`
+  keys from the latest commit touching each referenced file; cache paths, keys,
+  cache policies, `when`, `untracked`, `unprotect`, and fallback keys expand
+  merged CI variables before reaching the runner payload, including false-like
+  boolean strings; unsupported cache entry options and invalid cache
   policy/when values fail clearly during pipeline creation;
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
@@ -482,11 +484,11 @@ Implemented:
 
 Still needed:
 
-- support remaining richer cache options and edge cases beyond current
-  variable-expanded paths, list, prefix/files/files_commits, fallback-key,
-  policy, `when`, `unprotect`, clear unsupported option rejection, and
-  MinIO/S3 validation coverage; GitLab Runner supports S3/GCS/Azure
-  distributed cache adapters, not an arbitrary HTTP cache endpoint
+- support remaining richer cache edge cases beyond current variable-expanded
+  paths, list, repository-derived prefix/files/files_commits keys,
+  fallback-key, policy, `when`, `untracked`, `unprotect`, clear unsupported
+  option rejection, and MinIO/S3 validation coverage; GitLab Runner supports
+  S3/GCS/Azure distributed cache adapters, not an arbitrary HTTP cache endpoint
 
 ## Done Criteria
 

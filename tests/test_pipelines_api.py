@@ -1764,6 +1764,111 @@ cache_probe:
     ]
 
 
+async def test_cache_key_files_use_repository_state_in_runner_payload(
+    client,
+    test_token,
+):
+    project = await _create_project(client, test_token)
+    for path, content in (
+        ("package.json", '{"dependencies":{"demo":"1.0.0"}}\n'),
+        ("lockfile.txt", "locked-v1\n"),
+    ):
+        write = await client.put(
+            f"{API}/repos/testuser/ci-repo/contents/{path}",
+            headers=auth_headers(test_token),
+            json={
+                "message": f"add {path}",
+                "content": base64.b64encode(content.encode()).decode(),
+                "branch": "main",
+            },
+        )
+        assert write.status_code == 201
+
+    ci_yaml = """
+cache_probe:
+  cache:
+    - key:
+        prefix: content
+        files:
+          - package.json
+      paths:
+        - .cache/content
+    - key:
+        prefix: commits
+        files_commits:
+          - lockfile.txt
+      paths:
+        - .cache/commits
+  script:
+    - echo cache
+"""
+    write_ci = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add cache key ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write_ci.status_code == 201
+
+    first_pipeline = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert first_pipeline.status_code == 201
+    first_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert first_request.status_code == 201
+    first_cache = first_request.json()["cache"]
+    assert first_cache[0]["key"].startswith("content-")
+    assert first_cache[0]["key"] != "content-package.json"
+    assert first_cache[1]["key"].startswith("commits-")
+    assert first_cache[1]["key"] != "commits-lockfile.txt"
+
+    finish = await client.put(
+        f"{API}/jobs/{first_request.json()['id']}",
+        headers={"JOB-TOKEN": first_request.json()["token"]},
+        json={"token": first_request.json()["token"], "state": "success"},
+    )
+    assert finish.status_code == 200
+
+    update = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/package.json",
+        headers=auth_headers(test_token),
+        json={
+            "message": "update package json",
+            "content": base64.b64encode(
+                b'{"dependencies":{"demo":"2.0.0"}}\n'
+            ).decode(),
+            "branch": "main",
+        },
+    )
+    assert update.status_code == 200
+
+    second_pipeline = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert second_pipeline.status_code == 201
+    second_request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert second_request.status_code == 201
+    second_cache = second_request.json()["cache"]
+
+    assert second_cache[0]["key"] != first_cache[0]["key"]
+    assert second_cache[1]["key"] == first_cache[1]["key"]
+
+
 async def test_expired_artifact_upload_is_not_downloadable(client, test_token):
     project = await _create_project(client, test_token)
     pipeline_resp = await client.post(

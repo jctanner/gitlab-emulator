@@ -15,9 +15,10 @@ directory-style `rules:exists` patterns ending in `/`, mapping-form
 `only`/`except`,
 branch/tag/source-aware legacy `only`/`except` ref filters with common source
 aliases, compound `timeout` and `start_in` duration values, cache
-glob-style legacy `only`/`except` ref filters, cache list/file-derived keys,
-cache `key:files_commits`, cache path/key/policy/when/fallback-key variable
-expansion, cache `unprotect`, artifact name/path/exclude/expire_in variable
+glob-style legacy `only`/`except` ref filters, cache list keys,
+repository-derived cache `key:files` and `key:files_commits`, cache
+path/key/policy/when/fallback-key variable expansion, cache `untracked` and
+`unprotect`, artifact name/path/exclude/expire_in variable
 expansion, job `dependencies` artifact selection and default prior-stage
 artifact dependency payloads, clear rejection of unsupported cache entry
 options and invalid cache policy/when values, parsed job runtime metadata for

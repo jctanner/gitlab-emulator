@@ -1,6 +1,14 @@
 """`.gitlab-ci.yml` parser tests."""
 
+import hashlib
+
 from app.services.ci_yaml import parse_gitlab_ci, parse_gitlab_ci_workflow_name
+
+
+def _cache_key_digest(paths: list[str], values: dict[str, str]) -> str:
+    return hashlib.sha256(
+        "\0".join(f"{path}\0{values[path]}" for path in paths).encode("utf-8")
+    ).hexdigest()
 
 
 def test_parse_gitlab_ci_orders_jobs_by_stage_and_merges_scripts():
@@ -1738,6 +1746,62 @@ cache_probe:
     )
 
     assert jobs[0].cache[0]["key"] == "commits-pyproject.toml-uv.lock"
+
+
+def test_parse_gitlab_ci_uses_repository_context_for_cache_key_files():
+    content_keys = {
+        "pyproject.toml": "blob-one",
+        "uv.lock": "blob-two",
+    }
+    jobs = parse_gitlab_ci(
+        """
+cache_probe:
+  variables:
+    LOCKFILE: uv.lock
+  cache:
+    key:
+      prefix: deps
+      files:
+        - pyproject.toml
+        - "$LOCKFILE"
+    paths:
+      - .cache/uv
+  script:
+    - echo cache
+""",
+        cache_key_files=content_keys,
+    )
+
+    expected = _cache_key_digest(["pyproject.toml", "uv.lock"], content_keys)
+    assert jobs[0].cache[0]["key"] == f"deps-{expected}"
+
+
+def test_parse_gitlab_ci_uses_repository_context_for_cache_key_files_commits():
+    commit_keys = {
+        "pyproject.toml": "commit-one",
+        "uv.lock": "commit-two",
+    }
+    jobs = parse_gitlab_ci(
+        """
+cache_probe:
+  variables:
+    LOCKFILE: uv.lock
+  cache:
+    key:
+      prefix: commits
+      files_commits:
+        - pyproject.toml
+        - "$LOCKFILE"
+    paths:
+      - .cache/uv
+  script:
+    - echo cache
+""",
+        cache_key_files_commits=commit_keys,
+    )
+
+    expected = _cache_key_digest(["pyproject.toml", "uv.lock"], commit_keys)
+    assert jobs[0].cache[0]["key"] == f"commits-{expected}"
 
 
 def test_parse_gitlab_ci_expands_variables_in_cache_metadata():

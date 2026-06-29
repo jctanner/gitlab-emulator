@@ -298,6 +298,41 @@ async def _repo_paths_at_ref(project: Project, ref: str) -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
+async def _cache_key_file_maps(
+    project: Project,
+    ref: str,
+) -> tuple[dict[str, str], dict[str, str]]:
+    if not project.disk_path:
+        return {}, {}
+    tree = await _git_output(project.disk_path, "ls-tree", "-r", ref)
+    if not tree:
+        return {}, {}
+    blob_ids: dict[str, str] = {}
+    for line in tree.splitlines():
+        metadata, separator, path = line.partition("\t")
+        if not separator:
+            continue
+        parts = metadata.split()
+        if len(parts) >= 3 and parts[1] == "blob":
+            blob_ids[path] = parts[2]
+
+    commit_ids: dict[str, str] = {}
+    for path in blob_ids:
+        commit = await _git_output(
+            project.disk_path,
+            "log",
+            "-n",
+            "1",
+            "--format=%H",
+            ref,
+            "--",
+            path,
+        )
+        if commit:
+            commit_ids[path] = commit.strip()
+    return blob_ids, commit_ids
+
+
 async def _changed_paths_at_sha(project: Project, sha: str) -> set[str]:
     if not project.disk_path or sha == "0000000000000000000000000000000000000000":
         return set()
@@ -1465,6 +1500,10 @@ async def _create_pipeline(
                 }
             )
             existing_paths = await _repo_paths_at_ref(project, body.ref)
+            cache_key_files, cache_key_files_commits = await _cache_key_file_maps(
+                project,
+                sha,
+            )
             changed_paths = await _changed_paths_at_sha(project, sha)
             merged_ci_content = await _read_gitlab_ci_with_includes(
                 project,
@@ -1496,6 +1535,8 @@ async def _create_pipeline(
                 changed_paths=changed_paths,
                 existing_path_sets=existing_path_sets,
                 changed_path_sets=changed_path_sets,
+                cache_key_files=cache_key_files,
+                cache_key_files_commits=cache_key_files_commits,
             )
             pipeline_name = parse_gitlab_ci_workflow_name(
                 merged_ci_content,
