@@ -944,7 +944,7 @@ async def _create_pipeline(
         sha = await _resolve_ref(project, body.ref)
     ref_kind = await _ref_kind(project, body.ref)
 
-    if body.variables and source not in {"trigger", "schedule"}:
+    if body.variables and source not in {"trigger", "schedule", "merge_request_event"}:
         access_level = await project_access_level(project, actor, db)
         if not pipeline_variables_allowed_for_access_level(
             policy=pipeline_variable_policy(project.ci_security_settings),

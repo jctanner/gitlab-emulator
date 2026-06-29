@@ -30,6 +30,7 @@ from app.api.pulls import _perform_git_merge
 from app.config import settings
 from app.models.issue import Issue
 from app.models.merge_request import MergeRequest
+from app.models.ci import Pipeline
 from app.models.project import Project
 from app.schemas.user import _fmt_dt
 from app.services.permissions import DEVELOPER, require_project_access
@@ -115,6 +116,7 @@ def _mr_json(
     base_url: str,
     *,
     changes_count: int | str | None = None,
+    head_pipeline: Pipeline | None = None,
 ) -> dict:
     issue = merge_request.issue
     project = merge_request.repository
@@ -126,6 +128,7 @@ def _mr_json(
     api_url = f"{base_url}/api/v4/projects/{project.id}/merge_requests/{iid}"
     closed_by = issue.closed_by if issue and issue.closed_by else merge_request.merged_by
 
+    pipeline_json = _pipeline_json(head_pipeline) if head_pipeline else None
     return {
         "id": merge_request.id,
         "iid": iid,
@@ -186,8 +189,8 @@ def _mr_json(
         "latest_build_started_at": None,
         "latest_build_finished_at": None,
         "first_deployed_to_production_at": None,
-        "pipeline": None,
-        "head_pipeline": None,
+        "pipeline": pipeline_json,
+        "head_pipeline": pipeline_json,
         "diff_refs": {
             "base_sha": merge_request.base_sha,
             "head_sha": merge_request.head_sha,
@@ -221,6 +224,77 @@ def _merge_request_pipeline_variables(
         PipelineVariable(key="CI_MERGE_REQUEST_SOURCE_PROJECT_PATH", value=project.full_name),
         PipelineVariable(key="CI_MERGE_REQUEST_TARGET_PROJECT_PATH", value=project.full_name),
     ]
+
+
+async def _latest_merge_request_pipeline(
+    project: Project,
+    merge_request: MergeRequest,
+    db: DbSession,
+) -> Pipeline | None:
+    result = await db.execute(
+        select(Pipeline)
+        .options(selectinload(Pipeline.project))
+        .where(
+            Pipeline.project_id == project.id,
+            Pipeline.source == "merge_request_event",
+            Pipeline.ref == merge_request.head_ref,
+            Pipeline.sha == merge_request.head_sha,
+        )
+        .order_by(Pipeline.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _mr_json_with_pipeline(
+    merge_request: MergeRequest,
+    project: Project,
+    db: DbSession,
+    *,
+    changes_count: int | str | None = None,
+) -> dict:
+    head_pipeline = await _latest_merge_request_pipeline(project, merge_request, db)
+    return _mr_json(
+        merge_request,
+        settings.BASE_URL,
+        changes_count=changes_count,
+        head_pipeline=head_pipeline,
+    )
+
+
+async def _create_merge_request_event_pipeline(
+    project: Project,
+    merge_request: MergeRequest,
+    db: DbSession,
+    *,
+    actor,
+    allow_skip: bool,
+) -> Pipeline | None:
+    try:
+        return await _create_pipeline(
+            project.id,
+            CreatePipelineRequest(
+                ref=merge_request.head_ref,
+                sha=merge_request.head_sha,
+                variables=_merge_request_pipeline_variables(project, merge_request),
+            ),
+            db,
+            source="merge_request_event",
+            actor=actor,
+        )
+    except HTTPException as exc:
+        if not allow_skip:
+            raise
+        await db.rollback()
+        await db.refresh(project)
+        await db.refresh(merge_request)
+        detail = str(exc.detail)
+        if exc.status_code == 400 and (
+            ".gitlab-ci.yml not found" in detail
+            or "workflow rules skipped pipeline" in detail
+        ):
+            return None
+        raise
 
 
 async def _validate_source_target(
@@ -370,13 +444,11 @@ async def list_merge_requests(
     ).scalar() or 0
     query = query.offset((page - 1) * per_page).limit(per_page)
     merge_requests = (await db.execute(query)).scalars().all()
-    return paginated_json(
-        [_mr_json(merge_request, settings.BASE_URL) for merge_request in merge_requests],
-        request,
-        page,
-        per_page,
-        total,
-    )
+    items = [
+        await _mr_json_with_pipeline(merge_request, project, db)
+        for merge_request in merge_requests
+    ]
+    return paginated_json(items, request, page, per_page, total)
 
 
 @router.post("/projects/{project_ref:path}/merge_requests", status_code=201)
@@ -447,7 +519,16 @@ async def create_merge_request(
     db.add(merge_request)
     await db.commit()
 
-    return _mr_json(await _get_mr_or_404(project, number, db), settings.BASE_URL)
+    merge_request = await _get_mr_or_404(project, number, db)
+    await _create_merge_request_event_pipeline(
+        project,
+        merge_request,
+        db,
+        actor=user,
+        allow_skip=True,
+    )
+    merge_request = await _get_mr_or_404(project, number, db)
+    return await _mr_json_with_pipeline(merge_request, project, db)
 
 
 @router.get("/projects/{project_ref:path}/merge_requests/{iid}")
@@ -460,7 +541,7 @@ async def get_merge_request(
     """Get one merge request for a GitLab project."""
     project = await _get_project_or_404(project_ref, db, current_user)
     merge_request = await _get_mr_or_404(project, iid, db)
-    return _mr_json(merge_request, settings.BASE_URL)
+    return await _mr_json_with_pipeline(merge_request, project, db)
 
 
 @router.get("/projects/{project_ref:path}/merge_requests/{iid}/commits")
@@ -521,16 +602,12 @@ async def create_merge_request_pipeline(
     await require_project_access(project, user, db, DEVELOPER)
     merge_request = await _get_mr_or_404(project, iid, db)
     await _refresh_branch_shas(project, merge_request)
-    pipeline = await _create_pipeline(
-        project.id,
-        CreatePipelineRequest(
-            ref=merge_request.head_ref,
-            sha=merge_request.head_sha,
-            variables=_merge_request_pipeline_variables(project, merge_request),
-        ),
+    pipeline = await _create_merge_request_event_pipeline(
+        project,
+        merge_request,
         db,
-        source="merge_request_event",
         actor=user,
+        allow_skip=False,
     )
     return _pipeline_json(pipeline)
 
@@ -546,7 +623,12 @@ async def get_merge_request_changes(
     project = await _get_project_or_404(project_ref, db, current_user)
     merge_request = await _get_mr_or_404(project, iid, db)
     changes = await _change_entries(project, merge_request, include_diff=True)
-    data = _mr_json(merge_request, settings.BASE_URL, changes_count=len(changes))
+    data = await _mr_json_with_pipeline(
+        merge_request,
+        project,
+        db,
+        changes_count=len(changes),
+    )
     data["changes"] = changes
     data["overflow"] = False
     return data
@@ -589,6 +671,7 @@ async def update_merge_request(
     await require_project_access(project, user, db, DEVELOPER)
     merge_request = await _get_mr_or_404(project, iid, db)
     issue = merge_request.issue
+    pipeline_relevant_update = False
 
     if "title" in body:
         issue.title = body["title"]
@@ -606,6 +689,7 @@ async def update_merge_request(
             merge_request.head_ref,
             merge_request.base_ref,
         )
+        pipeline_relevant_update = True
     if "source_branch" in body:
         if merge_request.merged:
             raise HTTPException(
@@ -618,6 +702,7 @@ async def update_merge_request(
             merge_request.head_ref,
             merge_request.base_ref,
         )
+        pipeline_relevant_update = True
     if "draft" in body:
         merge_request.draft = bool(body["draft"])
 
@@ -642,11 +727,22 @@ async def update_merge_request(
             issue.closed_by = None
             if not merge_request.merged:
                 project.open_issues_count += 1
+            pipeline_relevant_update = True
     elif state_event is not None:
         raise HTTPException(status_code=400, detail="Invalid state_event")
 
     await db.commit()
-    return _mr_json(await _get_mr_or_404(project, iid, db), settings.BASE_URL)
+    merge_request = await _get_mr_or_404(project, iid, db)
+    if issue.state == "open" and pipeline_relevant_update:
+        await _create_merge_request_event_pipeline(
+            project,
+            merge_request,
+            db,
+            actor=user,
+            allow_skip=True,
+        )
+        merge_request = await _get_mr_or_404(project, iid, db)
+    return await _mr_json_with_pipeline(merge_request, project, db)
 
 
 @router.put("/projects/{project_ref:path}/merge_requests/{iid}/merge")
@@ -705,4 +801,8 @@ async def merge_merge_request(
     project.open_issues_count = max(0, project.open_issues_count - 1)
     await db.commit()
 
-    return _mr_json(await _get_mr_or_404(project, iid, db), settings.BASE_URL)
+    return await _mr_json_with_pipeline(
+        await _get_mr_or_404(project, iid, db),
+        project,
+        db,
+    )

@@ -436,6 +436,10 @@ Implemented:
   runner-facing metadata for raw, masked/public, and file variables
 - create `source=trigger` pipelines from project trigger tokens
 - create `source=schedule` pipelines from manually played pipeline schedules
+- create `source=merge_request_event` pipelines when merge requests are opened
+  or branch-target updates occur and the MR head `.gitlab-ci.yml` workflow
+  permits the event; MR API payloads expose the latest matching pipeline as
+  `pipeline` and `head_pipeline`
 - parse and persist job `tags`
 - match tagged jobs only to runners whose tag list covers the job tags
 - honor `run_untagged` for untagged persisted jobs

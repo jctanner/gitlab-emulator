@@ -75,6 +75,8 @@ async def test_create_merge_request_returns_gitlab_shape(client, test_user, test
     assert data["merge_status"] == "can_be_merged"
     assert data["detailed_merge_status"] == "mergeable"
     assert data["changes_count"] is None
+    assert data["pipeline"] is None
+    assert data["head_pipeline"] is None
     assert data["diff_refs"]["head_sha"] == data["sha"]
     assert data["references"]["full"] == "testuser/mr-create-project!1"
     assert data["web_url"].endswith("/testuser/mr-create-project/-/merge_requests/1")
@@ -302,7 +304,25 @@ api_job:
     assert write.status_code == 201
     create = await _create_mr(client, test_token, project["id"], "MR pipeline")
     assert create.status_code == 201
-    iid = create.json()["iid"]
+    created_mr = create.json()
+    iid = created_mr["iid"]
+    auto_pipeline = created_mr["head_pipeline"]
+    assert auto_pipeline["source"] == "merge_request_event"
+    assert auto_pipeline["ref"] == "feature"
+
+    get_mr = await client.get(
+        f"{API}/projects/{project['id']}/merge_requests/{iid}",
+        headers=auth_headers(test_token),
+    )
+    assert get_mr.status_code == 200
+    assert get_mr.json()["head_pipeline"]["id"] == auto_pipeline["id"]
+
+    list_mrs = await client.get(
+        f"{API}/projects/{project['id']}/merge_requests",
+        headers=auth_headers(test_token),
+    )
+    assert list_mrs.status_code == 200
+    assert list_mrs.json()[0]["head_pipeline"]["id"] == auto_pipeline["id"]
 
     pipeline_resp = await client.post(
         f"{API}/projects/{project['id']}/merge_requests/{iid}/pipelines",
@@ -312,6 +332,7 @@ api_job:
     pipeline = pipeline_resp.json()
     assert pipeline["source"] == "merge_request_event"
     assert pipeline["ref"] == "feature"
+    assert pipeline["id"] != auto_pipeline["id"]
 
     request = await client.post(
         f"{API}/jobs/request",
@@ -320,7 +341,7 @@ api_job:
     )
     assert request.status_code == 201
     payload = request.json()
-    assert payload["job_info"]["pipeline_id"] == pipeline["id"]
+    assert payload["job_info"]["pipeline_id"] == auto_pipeline["id"]
     assert payload["job_info"]["name"] == "mr_job"
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["CI_PIPELINE_SOURCE"] == "merge_request_event"
