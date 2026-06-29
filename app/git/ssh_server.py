@@ -202,11 +202,41 @@ if HAS_ASYNCSSH:
         # Check access for push — get user info from the connection
         user_info = process.get_extra_info("git_user_info")
 
+        hook_state = None
         if git_cmd == "git-receive-pack":
             if user_info is None:
                 process.stderr.write(b"Authentication required for push.\n")
                 process.exit(1)
                 return
+            from app.database import async_session
+            from app.models.repository import Repository as RepoModel
+            from app.models.user import User as UserModel
+            from app.services.permissions import DEVELOPER, project_access_level
+            from app.git.smart_http import _install_request_pre_receive_hook
+            from sqlalchemy import select
+
+            async with async_session() as db:
+                repo_result = await db.execute(
+                    select(RepoModel).where(RepoModel.id == repo.id)
+                )
+                fresh_repo = repo_result.scalar_one_or_none()
+                user_result = await db.execute(
+                    select(UserModel).where(UserModel.id == user_info[0])
+                )
+                user = user_result.scalar_one_or_none()
+                if (
+                    fresh_repo is None
+                    or user is None
+                    or await project_access_level(fresh_repo, user, db) < DEVELOPER
+                ):
+                    process.stderr.write(b"Permission denied.\n")
+                    process.exit(1)
+                    return
+                hook_state = await _install_request_pre_receive_hook(
+                    db,
+                    fresh_repo,
+                    user,
+                )
         before_map = {}
         if git_cmd == "git-receive-pack":
             try:
@@ -219,75 +249,81 @@ if HAS_ASYNCSSH:
             except Exception:
                 before_map = {}
 
-        # Run the git command
-        env = os.environ.copy()
-        env["GIT_DIR"] = disk_path
+        try:
+            # Run the git command
+            env = os.environ.copy()
+            env["GIT_DIR"] = disk_path
 
-        proc = await asyncio.create_subprocess_exec(
-            git_cmd, disk_path,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
+            proc = await asyncio.create_subprocess_exec(
+                git_cmd, disk_path,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
 
-        # Pipe SSH stdin -> git subprocess stdin (bytes throughout).
-        # Use read() instead of async-for (which calls readline()) because
-        # git protocol uses pkt-line framing — the flush packet "0000" has
-        # no trailing newline, so readline() would block forever waiting
-        # for \n that never arrives.
-        async def pipe_stdin():
-            try:
-                while True:
-                    data = await process.stdin.read(65536)
-                    if not data:
-                        break
-                    proc.stdin.write(data)
-                    await proc.stdin.drain()
-            except Exception:
-                pass
-            finally:
+            # Pipe SSH stdin -> git subprocess stdin (bytes throughout).
+            # Use read() instead of async-for (which calls readline()) because
+            # git protocol uses pkt-line framing — the flush packet "0000" has
+            # no trailing newline, so readline() would block forever waiting
+            # for \n that never arrives.
+            async def pipe_stdin():
                 try:
-                    proc.stdin.close()
+                    while True:
+                        data = await process.stdin.read(65536)
+                        if not data:
+                            break
+                        proc.stdin.write(data)
+                        await proc.stdin.drain()
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        proc.stdin.close()
+                    except Exception:
+                        pass
+
+            # Pipe git subprocess stdout -> SSH stdout (bytes throughout)
+            async def pipe_stdout():
+                try:
+                    while True:
+                        chunk = await proc.stdout.read(65536)
+                        if not chunk:
+                            break
+                        process.stdout.write(chunk)
                 except Exception:
                     pass
 
-        # Pipe git subprocess stdout -> SSH stdout (bytes throughout)
-        async def pipe_stdout():
+            # Pipe git subprocess stderr -> SSH stderr (bytes throughout)
+            async def pipe_stderr():
+                try:
+                    while True:
+                        chunk = await proc.stderr.read(65536)
+                        if not chunk:
+                            break
+                        process.stderr.write(chunk)
+                except Exception:
+                    pass
+
+            # Stdin pipe runs as a separate task — the SSH client may not
+            # close its stdin until it gets the response, so we cancel it
+            # once the subprocess exits.
+            stdin_task = asyncio.create_task(pipe_stdin())
+
+            # Wait for subprocess stdout/stderr to reach EOF (process exited)
+            await asyncio.gather(pipe_stdout(), pipe_stderr())
+            exit_code = await proc.wait()
+
+            stdin_task.cancel()
             try:
-                while True:
-                    chunk = await proc.stdout.read(65536)
-                    if not chunk:
-                        break
-                    process.stdout.write(chunk)
-            except Exception:
+                await stdin_task
+            except (asyncio.CancelledError, Exception):
                 pass
+        finally:
+            if hook_state is not None:
+                from app.git.smart_http import _restore_pre_receive_hook
 
-        # Pipe git subprocess stderr -> SSH stderr (bytes throughout)
-        async def pipe_stderr():
-            try:
-                while True:
-                    chunk = await proc.stderr.read(65536)
-                    if not chunk:
-                        break
-                    process.stderr.write(chunk)
-            except Exception:
-                pass
-
-        # Stdin pipe runs as a separate task — the SSH client may not
-        # close its stdin until it gets the response, so we cancel it
-        # once the subprocess exits.
-        stdin_task = asyncio.create_task(pipe_stdin())
-
-        # Wait for subprocess stdout/stderr to reach EOF (process exited)
-        await asyncio.gather(pipe_stdout(), pipe_stderr())
-        exit_code = await proc.wait()
-
-        stdin_task.cancel()
-        try:
-            await stdin_task
-        except (asyncio.CancelledError, Exception):
-            pass
+                _restore_pre_receive_hook(hook_state)
 
         # Signal EOF on the SSH channel and send exit status.
         # Call exit() before post-push work so the client isn't blocked.

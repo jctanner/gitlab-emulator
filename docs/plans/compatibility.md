@@ -57,8 +57,8 @@ Replace or add GitLab-shaped resources for:
 - branches: MVP list/get/create/delete implemented
 - tags: MVP list/get/create/delete implemented
 - members: MVP project/group list/get/add/delete implemented
-- protected branches: MVP list/get/protect/unprotect and Git Smart HTTP push
-  enforcement implemented
+- protected branches: MVP list/get/protect/unprotect plus Git Smart HTTP and
+  SSH push enforcement implemented
 - releases: MVP list/create/get/update/delete implemented
 - webhooks: MVP project/group list/create/get/update/delete implemented
 - search: MVP global projects/issues/merge_requests/blobs implemented
