@@ -643,6 +643,26 @@ fallback_rule:
     assert [job.name for job in jobs] == ["fallback_rule", "main_only"]
 
 
+def test_parse_gitlab_ci_rules_can_compare_default_branch_variable():
+    jobs = parse_gitlab_ci(
+        """
+default_branch:
+  script: echo default
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+not_default_branch:
+  script: echo not default
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+""",
+        ref="main",
+        variables={"CI_DEFAULT_BRANCH": "main"},
+    )
+
+    assert [job.name for job in jobs] == ["default_branch"]
+
+
 def test_parse_gitlab_ci_applies_legacy_ref_glob_filters():
     jobs = parse_gitlab_ci(
         """

@@ -5529,6 +5529,57 @@ fallback_rule:
     assert [job["name"] for job in jobs.json()] == ["main_only"]
 
 
+async def test_pipeline_rules_can_use_ci_default_branch(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+default_branch:
+  script:
+    - echo default $CI_DEFAULT_BRANCH
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+not_default_branch:
+  script:
+    - echo not default
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add default branch ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["default_branch"]
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    variables = {item["key"]: item["value"] for item in request.json()["variables"]}
+    assert variables["CI_DEFAULT_BRANCH"] == "main"
+    assert variables["CI_COMMIT_BRANCH"] == "main"
+
+
 async def test_pipeline_legacy_ref_glob_filters_jobs_from_gitlab_ci_yaml(
     client, test_token
 ):

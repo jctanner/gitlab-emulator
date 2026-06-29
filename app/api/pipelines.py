@@ -171,11 +171,14 @@ def _pipeline_context_variable_entries(
     source: str,
     ref: str | None = None,
     ref_kind: str = "branch",
+    default_branch: str | None = None,
 ) -> dict[str, dict]:
     entries = {
         **_pipeline_variable_entries(variables),
         "CI_PIPELINE_SOURCE": _variable_entry(source),
     }
+    if default_branch:
+        entries["CI_DEFAULT_BRANCH"] = _variable_entry(default_branch)
     if ref:
         entries["CI_COMMIT_REF_NAME"] = _variable_entry(ref)
         if ref_kind == "tag":
@@ -1007,7 +1010,11 @@ async def _create_pipeline(
                 ref=body.ref,
             )
             pipeline_variable_entries = _pipeline_context_variable_entries(
-                body.variables, source=source, ref=body.ref, ref_kind=ref_kind
+                body.variables,
+                source=source,
+                ref=body.ref,
+                ref_kind=ref_kind,
+                default_branch=project.default_branch,
             )
             ci_content = await _read_repo_file(
                 project,
@@ -1084,7 +1091,11 @@ async def _create_pipeline(
     await db.flush()
 
     pipeline_variable_entries = _pipeline_context_variable_entries(
-        body.variables, source=source, ref=body.ref, ref_kind=ref_kind
+        body.variables,
+        source=source,
+        ref=body.ref,
+        ref_kind=ref_kind,
+        default_branch=project.default_branch,
     )
     for parsed_job in parsed_jobs:
         project_variable_metadata = await project_variable_entries(

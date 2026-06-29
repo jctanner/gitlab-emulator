@@ -909,6 +909,7 @@ def _build_persisted_job_payload(job: PipelineJob) -> dict:
         "CI_REPOSITORY_URL": authenticated_repo_url,
         "CI_COMMIT_SHA": pipeline.sha,
         "CI_COMMIT_REF_NAME": pipeline.ref,
+        "CI_DEFAULT_BRANCH": project.default_branch or "main",
         "CI_PROJECT_ID": str(project.id),
         "CI_PROJECT_NAME": project.name,
         "CI_PROJECT_PATH": project.full_name,
