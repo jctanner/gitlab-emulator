@@ -15,6 +15,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Webhook, WebhookDelivery
 
 
+GITLAB_DELIVERY_EVENT_NAMES = {
+    "push": "Push Hook",
+    "push_events": "Push Hook",
+    "tag_push_events": "Tag Push Hook",
+    "issues": "Issue Hook",
+    "issues_events": "Issue Hook",
+    "confidential_issues_events": "Confidential Issue Hook",
+    "merge_request": "Merge Request Hook",
+    "merge_requests_events": "Merge Request Hook",
+    "note_events": "Note Hook",
+    "job_events": "Job Hook",
+    "pipeline_events": "Pipeline Hook",
+    "wiki_page_events": "Wiki Page Hook",
+    "deployment_events": "Deployment Hook",
+    "releases_events": "Release Hook",
+}
+
+
+def gitlab_delivery_event_name(event: str) -> str:
+    """Return the GitLab event header value for a stored hook event key."""
+    return GITLAB_DELIVERY_EVENT_NAMES.get(event, event)
+
+
 async def create_webhook(
     db: AsyncSession,
     repo_id: int,
@@ -76,16 +99,20 @@ async def deliver_webhook(
     body_str = json.dumps(payload, separators=(",", ":"), default=str)
 
     # Build headers
+    gitlab_event = gitlab_delivery_event_name(event)
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "GitLab-Emulator-Hookshot",
-        "X-GitLab-Event": event,
+        "X-GitLab-Event": gitlab_event,
         "X-GitLab-Delivery": delivery_id,
+        "X-Gitlab-Event-UUID": delivery_id,
         "X-GitLab-Hook-ID": str(webhook.id),
     }
 
-    # Compute HMAC signature if secret is set
+    # GitLab sends the configured token verbatim; keep the HMAC signature for
+    # existing emulator/GitHub-style clients that already validated it.
     if webhook.secret:
+        headers["X-Gitlab-Token"] = webhook.secret
         signature = hmac.new(
             webhook.secret.encode("utf-8"),
             body_str.encode("utf-8"),

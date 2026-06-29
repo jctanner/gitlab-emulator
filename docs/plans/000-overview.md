@@ -312,7 +312,8 @@ Target behavior areas:
 - GitLab-style auth token handling
 - GitLab-style error payloads, including route-specific message preservation
 - GitLab-style response headers
-- GitLab webhook payloads
+- GitLab webhook payloads, including MVP delivery headers for event names,
+  event UUIDs, and hook tokens
 - GitLab GraphQL schema details where needed
 
 Done when:

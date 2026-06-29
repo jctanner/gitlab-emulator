@@ -74,7 +74,9 @@ Replace GitHub-shaped behavior with GitLab behavior for:
 - auth token handling
 - response headers: MVP API version, rate limit, ETag, pagination, security,
   `X-Request-Id`, and `X-GitLab-Request-Id` headers implemented
-- webhook event names and payloads
+- webhook event names and payloads: MVP project/group hook CRUD and GitLab
+  delivery headers for hook event names, event UUIDs, and hook tokens
+  implemented
 - merge request behavior versus pull request behavior
 - project path and namespace handling
 - GraphQL schema details where clients require them
