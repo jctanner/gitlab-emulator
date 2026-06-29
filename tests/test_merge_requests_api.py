@@ -38,15 +38,24 @@ async def _project_with_source_branch(client, test_token, name: str) -> dict:
     return data
 
 
-async def _create_mr(client, test_token, project_id: int, title: str = "Add feature"):
+async def _create_mr(
+    client,
+    test_token,
+    project_id: int,
+    title: str = "Add feature",
+    extra: dict | None = None,
+):
+    payload = {
+        "title": title,
+        "description": "Merge the feature branch",
+        "source_branch": "feature",
+        "target_branch": "main",
+    }
+    if extra:
+        payload.update(extra)
     return await client.post(
         f"{API}/projects/{project_id}/merge_requests",
-        json={
-            "title": title,
-            "description": "Merge the feature branch",
-            "source_branch": "feature",
-            "target_branch": "main",
-        },
+        json=payload,
         headers=auth_headers(test_token),
     )
 
@@ -189,6 +198,21 @@ async def test_update_merge_request(client, test_token):
     assert resp.json()["title"] == "Updated MR"
     assert resp.json()["description"] == "Updated description"
 
+    labels = await client.put(
+        f"{API}/projects/{project['id']}/merge_requests/{create.json()['iid']}",
+        json={"labels": "frontend,urgent"},
+        headers=auth_headers(test_token),
+    )
+    assert labels.status_code == 200
+    assert labels.json()["labels"] == ["frontend", "urgent"]
+
+    get_resp = await client.get(
+        f"{API}/projects/{project['id']}/merge_requests/{create.json()['iid']}",
+        headers=auth_headers(test_token),
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["labels"] == ["frontend", "urgent"]
+
 
 @pytest.mark.asyncio
 async def test_update_merge_request_state_reopen_and_branch_validation(client, test_token):
@@ -292,6 +316,12 @@ title_job:
   script:
     - echo title
 
+label_job:
+  rules:
+    - if: '$CI_MERGE_REQUEST_LABELS == "bug,backend"'
+  script:
+    - echo labels
+
 api_job:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "api"'
@@ -308,9 +338,16 @@ api_job:
         headers=auth_headers(test_token),
     )
     assert write.status_code == 201
-    create = await _create_mr(client, test_token, project["id"], "MR pipeline")
+    create = await _create_mr(
+        client,
+        test_token,
+        project["id"],
+        "MR pipeline",
+        {"labels": ["bug", "backend"]},
+    )
     assert create.status_code == 201
     created_mr = create.json()
+    assert created_mr["labels"] == ["bug", "backend"]
     iid = created_mr["iid"]
     auto_pipeline = created_mr["head_pipeline"]
     assert auto_pipeline["source"] == "merge_request_event"
@@ -348,7 +385,7 @@ api_job:
     assert request.status_code == 201
     payload = request.json()
     assert payload["job_info"]["pipeline_id"] == auto_pipeline["id"]
-    assert payload["job_info"]["name"] == "mr_job"
+    requested_names = [payload["job_info"]["name"]]
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["CI_PIPELINE_SOURCE"] == "merge_request_event"
     assert variables["CI_MERGE_REQUEST_IID"] == str(iid)
@@ -359,7 +396,7 @@ api_job:
     assert variables["CI_MERGE_REQUEST_REF_PATH"] == f"refs/merge-requests/{iid}/head"
     assert variables["CI_MERGE_REQUEST_TITLE"] == "MR pipeline"
     assert variables["CI_MERGE_REQUEST_DESCRIPTION"] == "Merge the feature branch"
-    assert variables["CI_MERGE_REQUEST_LABELS"] == ""
+    assert variables["CI_MERGE_REQUEST_LABELS"] == "bug,backend"
 
     finish = await client.put(
         f"{API}/jobs/{payload['id']}",
@@ -368,13 +405,23 @@ api_job:
     )
     assert finish.status_code == 200
 
-    second_request = await client.post(
-        f"{API}/jobs/request",
-        headers={"RUNNER-TOKEN": "glrt-emulator-runner-token"},
-        json={"token": "glrt-emulator-runner-token"},
-    )
-    assert second_request.status_code == 201
-    assert second_request.json()["job_info"]["name"] == "title_job"
+    for _ in range(2):
+        next_request = await client.post(
+            f"{API}/jobs/request",
+            headers={"RUNNER-TOKEN": "glrt-emulator-runner-token"},
+            json={"token": "glrt-emulator-runner-token"},
+        )
+        assert next_request.status_code == 201
+        next_payload = next_request.json()
+        requested_names.append(next_payload["job_info"]["name"])
+        finish_next = await client.put(
+            f"{API}/jobs/{next_payload['id']}",
+            headers={"JOB-TOKEN": next_payload["token"]},
+            json={"token": next_payload["token"], "state": "success"},
+        )
+        assert finish_next.status_code == 200
+
+    assert set(requested_names) == {"mr_job", "title_job", "label_job"}
 
 
 @pytest.mark.asyncio

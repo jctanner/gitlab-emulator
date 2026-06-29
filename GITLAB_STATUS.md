@@ -207,7 +207,9 @@ harness architecture.
   project path.
 - GitLab merge request APIs exist for creating, listing, getting, updating,
   merging, listing commits, and reading changed files by numeric project ID or
-  URL-encoded project path.
+  URL-encoded project path. Merge request create/update supports string or list
+  labels, returns labels in response payloads, and feeds them into merge request
+  event pipeline variables.
 - The bounded deeper resource compatibility pass has expanded GitLab-shaped
   groups, projects, repository files/tree, commits, branches, tags, protected
   branches, and merge requests. Current coverage includes broader response

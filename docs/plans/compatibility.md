@@ -162,6 +162,9 @@ Minimal merge request APIs are implemented for:
 - `PUT /api/v4/projects/:id/merge_requests/:iid/merge`
 
 The same endpoints accept URL-encoded `path_with_namespace` project references.
+Merge request create/update accepts GitLab-style comma-separated or list labels,
+returns labels in merge request responses, and exposes those labels to merge
+request event pipelines as `CI_MERGE_REQUEST_LABELS`.
 
 Validated:
 

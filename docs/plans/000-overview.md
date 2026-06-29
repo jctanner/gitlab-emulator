@@ -298,6 +298,8 @@ Target resource areas:
   GitLab-shaped project issue payloads do not expose inherited GitHub issue
   fields
 - merge requests: MVP create/list/get/update/merge/commits/changes implemented
+  with create/update label support and merge-request event pipeline label
+  variables
 - repository files: MVP get/raw/tree/create/update/delete implemented
 - commits: MVP list/get/diff implemented
 - branches: MVP list/get/create/delete implemented

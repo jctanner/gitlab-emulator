@@ -276,12 +276,16 @@ Status: implemented.
   (`opened`, `closed`, `merged`).
 - Create/update/merge behavior validates source/target branches, same-branch
   cases, duplicate MRs, stale SHA, merge methods, and failed merge conditions.
+- Create/update behavior now accepts GitLab-style string or list labels,
+  returns labels in merge request responses, and feeds labels into merge request
+  event pipeline variables.
 - MR commits are paginated, `/changes` includes richer metadata and diff text,
   and `/diffs` exposes GitLab-shaped changed-file entries.
 - Inherited GitHub-shaped pull request internals remain isolated behind
   GitLab-facing route/response behavior.
-- Focused tests cover create/list/get/update/merge, commits, changes, diffs,
-  pagination, encoded project paths, and common `glab api` expectations.
+- Focused tests cover create/list/get/update/merge, labels, commits, changes,
+  diffs, pagination, encoded project paths, and common `glab api`
+  expectations.
 
 ### 2.7 Labels and Milestones Compatibility
 

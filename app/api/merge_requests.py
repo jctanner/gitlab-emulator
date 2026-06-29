@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from sqlalchemy import delete
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -18,6 +19,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import AuthUser, CurrentUser, DbSession
 from app.api.gitlab_commits import _commit_json as _gitlab_commit_json
 from app.api.gitlab_commits import _COMMIT_FORMAT
+from app.api.issues import _apply_issue_labels, _label_names
 from app.api.pagination import paginated_json
 from app.api.pipelines import (
     CreatePipelineRequest,
@@ -28,7 +30,7 @@ from app.api.pipelines import (
 from app.api.projects import _get_project_or_404
 from app.api.pulls import _perform_git_merge
 from app.config import settings
-from app.models.issue import Issue
+from app.models.issue import Issue, IssueLabel
 from app.models.merge_request import MergeRequest
 from app.models.ci import Pipeline
 from app.models.project import Project
@@ -44,6 +46,7 @@ def _mr_query():
         .options(
             selectinload(MergeRequest.issue).selectinload(Issue.user),
             selectinload(MergeRequest.issue).selectinload(Issue.closed_by),
+            selectinload(MergeRequest.issue).selectinload(Issue.labels),
             selectinload(MergeRequest.repository).selectinload(Project.owner),
             selectinload(MergeRequest.head_repository),
             selectinload(MergeRequest.merged_by),
@@ -156,7 +159,7 @@ def _mr_json(
         "reviewers": [],
         "source_project_id": merge_request.head_repo_id or project.id,
         "target_project_id": project.id,
-        "labels": [],
+        "labels": [label.name for label in (issue.labels or [])],
         "draft": merge_request.draft,
         "work_in_progress": merge_request.draft,
         "milestone": None,
@@ -538,6 +541,7 @@ async def create_merge_request(
     )
     db.add(issue)
     await db.flush()
+    await _apply_issue_labels(issue, project, _label_names(body.get("labels")), db)
 
     merge_request = MergeRequest(
         issue_id=issue.id,
@@ -739,6 +743,10 @@ async def update_merge_request(
         pipeline_relevant_update = True
     if "draft" in body:
         merge_request.draft = bool(body["draft"])
+    if "labels" in body:
+        await db.execute(delete(IssueLabel).where(IssueLabel.issue_id == issue.id))
+        await _apply_issue_labels(issue, project, _label_names(body.get("labels")), db)
+        pipeline_relevant_update = True
 
     state_event = body.get("state_event")
     if state_event == "close":
