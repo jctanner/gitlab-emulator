@@ -79,7 +79,9 @@ Replace GitHub-shaped behavior with GitLab behavior for:
   implemented
 - merge request behavior versus pull request behavior
 - project path and namespace handling
-- GraphQL schema details where clients require them
+- GraphQL schema details where clients require them: MVP `currentUser`,
+  `project(fullPath:)`, project URL/path fields, and merge request aliases
+  implemented
 
 ### Tests
 

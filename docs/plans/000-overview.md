@@ -357,7 +357,8 @@ Done when:
 ## Deferred Work
 
 - Full GitLab GraphQL parity. The current compatibility surface includes
-  GitLab-shaped `currentUser`, `project(fullPath:)`, and repository
+  GitLab-shaped `currentUser`, `project(fullPath:)`, project URL/path fields
+  (`fullPath`, `webUrl`, `httpUrlToRepo`, `sshUrlToRepo`), and repository
   `mergeRequests` aliases backed by the existing user/project/MR models.
   Repository `latestRelease` resolves real release metadata, and repository
   issue connections support `filterBy.mentioned` for issue bodies and comments,

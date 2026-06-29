@@ -474,6 +474,22 @@ class Repository:
         return f"git@{settings.HOSTNAME}:{self.name_with_owner}.git"
 
     @strawberry.field
+    def full_path(self) -> str:
+        return self.name_with_owner
+
+    @strawberry.field
+    def web_url(self) -> str:
+        return self.url
+
+    @strawberry.field
+    def http_url_to_repo(self) -> str:
+        return f"{self.url}.git"
+
+    @strawberry.field
+    def ssh_url_to_repo(self) -> str:
+        return self.ssh_url()
+
+    @strawberry.field
     def has_discussions_enabled(self) -> bool:
         return self._has_discussions
 

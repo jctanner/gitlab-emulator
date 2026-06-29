@@ -1066,6 +1066,45 @@ async def test_graphql_project_merge_requests_alias(client, test_user, test_toke
 
 
 @pytest.mark.asyncio
+async def test_graphql_project_exposes_gitlab_url_fields(client, test_user, test_token):
+    """GitLab-shaped project(fullPath:) exposes common project URL fields."""
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "gql-project-urls"},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+
+    resp = await client.post(
+        "/graphql",
+        json={
+            "query": """
+                {
+                  project(fullPath: "testuser/gql-project-urls") {
+                    fullPath
+                    webUrl
+                    httpUrlToRepo
+                    sshUrlToRepo
+                    visibility
+                  }
+                }
+            """
+        },
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "errors" not in data
+    project = data["data"]["project"]
+    assert project["fullPath"] == "testuser/gql-project-urls"
+    assert project["webUrl"].endswith("/testuser/gql-project-urls")
+    assert project["httpUrlToRepo"].endswith("/testuser/gql-project-urls.git")
+    assert project["sshUrlToRepo"].endswith(":testuser/gql-project-urls.git")
+    assert project["visibility"] == "PUBLIC"
+
+
+@pytest.mark.asyncio
 async def test_graphql_pull_request_diff_stats(client, test_user, test_token):
     """Pull request diff stat fields reflect the git diff."""
     project_resp = await client.post(
