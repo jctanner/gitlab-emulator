@@ -799,7 +799,10 @@ def _path_matches(pattern: str, paths: set[str]) -> bool:
     if normalized.endswith("/"):
         return any(path.startswith(normalized) for path in paths)
     return any(
-        path == normalized or fnmatch.fnmatch(path, normalized) for path in paths
+        path == normalized
+        or path.startswith(f"{normalized}/")
+        or fnmatch.fnmatch(path, normalized)
+        for path in paths
     )
 
 

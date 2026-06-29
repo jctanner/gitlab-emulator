@@ -778,7 +778,7 @@ only_mapping:
     variables:
       - '$RUN_DEPLOY'
     changes:
-      - src/**
+      - src
 
 except_mapping:
   script: echo except mapping
@@ -1068,17 +1068,27 @@ changes_match:
     - changes:
         - docs/**
 
+changes_directory:
+  script: echo changes directory
+  rules:
+    - changes:
+        - app
+
 exists_miss:
   script: echo miss
   rules:
     - exists:
         - missing.txt
 """,
-        existing_paths={"src/app.py", "docs/readme.md"},
-        changed_paths={"docs/readme.md"},
+        existing_paths={"src/app.py", "docs/readme.md", "app/service.py"},
+        changed_paths={"docs/readme.md", "app/service.py"},
     )
 
-    assert [job.name for job in jobs] == ["changes_match", "exists_match"]
+    assert [job.name for job in jobs] == [
+        "changes_directory",
+        "changes_match",
+        "exists_match",
+    ]
 
 
 def test_parse_gitlab_ci_applies_rules_exists_and_changes_path_objects():

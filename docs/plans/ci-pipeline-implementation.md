@@ -40,7 +40,9 @@ Already working:
   operators with grouped parentheses, common regex flags, `exists`,
   commit-local `changes`,
   `exists`/`changes` path-object forms, variable-expanded rule path patterns,
-  directory-style `rules:exists` patterns ending in `/`, clear rejection of
+  directory-style `rules:exists` patterns ending in `/`, bare-directory path
+  matching for `rules:changes` and legacy `only`/`except:changes`, clear
+  rejection of
   unsupported cross-project `rules:exists` project/ref options, accepted
   `rules:changes:compare_to` syntax evaluated against emulator-local changed
   paths, `when: never`,
