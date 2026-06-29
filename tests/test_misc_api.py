@@ -296,6 +296,41 @@ async def test_application_settings_admin_shape(client, admin_token):
 
 
 @pytest.mark.asyncio
+async def test_application_statistics_require_admin(client, test_token):
+    unauthenticated = await client.get(f"{API}/application/statistics")
+    assert unauthenticated.status_code == 401
+
+    forbidden = await client.get(
+        f"{API}/application/statistics",
+        headers=auth_headers(test_token),
+    )
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_application_statistics_admin_shape(client, admin_token, test_token):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "stats-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+
+    resp = await client.get(
+        f"{API}/application/statistics",
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["counts"]["users"] >= 2
+    assert data["counts"]["projects"] >= 1
+    assert data["statistics"]["projects_count"] == data["counts"]["projects"]
+    assert data["statistics"]["users_count"] == data["counts"]["users"]
+    assert "pipelines" in data["counts"]
+    assert "ci_variables" in data["counts"]
+
+
+@pytest.mark.asyncio
 async def test_gitlab_version_endpoint(client, test_user, test_token):
     """GET /version returns GitLab-shaped version metadata."""
     resp = await client.get(f"{API}/version")

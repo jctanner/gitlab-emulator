@@ -152,6 +152,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   version, revision, KAS disabled state, and enterprise flag.
 - `/api/v4/application/settings` exposes a read-only admin-gated MVP
   application settings payload for instance compatibility checks.
+- `/api/v4/application/statistics` exposes admin-gated MVP instance counts for
+  users, groups, projects, CI resources, and runners.
 
 ## Near-Term Slices
 
