@@ -10,6 +10,7 @@ import mimetypes
 import os
 import secrets
 import ssl
+import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -1071,6 +1072,118 @@ def _pipeline_variable_json(variable: dict) -> dict:
         "raw": bool(variable.get("raw", False)),
         "public": variable.get("public"),
     }
+
+
+def _empty_test_report() -> dict:
+    return {
+        "total_time": 0.0,
+        "total_count": 0,
+        "success_count": 0,
+        "failed_count": 0,
+        "skipped_count": 0,
+        "error_count": 0,
+        "test_suites": [],
+    }
+
+
+def _junit_testcase_status(case: ET.Element) -> str:
+    if case.find("skipped") is not None:
+        return "skipped"
+    if case.find("error") is not None:
+        return "error"
+    if case.find("failure") is not None:
+        return "failed"
+    return "success"
+
+
+def _junit_testcase_json(case: ET.Element, suite_name: str) -> dict:
+    status_value = _junit_testcase_status(case)
+    failure_node = case.find("failure")
+    if failure_node is None:
+        failure_node = case.find("error")
+    return {
+        "status": status_value,
+        "name": case.get("name") or "",
+        "classname": case.get("classname") or suite_name,
+        "file": case.get("file"),
+        "execution_time": float(case.get("time") or 0),
+        "system_output": (case.findtext("system-out") or ""),
+        "stack_trace": failure_node.text if failure_node is not None else None,
+    }
+
+
+def _junit_suites_from_xml(content: bytes) -> list[dict]:
+    root = ET.fromstring(content)
+    suite_nodes = (
+        list(root.findall("testsuite"))
+        if root.tag == "testsuites"
+        else [root]
+        if root.tag == "testsuite"
+        else []
+    )
+    suites: list[dict] = []
+    for suite in suite_nodes:
+        suite_name = suite.get("name") or "test"
+        cases = [
+            _junit_testcase_json(case, suite_name)
+            for case in suite.findall(".//testcase")
+        ]
+        failed_count = sum(1 for case in cases if case["status"] == "failed")
+        error_count = sum(1 for case in cases if case["status"] == "error")
+        skipped_count = sum(1 for case in cases if case["status"] == "skipped")
+        total_count = len(cases)
+        suites.append(
+            {
+                "name": suite_name,
+                "total_time": float(suite.get("time") or 0),
+                "total_count": total_count,
+                "success_count": total_count
+                - failed_count
+                - error_count
+                - skipped_count,
+                "failed_count": failed_count,
+                "skipped_count": skipped_count,
+                "error_count": error_count,
+                "test_cases": cases,
+            }
+        )
+    return suites
+
+
+def _merge_test_suites(suites: list[dict]) -> dict:
+    report = _empty_test_report()
+    report["test_suites"] = suites
+    for suite in suites:
+        report["total_time"] += float(suite["total_time"])
+        report["total_count"] += int(suite["total_count"])
+        report["success_count"] += int(suite["success_count"])
+        report["failed_count"] += int(suite["failed_count"])
+        report["skipped_count"] += int(suite["skipped_count"])
+        report["error_count"] += int(suite["error_count"])
+    return report
+
+
+def _junit_suites_from_artifact(artifact) -> list[dict]:
+    if artifact.file_type != "junit" or not artifact.storage_path:
+        return []
+    if not os.path.isfile(artifact.storage_path):
+        return []
+    try:
+        if artifact.file_format == "zip" or artifact.filename.endswith(".zip"):
+            suites: list[dict] = []
+            with zipfile.ZipFile(artifact.storage_path) as archive:
+                for name in archive.namelist():
+                    if name.endswith("/"):
+                        continue
+                    try:
+                        suites.extend(_junit_suites_from_xml(archive.read(name)))
+                    except ET.ParseError:
+                        continue
+            return suites
+        with open(artifact.storage_path, "rb") as artifact_file:
+            return _junit_suites_from_xml(artifact_file.read())
+    except (OSError, zipfile.BadZipFile, ET.ParseError):
+        return []
 
 
 def _trigger_json(trigger: PipelineTrigger) -> dict:
@@ -2269,6 +2382,22 @@ async def get_pipeline_variables(
     return [_pipeline_variable_json(variable) for variable in pipeline.variables or []]
 
 
+@router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/test_report")
+async def get_pipeline_test_report(
+    project_ref: str, pipeline_id: int, db: DbSession, current_user: CurrentUser
+):
+    pipeline = await _get_pipeline_for_project_ref(
+        project_ref, pipeline_id, db, current_user, enforce_read_access=True
+    )
+    suites: list[dict] = []
+    for job in pipeline.jobs:
+        if job.status != "success":
+            continue
+        for artifact in job.artifacts:
+            suites.extend(_junit_suites_from_artifact(artifact))
+    return _merge_test_suites(suites)
+
+
 async def _get_pipeline_for_project_ref(
     project_ref: str,
     pipeline_id: int,
@@ -2282,7 +2411,10 @@ async def _get_pipeline_for_project_ref(
     )
     result = await db.execute(
         select(Pipeline)
-        .options(selectinload(Pipeline.jobs).selectinload(PipelineJob.trace))
+        .options(
+            selectinload(Pipeline.jobs).selectinload(PipelineJob.trace),
+            selectinload(Pipeline.jobs).selectinload(PipelineJob.artifacts),
+        )
         .where(
             Pipeline.project_id == project.id,
             Pipeline.id == pipeline_id,

@@ -1727,6 +1727,97 @@ report_metadata:
     ]
 
 
+async def test_pipeline_test_report_aggregates_junit_artifacts(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = _api_only_ci_yaml(
+        """
+junit_probe:
+  image: alpine:3.20
+  script:
+    - echo junit
+  artifacts:
+    reports:
+      junit: reports/unit.xml
+"""
+    )
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add junit ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    job_id = payload["id"]
+    job_token = payload["token"]
+
+    junit = b"""<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="unit" tests="3" failures="1" errors="0" skipped="1" time="1.5">
+  <testcase classname="ExampleTest" name="passes" time="0.4"/>
+  <testcase classname="ExampleTest" name="fails" time="0.7">
+    <failure message="expected true">stack line</failure>
+  </testcase>
+  <testcase classname="ExampleTest" name="skips" time="0.0">
+    <skipped/>
+  </testcase>
+</testsuite>
+"""
+    archive_buffer = io.BytesIO()
+    with zipfile.ZipFile(archive_buffer, "w") as archive:
+        archive.writestr("reports/unit.xml", junit)
+    archive_bytes = archive_buffer.getvalue()
+
+    artifact_upload = await client.post(
+        f"{API}/jobs/{job_id}/artifacts?artifact_format=zip&artifact_type=junit",
+        headers={"JOB-TOKEN": job_token, "Content-Type": "application/zip"},
+        content=archive_bytes,
+    )
+    assert artifact_upload.status_code == 201
+
+    finish = await client.put(
+        f"{API}/jobs/{job_id}",
+        headers={"JOB-TOKEN": job_token},
+        json={"token": job_token, "state": "success", "exit_code": 0},
+    )
+    assert finish.status_code == 200
+
+    report = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/test_report",
+        headers=auth_headers(test_token),
+    )
+    assert report.status_code == 200
+    payload = report.json()
+    assert payload["total_count"] == 3
+    assert payload["success_count"] == 1
+    assert payload["failed_count"] == 1
+    assert payload["skipped_count"] == 1
+    assert payload["error_count"] == 0
+    assert payload["test_suites"][0]["name"] == "unit"
+    assert [case["status"] for case in payload["test_suites"][0]["test_cases"]] == [
+        "success",
+        "failed",
+        "skipped",
+    ]
+
+
 async def test_job_hooks_reach_runner_payload(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

@@ -148,6 +148,8 @@ harness architecture.
   artifacts are no longer downloadable. Project job artifact keep clears
   artifact expiration timestamps, and project job APIs can return individual
   files from stored ZIP artifact archives by job ID or by ref plus job name.
+  Pipeline test report APIs aggregate stored JUnit report artifacts into
+  GitLab-shaped suite and test case counts.
 - YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
   are parsed, variable-expanded, persisted, and exposed in official-runner
   `hooks` payloads.
