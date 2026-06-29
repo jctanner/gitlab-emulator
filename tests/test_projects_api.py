@@ -383,6 +383,7 @@ async def test_list_projects_supports_search_and_delete(client, test_user, test_
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404
+    assert missing.json()["message"] == "404 Project Not Found"
 
 
 @pytest.mark.asyncio

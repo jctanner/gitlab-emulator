@@ -69,7 +69,8 @@ Replace GitHub-shaped behavior with GitLab behavior for:
 - response schemas
 - request schemas
 - pagination
-- error payloads
+- error payloads: MVP JSON envelope and route-specific string `detail`
+  preservation implemented
 - auth token handling
 - response headers: MVP API version, rate limit, ETag, pagination, security,
   `X-Request-Id`, and `X-GitLab-Request-Id` headers implemented

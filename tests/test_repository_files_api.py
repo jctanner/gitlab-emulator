@@ -423,7 +423,7 @@ async def test_repository_files_distinguish_missing_ref_and_directory(client, te
         headers=auth_headers(test_token),
     )
     assert missing_ref.status_code == 404
-    assert missing_ref.json()["message"] == "Not Found"
+    assert missing_ref.json()["message"] == "404 Reference Not Found"
 
     directory_as_file = await client.get(
         f"{API}/projects/{project_id}/repository/files/docs",

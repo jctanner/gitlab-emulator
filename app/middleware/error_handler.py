@@ -93,7 +93,10 @@ async def gitlab_error_handler(request: Request, exc: GitLabError) -> JSONRespon
 
 async def http_401_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle 401 Unauthorized."""
-    resp = _build_error_response(401, "Requires authentication")
+    resp = _build_error_response(
+        401,
+        _http_error_message(exc, "Requires authentication"),
+    )
     # Preserve WWW-Authenticate header so git clients know to send credentials
     if hasattr(exc, "headers") and exc.headers:
         for k, v in exc.headers.items():
@@ -103,17 +106,17 @@ async def http_401_handler(request: Request, exc: Exception) -> JSONResponse:
 
 async def http_403_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle 403 Forbidden."""
-    return _build_error_response(403, "Forbidden")
+    return _build_error_response(403, _http_error_message(exc, "Forbidden"))
 
 
 async def http_404_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle 404 Not Found."""
-    return _build_error_response(404, "Not Found")
+    return _build_error_response(404, _http_error_message(exc, "Not Found"))
 
 
 async def http_422_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle 422 Validation Failed."""
-    return _build_error_response(422, "Validation Failed")
+    return _build_error_response(422, _http_error_message(exc, "Validation Failed"))
 
 
 async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -143,3 +146,8 @@ def register_error_handlers(app: FastAPI) -> None:
         if handler:
             return await handler(request, exc)
         return _build_error_response(exc.status_code, exc.detail)
+
+
+def _http_error_message(exc: Exception, fallback: str) -> str:
+    detail = getattr(exc, "detail", None)
+    return detail if isinstance(detail, str) and detail else fallback

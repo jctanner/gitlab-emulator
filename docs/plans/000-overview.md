@@ -310,7 +310,7 @@ Target behavior areas:
 
 - GitLab-style pagination
 - GitLab-style auth token handling
-- GitLab-style error payloads
+- GitLab-style error payloads, including route-specific message preservation
 - GitLab-style response headers
 - GitLab webhook payloads
 - GitLab GraphQL schema details where needed

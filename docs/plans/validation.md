@@ -48,6 +48,7 @@ Important local coverage areas:
   GitLab-facing list endpoints
 - GitLab-style request ID response headers, including caller-provided
   `X-Request-Id` propagation to `X-GitLab-Request-Id`
+- GitLab-style error payload envelopes preserve route-specific string messages
 
 ## VM Validation
 
