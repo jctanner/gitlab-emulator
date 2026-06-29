@@ -344,6 +344,56 @@ file_head=$(curl -sk -I -H "PRIVATE-TOKEN: $TOKEN" \
     "$API/projects/$PROJECT_ID/repository/files/smoke.txt?ref=main")
 assert_contains "repository file HEAD metadata" "$file_head" "x-gitlab-file-path: smoke.txt"
 
+section "CI API via glab"
+
+pipeline_payload=$(jq -n \
+    --arg ref "main" \
+    --arg name "glab_api_job" \
+    --argjson script '["echo glab ci"]' \
+    '{ref:$ref, job:{name:$name, script:$script}}')
+pipeline_json=$(curl -sk -X POST \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$pipeline_payload" \
+    "$API/projects/$PROJECT_ID/pipeline")
+PIPELINE_ID=$(echo "$pipeline_json" | jq -r '.id // empty' 2>/dev/null)
+if [ -n "$PIPELINE_ID" ]; then
+    assert_json_field "pipeline created for glab verification" "$pipeline_json" \
+        '.id != null and .ref == "main" and .status == "pending"'
+else
+    fail "pipeline create for glab verification: $pipeline_json"
+fi
+
+if [ -n "$PIPELINE_ID" ]; then
+    pipelines_json=$(glab_api "projects/$PROJECT_ID/pipelines?per_page=5")
+    assert_json_field "glab api pipelines list" "$pipelines_json" \
+        "map(.id) | index($PIPELINE_ID)"
+
+    pipeline_detail=$(glab_api "projects/$PROJECT_ID/pipelines/$PIPELINE_ID")
+    assert_json_field "glab api pipeline detail" "$pipeline_detail" \
+        ".id == $PIPELINE_ID and .ref == \"main\""
+
+    pipeline_jobs=$(glab_api "projects/$PROJECT_ID/pipelines/$PIPELINE_ID/jobs")
+    assert_json_field "glab api pipeline jobs" "$pipeline_jobs" \
+        'map(.name) | index("glab_api_job")'
+    JOB_ID=$(echo "$pipeline_jobs" | jq -r '.[] | select(.name == "glab_api_job") | .id' | head -1)
+
+    if [ -n "$JOB_ID" ] && [ "$JOB_ID" != "null" ]; then
+        job_detail=$(glab_api "projects/$PROJECT_ID/jobs/$JOB_ID")
+        assert_json_field "glab api job detail" "$job_detail" \
+            ".id == ($JOB_ID | tonumber) and .name == \"glab_api_job\" and .pipeline.id == ($PIPELINE_ID | tonumber)"
+
+        job_trace=$(glab_api "projects/$PROJECT_ID/jobs/$JOB_ID/trace")
+        if [ $? -eq 0 ]; then
+            pass "glab api job trace"
+        else
+            fail "glab api job trace: $job_trace"
+        fi
+    else
+        fail "glab api pipeline jobs did not return glab_api_job: $pipeline_jobs"
+    fi
+fi
+
 section "Issue CLI via glab"
 
 issue_create=$("$GLAB" issue create \
@@ -783,6 +833,8 @@ fi
 
 section "Pipeline API via glab"
 
+CI_RUNNER_TAG="glab-smoke-ci-${RUN_ID}"
+
 ci_yaml=$(cat <<'EOF'
 include:
   local: ci-include.yml
@@ -791,7 +843,7 @@ stages: [build]
 smoke:
   extends: .base
   tags:
-    - glab-smoke-ci
+    - __CI_RUNNER_TAG__
   script:
     - echo smoke
     - mkdir -p out
@@ -803,13 +855,14 @@ smoke:
 manual_trigger:
   extends: .base
   tags:
-    - glab-smoke-ci
+    - __CI_RUNNER_TAG__
   script:
     - echo manual triggered
   rules:
     - when: manual
 EOF
 )
+ci_yaml="${ci_yaml//__CI_RUNNER_TAG__/$CI_RUNNER_TAG}"
 include_yaml=$(cat <<'EOF'
 .base:
   image: alpine:3.20
@@ -835,6 +888,18 @@ curl -sk -X POST -H "PRIVATE-TOKEN: $TOKEN" -H "Content-Type: application/json" 
 curl -sk -X POST -H "PRIVATE-TOKEN: $TOKEN" -H "Content-Type: application/json" \
     -d "$ci_payload" \
     "$API/projects/$PROJECT_ID/repository/files/.gitlab-ci.yml" >/dev/null
+
+pre_ci_pipelines=$(glab_api "projects/$PROJECT_ID/pipelines?ref=main&per_page=10")
+pre_ci_pending_ids=$(echo "$pre_ci_pipelines" | jq -r '.[] | select(.source == "push" and (.status == "pending" or .status == "running")) | .id' 2>/dev/null)
+if [ -n "$pre_ci_pending_ids" ]; then
+    while IFS= read -r pending_pipeline_id; do
+        [ -z "$pending_pipeline_id" ] && continue
+        curl -sk -X POST \
+            -H "PRIVATE-TOKEN: $TOKEN" \
+            "$API/projects/$PROJECT_ID/pipelines/$pending_pipeline_id/cancel" >/dev/null
+    done <<< "$pre_ci_pending_ids"
+    pass "automatic push CI pipeline canceled before glab ci run"
+fi
 
 ci_run=$("$GLAB" ci run --repo "admin/$PROJECT_PATH" --branch main 2>&1)
 if [ $? -eq 0 ]; then
@@ -870,10 +935,14 @@ assert_json_field "glab api pipeline jobs include smoke" "$jobs_json" 'map(.name
 
 JOB_ID=$(echo "$ci_get" | jq -r '.jobs[] | select(.name == "smoke") | .id' | head -1)
 MANUAL_JOB_ID=$(echo "$ci_get" | jq -r '.jobs[] | select(.name == "manual_trigger") | .id' | head -1)
+runner_payload=$(jq -n \
+    --arg name "glab-smoke-client-runner-${RUN_ID}" \
+    --arg tag "$CI_RUNNER_TAG" \
+    '{token:"glrt-emulator-runner-token", info:{name:$name, config:{tag_list:$tag}}}')
 runner_request=$(curl -sk -X POST \
     -H "RUNNER-TOKEN: glrt-emulator-runner-token" \
     -H "Content-Type: application/json" \
-    -d '{"token":"glrt-emulator-runner-token","info":{"name":"glab-smoke-client-runner","config":{"tag_list":"glab-smoke-ci"}}}' \
+    -d "$runner_payload" \
     "$API/jobs/request")
 RUNNER_JOB_ID=$(echo "$runner_request" | jq -r '.id // empty' 2>/dev/null)
 RUNNER_JOB_TOKEN=$(echo "$runner_request" | jq -r '.token // empty' 2>/dev/null)
@@ -931,10 +1000,14 @@ fi
 manual_after=$(glab_api "projects/$PROJECT_ID/jobs/$MANUAL_JOB_ID")
 assert_json_field "glab ci trigger manual job visible" "$manual_after" '.status == "pending"'
 
+manual_runner_payload=$(jq -n \
+    --arg name "glab-smoke-manual-runner-${RUN_ID}" \
+    --arg tag "$CI_RUNNER_TAG" \
+    '{token:"glrt-emulator-runner-token", info:{name:$name, config:{tag_list:$tag}}}')
 manual_request=$(curl -sk -X POST \
     -H "RUNNER-TOKEN: glrt-emulator-runner-token" \
     -H "Content-Type: application/json" \
-    -d '{"token":"glrt-emulator-runner-token","info":{"name":"glab-smoke-manual-runner","config":{"tag_list":"glab-smoke-ci"}}}' \
+    -d "$manual_runner_payload" \
     "$API/jobs/request")
 MANUAL_RUNNER_JOB_ID=$(echo "$manual_request" | jq -r '.id // empty' 2>/dev/null)
 MANUAL_RUNNER_JOB_TOKEN=$(echo "$manual_request" | jq -r '.token // empty' 2>/dev/null)
@@ -980,10 +1053,14 @@ CANCEL_JOB_PIPELINE_ID=$(echo "$cancel_job_json" | jq -r '.id // empty' 2>/dev/n
 CANCEL_JOB_ID=""
 CANCEL_JOB_TOKEN=""
 if [ -n "$CANCEL_JOB_PIPELINE_ID" ]; then
+    cancel_runner_payload=$(jq -n \
+        --arg name "glab-smoke-cancel-runner-${RUN_ID}" \
+        --arg tag "$CI_RUNNER_TAG" \
+        '{token:"glrt-emulator-runner-token", info:{name:$name, config:{tag_list:$tag}}}')
     cancel_job_request=$(curl -sk -X POST \
         -H "RUNNER-TOKEN: glrt-emulator-runner-token" \
         -H "Content-Type: application/json" \
-        -d '{"token":"glrt-emulator-runner-token","info":{"name":"glab-smoke-cancel-runner","config":{"tag_list":"glab-smoke-ci"}}}' \
+        -d "$cancel_runner_payload" \
         "$API/jobs/request")
     CANCEL_JOB_ID=$(echo "$cancel_job_request" | jq -r '.id // empty' 2>/dev/null)
     CANCEL_JOB_TOKEN=$(echo "$cancel_job_request" | jq -r '.token // empty' 2>/dev/null)
@@ -1011,10 +1088,14 @@ RETRY_PIPELINE_ID=$(echo "$retry_pipeline_json" | jq -r '.id // empty' 2>/dev/nu
 RETRY_JOB_ID=""
 RETRY_JOB_TOKEN=""
 if [ -n "$RETRY_PIPELINE_ID" ]; then
+    retry_runner_payload=$(jq -n \
+        --arg name "glab-smoke-retry-runner-${RUN_ID}" \
+        --arg tag "$CI_RUNNER_TAG" \
+        '{token:"glrt-emulator-runner-token", info:{name:$name, config:{tag_list:$tag}}}')
     retry_job_request=$(curl -sk -X POST \
         -H "RUNNER-TOKEN: glrt-emulator-runner-token" \
         -H "Content-Type: application/json" \
-        -d '{"token":"glrt-emulator-runner-token","info":{"name":"glab-smoke-retry-runner","config":{"tag_list":"glab-smoke-ci"}}}' \
+        -d "$retry_runner_payload" \
         "$API/jobs/request")
     RETRY_JOB_ID=$(echo "$retry_job_request" | jq -r '.id // empty' 2>/dev/null)
     RETRY_JOB_TOKEN=$(echo "$retry_job_request" | jq -r '.token // empty' 2>/dev/null)
@@ -1041,7 +1122,7 @@ if [ -n "$RETRY_JOB_ID" ] && [ -n "$RETRY_JOB_TOKEN" ]; then
     retry_claim=$(curl -sk -X POST \
         -H "RUNNER-TOKEN: glrt-emulator-runner-token" \
         -H "Content-Type: application/json" \
-        -d '{"token":"glrt-emulator-runner-token","info":{"name":"glab-smoke-retry-runner","config":{"tag_list":"glab-smoke-ci"}}}' \
+        -d "$retry_runner_payload" \
         "$API/jobs/request")
     RETRIED_JOB_ID=$(echo "$retry_claim" | jq -r '.id // empty' 2>/dev/null)
     RETRIED_JOB_TOKEN=$(echo "$retry_claim" | jq -r '.token // empty' 2>/dev/null)

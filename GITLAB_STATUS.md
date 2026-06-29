@@ -229,7 +229,7 @@ harness architecture.
   file HEAD metadata, tree pagination, commit filters/stats/diff metadata, and
   richer merge request state/diff/merge validation. Focused local resource
   tests passed together, `make test-affected` passed, and client-VM `make
-  vm-test` passed 90 checks including targeted `glab api` checks for the
+  vm-test` passed 119 checks including targeted `glab api` checks for the
   expanded resource surfaces.
 - The shared real-git merge helper now sets deterministic author/committer
   identity so GitLab merge requests and inherited pull request merges work in
@@ -263,14 +263,15 @@ harness architecture.
   and artifact metadata to make job creation and runner debugging faster.
 - Client VM `glab` validation exists through `make vm-test`; it installs a
   pinned `glab` release inside the client VM and runs isolated `glab api`, Git
-  Smart HTTP, merge request, pipeline, high-level `glab repo`, high-level
+  Smart HTTP, direct CI pipeline/job/trace API checks, merge request, pipeline,
+  high-level `glab repo`, high-level
   `glab issue`, high-level `glab mr`, high-level `glab ci`/`glab pipeline`,
   high-level `glab ci trigger`, high-level `glab ci cancel`, high-level
   `glab ci retry`, high-level `glab job artifact`, and high-level
   `glab release` verification against `glemu.local`.
 - Current validation has passed locally and in VMs: `make test-affected` passed
   190 tests, and `make vm-validate` passed after deploying the server VM. The
-  VM path included 90 client `glab`/Git checks plus official runner variable,
+  VM path included 119 client `glab`/Git checks plus official runner variable,
   rules, extends, include, cache, and `needs:artifacts` validations.
 - Local validation operations are exposed through `make test-focused`,
   `make test-affected`, and `make test-full`; VM validation remains

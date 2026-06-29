@@ -175,12 +175,12 @@ Validated:
 - nested group/subgroup namespace behavior used by the current client workflow
 
 Latest evidence: `make vm-test` passed from the client VM on June 29, 2026
-with 112 `glab` smoke checks covering auth, users, projects, nested groups,
+with 119 `glab` smoke checks covering auth, users, projects, nested groups,
 repo create/view/list/clone/delete, Git Smart HTTP push/fetch, repository files,
-issues, labels, milestones, branches, protected branches, tags, releases,
-commit APIs, repository compare, commit statuses, merge request APIs, merge
-request CLI workflows, pipeline APIs, CI trace/artifacts, manual jobs, cancel,
-and retry.
+direct CI pipeline/job/trace APIs, issues, labels, milestones, branches,
+protected branches, tags, releases, commit APIs, repository compare, commit
+statuses, merge request APIs, merge request CLI workflows, pipeline APIs, CI
+trace/artifacts, manual jobs, cancel, and retry.
 
 ## Done Criteria
 
