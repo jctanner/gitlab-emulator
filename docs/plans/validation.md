@@ -172,8 +172,8 @@ Current client smoke coverage:
   `glab ci get --output json --with-job-details`, `glab ci trace`,
   `glab ci trigger`, `glab ci cancel pipeline`, `glab ci cancel job`,
   `glab ci retry`, and `glab job artifact --list-paths`
-- high-level `glab release create`, `glab release view`, and
-  `glab release delete`
+- high-level `glab release create`, `glab release upload --assets-links`,
+  `glab release view`, and `glab release delete`
 - `glab api` release asset link create/list/update/delete coverage
 - `git clone`, `git fetch`, and `git push` over Git Smart HTTP
 

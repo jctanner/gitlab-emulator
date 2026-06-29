@@ -561,6 +561,19 @@ fi
 release_json=$(glab_api "projects/$PROJECT_ID/releases/$release_tag")
 assert_json_field "glab api release get" "$release_json" ".tag_name == \"$release_tag\" and .name == \"Smoke Release\""
 
+release_upload_links=$("$GLAB" release upload "$release_tag" \
+    --repo "admin/$PROJECT_PATH" \
+    --assets-links "[{\"name\":\"smoke-upload-link\",\"url\":\"https://example.test/${RUN_ID}/upload-link.txt\",\"link_type\":\"other\",\"direct_asset_path\":\"upload-link.txt\"}]" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab release upload assets-links"
+else
+    fail "glab release upload assets-links: $release_upload_links"
+fi
+
+release_upload_json=$(glab_api "projects/$PROJECT_ID/releases/$release_tag")
+assert_json_field "glab release upload assets-links visible" "$release_upload_json" \
+    '.assets.links | map(.name) | index("smoke-upload-link")'
+
 asset_link_create=$(glab_api --method POST \
     "projects/$PROJECT_ID/releases/$release_tag/assets/links" \
     -f "name=smoke-runbook" \

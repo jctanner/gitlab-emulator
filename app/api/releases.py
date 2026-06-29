@@ -470,6 +470,8 @@ async def delete_project_release(
     await require_project_access(project, user, db, DEVELOPER)
     release = await _get_project_release_or_404(project, tag_name, db)
     data = _gitlab_release_json(release, project, BASE)
+    for asset in list(release.assets or []):
+        await db.delete(asset)
     await db.delete(release)
     await db.commit()
     return data
@@ -621,5 +623,7 @@ async def delete_release(
     release = result.scalar_one_or_none()
     if release is None:
         raise HTTPException(status_code=404, detail="Not Found")
+    for asset in list(release.assets or []):
+        await db.delete(asset)
     await db.delete(release)
     await db.commit()

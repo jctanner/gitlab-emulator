@@ -569,15 +569,16 @@ Deliver:
 ### Slice 5: Secrets Data Model and Emulator APIs
 
 Status: implemented for the MVP. Project and group secrets have emulator API
-CRUD, secret values are write-only on read responses, and access-event storage
-is modeled for the later delivery slice. Project secrets are managed from the
-project `Secure > Secrets` page, and group secrets are managed from Admin >
-Groups edit pages.
+CRUD, secret values are write-only on read responses, and jobs that resolve
+secrets record non-sensitive `ci_secret_access_events` plus last-access fields
+on the underlying secret. Project secrets are managed from the project
+`Secure > Secrets` page, and group secrets are managed from Admin > Groups edit
+pages.
 
 Deliver:
 
 - `ci_secrets` model.
-- `ci_secret_access_events` model or backlog stub if access events are deferred.
+- `ci_secret_access_events` model.
 - Project secret CRUD.
 - Group secret CRUD if group hierarchy support is ready.
 - UI/admin seed controls.

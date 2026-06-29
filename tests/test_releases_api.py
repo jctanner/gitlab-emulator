@@ -156,6 +156,51 @@ async def test_gitlab_project_release_asset_links_crud(client, test_user, test_t
 
 
 @pytest.mark.asyncio
+async def test_gitlab_project_release_delete_removes_attached_asset_links(
+    client, test_user, test_token
+):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "release-delete-links", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    created = await client.post(
+        f"{API}/projects/{project_id}/releases",
+        json={
+            "tag_name": "v-delete-links",
+            "ref": "main",
+            "assets": {
+                "links": [
+                    {
+                        "name": "attached-link",
+                        "url": "https://example.test/attached-link.txt",
+                    }
+                ]
+            },
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    assert created.json()["assets"]["links"][0]["name"] == "attached-link"
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}/releases/v-delete-links",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["tag_name"] == "v-delete-links"
+
+    missing = await client.get(
+        f"{API}/projects/{project_id}/releases/v-delete-links",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_gitlab_project_release_writes_require_developer(
     client, db_session, test_user, test_token
 ):
