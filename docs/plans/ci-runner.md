@@ -100,7 +100,9 @@ and cache APIs for controlled integration testing.
 - persist and expose richer long-tail job transitions where target workflows
   require them
 - expose additional runner/job/pipeline inspection APIs in GitLab-compatible
-  shapes where target clients require them
+  shapes where target clients require them; runner job inspection now returns
+  GitLab job-shaped fields including pipeline, commit, runner, artifacts,
+  timestamps, tags, status, and web URL
 - keep compatibility with official runner trace, status, artifact, and cache
   behavior
 

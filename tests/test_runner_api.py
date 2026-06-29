@@ -186,8 +186,18 @@ async def test_runner_inspection_endpoints(client, test_token):
 
     jobs = await client.get(f"{API}/runners/{runner_id}/jobs")
     assert jobs.status_code == 200
-    assert jobs.json()[0]["name"] == "inspect_job"
-    assert jobs.json()[0]["runner"]["description"] == "inspect-runner"
+    job = jobs.json()[0]
+    assert job["name"] == "inspect_job"
+    assert job["status"] == "running"
+    assert job["ref"] == "main"
+    assert job["pipeline"]["id"] == pipeline.json()["id"]
+    assert job["pipeline"]["project_id"] == project.json()["id"]
+    assert job["commit"]["id"] == pipeline.json()["sha"]
+    assert job["tag_list"] == []
+    assert job["artifacts"] == []
+    assert job["runner"]["description"] == "inspect-runner"
+    assert job["runner"]["runner_type"] == "instance_type"
+    assert job["web_url"].endswith(f"/testuser/runner-inspection/-/jobs/{job['id']}")
 
 
 async def test_debug_smoke_queue_admin_routes_are_removed(client):

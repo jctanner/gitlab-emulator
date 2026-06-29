@@ -173,6 +173,66 @@ def _runner_json(runner: CiRunner, *, include_token: bool = False) -> dict:
     return data
 
 
+def _runner_job_json(job: PipelineJob, runner: CiRunner) -> dict:
+    duration = None
+    started = _aware_utc(job.started_at)
+    finished = _aware_utc(job.finished_at)
+    if started and finished:
+        duration = max(0, int((finished - started).total_seconds()))
+    artifacts = [
+        {
+            "file_type": artifact.file_type,
+            "file_format": artifact.file_format,
+            "filename": artifact.filename,
+            "size": artifact.size,
+            "expire_at": _iso_utc(artifact.expire_at),
+            "created_at": _iso_utc(artifact.created_at),
+        }
+        for artifact in job.artifacts
+    ]
+    return {
+        "id": job.id,
+        "name": job.name,
+        "status": job.status,
+        "stage": job.stage,
+        "ref": job.pipeline.ref if job.pipeline else None,
+        "tag": False,
+        "coverage": job.coverage,
+        "allow_failure": bool(job.allow_failure),
+        "created_at": _iso_utc(job.created_at),
+        "scheduled_at": _iso_utc(job.scheduled_at),
+        "started_at": _iso_utc(job.started_at),
+        "finished_at": _iso_utc(job.finished_at),
+        "duration": duration,
+        "queued_duration": None,
+        "user": None,
+        "commit": {"id": job.pipeline.sha, "short_id": job.pipeline.sha[:8]}
+        if job.pipeline
+        else None,
+        "pipeline": {
+            "id": job.pipeline.id,
+            "iid": job.pipeline.iid,
+            "project_id": job.pipeline.project_id,
+            "sha": job.pipeline.sha,
+            "ref": job.pipeline.ref,
+            "status": job.pipeline.status,
+        }
+        if job.pipeline
+        else None,
+        "project_id": job.project_id,
+        "tag_list": job.tags or [],
+        "artifacts": artifacts,
+        "runner": {
+            "id": runner.id,
+            "description": runner.description,
+            "runner_type": "instance_type",
+        },
+        "web_url": f"{settings.BASE_URL}/{job.project.full_name}/-/jobs/{job.id}"
+        if job.project
+        else None,
+    }
+
+
 async def _ensure_runner(db: DbSession, token: str = EMULATOR_RUNNER_TOKEN) -> CiRunner:
     result = await db.execute(select(CiRunner).where(CiRunner.token == token))
     runner = result.scalar_one_or_none()
@@ -1154,25 +1214,16 @@ async def list_runner_jobs(runner_id: int, db: DbSession):
         return []
     jobs_result = await db.execute(
         select(PipelineJob)
+        .options(
+            selectinload(PipelineJob.pipeline),
+            selectinload(PipelineJob.project),
+            selectinload(PipelineJob.artifacts),
+        )
         .where(PipelineJob.runner_name.in_(runner_names))
         .order_by(PipelineJob.id.desc())
         .limit(50)
     )
-    return [
-        {
-            "id": job.id,
-            "name": job.name,
-            "status": job.status,
-            "stage": job.stage,
-            "scheduled_at": job.scheduled_at,
-            "project_id": job.project_id,
-            "pipeline_id": job.pipeline_id,
-            "runner": {"id": runner.id, "description": runner.description},
-            "started_at": job.started_at,
-            "finished_at": job.finished_at,
-        }
-        for job in jobs_result.scalars().all()
-    ]
+    return [_runner_job_json(job, runner) for job in jobs_result.scalars().all()]
 
 
 @router.post("/runners", status_code=status.HTTP_201_CREATED)
