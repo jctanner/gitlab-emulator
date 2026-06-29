@@ -239,7 +239,8 @@ Target areas:
 - deeper `rules` / `only` / `except` edge cases beyond the currently covered
   boolean expressions, regex operators and flags, `exists`, `changes`,
   path-object rules, variable-expanded rule paths, mapping-form legacy filters,
-  rule variables, rule-level `needs`/`interruptible`, and delayed/manual scheduling
+  rule variables, rule-level `needs`/`interruptible`, unsupported rule-key
+  rejection, and delayed/manual scheduling
 - remaining execution semantics for parsed job metadata beyond the current
   retry, timeout, resource-group, coverage, interruptible, and image/service
   executor option support

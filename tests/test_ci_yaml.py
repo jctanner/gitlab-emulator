@@ -1862,6 +1862,40 @@ fallback_interruptible:
     assert by_name["fallback_interruptible"].interruptible is False
 
 
+def test_parse_gitlab_ci_rejects_unsupported_rule_keys():
+    try:
+        parse_gitlab_ci(
+            """
+bad_rule:
+  script: echo bad
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      unsupported_key: true
+"""
+        )
+    except ValueError as exc:
+        assert "rules option(s) not supported: unsupported_key" in str(exc)
+    else:
+        raise AssertionError("expected unsupported rule key to fail")
+
+
+def test_parse_gitlab_ci_allows_known_workflow_rule_auto_cancel_key():
+    jobs = parse_gitlab_ci(
+        """
+workflow:
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      auto_cancel:
+        on_new_commit: interruptible
+
+build:
+  script: echo build
+"""
+    )
+
+    assert [job.name for job in jobs] == ["build"]
+
+
 def test_parse_gitlab_ci_supports_allow_failure_exit_codes():
     jobs = parse_gitlab_ci(
         """

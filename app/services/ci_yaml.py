@@ -80,6 +80,18 @@ SUPPORTED_JOB_WHEN = {
     "never",
     "delayed",
 }
+SUPPORTED_RULE_KEYS = {
+    "allow_failure",
+    "auto_cancel",
+    "changes",
+    "exists",
+    "if",
+    "interruptible",
+    "needs",
+    "start_in",
+    "variables",
+    "when",
+}
 SUPPORTED_HOOKS = {
     "pre_get_sources_script",
     "post_get_sources_script",
@@ -1313,6 +1325,10 @@ def _job_rule_decision(
         for rule in rules:
             if not isinstance(rule, dict):
                 continue
+            unsupported_keys = set(rule) - SUPPORTED_RULE_KEYS
+            if unsupported_keys:
+                unsupported = ", ".join(sorted(str(key) for key in unsupported_keys))
+                raise ValueError(f"rules option(s) not supported: {unsupported}")
             if "if" in rule and not _if_matches(rule.get("if"), ref, variables):
                 continue
             if "exists" in rule and not _rule_paths_match(
