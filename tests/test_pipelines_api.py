@@ -1244,6 +1244,17 @@ manual_gate:
         (job["name"], job["status"]) for job in manual_pipeline_jobs.json()
     ] == [("manual_gate", "manual")]
 
+    descending_pipeline_jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        params={"sort": "desc", "include_retried": "true"},
+        headers=auth_headers(test_token),
+    )
+    assert descending_pipeline_jobs.status_code == 200
+    assert [job["name"] for job in descending_pipeline_jobs.json()] == [
+        "manual_gate",
+        "compile",
+    ]
+
     project_jobs = await client.get(
         f"{API}/projects/{project['id']}/jobs",
         params={"scope": "pending,manual"},
@@ -1254,6 +1265,19 @@ manual_gate:
         "compile": "pending",
         "manual_gate": "manual",
     }
+
+    ascending_project_jobs = await client.get(
+        f"{API}/projects/{project['id']}/jobs",
+        params={"order_by": "id", "sort": "asc"},
+        headers=auth_headers(test_token),
+    )
+    assert ascending_project_jobs.status_code == 200
+    assert [job["name"] for job in ascending_project_jobs.json()] == [
+        "compile",
+        "manual_gate",
+        "compile",
+        "manual_gate",
+    ]
 
 
 async def test_delete_pipeline_removes_pipeline_and_jobs(client, test_token):

@@ -3040,6 +3040,9 @@ async def list_pipeline_jobs(
     current_user: CurrentUser,
     scope: list[str] | None = Query(None),
     scope_array: list[str] | None = Query(None, alias="scope[]"),
+    include_retried: bool | None = None,
+    order_by: str = Query("id", pattern="^id$"),
+    sort: str = Query("asc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
@@ -3050,11 +3053,16 @@ async def list_pipeline_jobs(
         select(PipelineJob)
         .join(Pipeline)
         .where(Pipeline.project_id == project.id, Pipeline.id == pipeline_id)
-        .order_by(PipelineJob.id.asc())
     )
+    if include_retried is not None:
+        # Retries update the same persisted job row in the emulator, so there are
+        # no hidden retried duplicates to exclude or include.
+        pass
     scopes = _scope_values(scope, scope_array)
     if scopes:
         query = query.where(PipelineJob.status.in_(scopes))
+    order_column = PipelineJob.id
+    query = query.order_by(order_column.asc() if sort == "asc" else order_column.desc())
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar() or 0
@@ -3076,6 +3084,8 @@ async def list_project_jobs(
     current_user: CurrentUser,
     scope: list[str] | None = Query(None),
     scope_array: list[str] | None = Query(None, alias="scope[]"),
+    order_by: str = Query("id", pattern="^id$"),
+    sort: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
@@ -3085,11 +3095,12 @@ async def list_project_jobs(
     query = (
         select(PipelineJob)
         .where(PipelineJob.project_id == project.id)
-        .order_by(PipelineJob.id.desc())
     )
     scopes = _scope_values(scope, scope_array)
     if scopes:
         query = query.where(PipelineJob.status.in_(scopes))
+    order_column = PipelineJob.id
+    query = query.order_by(order_column.asc() if sort == "asc" else order_column.desc())
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar() or 0

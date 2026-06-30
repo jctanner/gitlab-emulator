@@ -152,7 +152,9 @@ harness architecture.
   Pipeline test report and test report summary APIs aggregate stored JUnit
   report artifacts into GitLab-shaped suite and test case counts.
 - Project, pipeline, and bridge job listing APIs support GitLab-shaped `scope`
-  and `scope[]` status filters.
+  and `scope[]` status filters. Project and pipeline job lists support
+  `order_by=id` and `sort`; pipeline job lists also accept `include_retried`,
+  which is a no-op because emulator retries update the same persisted job row.
 - Project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
   `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
   `order_by`, and `sort` filters, plus `created_after`, `created_before`,

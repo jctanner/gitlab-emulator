@@ -138,7 +138,9 @@ and cache APIs for controlled integration testing.
 - project job APIs can download individual files from stored ZIP artifact
   archives by job ID or by ref plus job name
 - project, pipeline, and bridge job listing APIs support GitLab-shaped `scope`
-  and `scope[]` status filters
+  and `scope[]` status filters; project and pipeline job lists support
+  `order_by=id` and `sort`, and pipeline job lists accept `include_retried` as
+  a no-op because emulator retries update the same persisted job row
 - project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
   `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
   `order_by`, and `sort` filters, plus `created_after`, `created_before`,
