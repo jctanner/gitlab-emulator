@@ -2370,12 +2370,18 @@ metadata_job:
   image: alpine:3.20
   variables:
     COVERAGE_PREFIX: Coverage
+    INTERRUPTIBLE_FLAG: "true"
+    OPTIONAL_EXIT_CODE: "137"
     RESOURCE_SUFFIX: production
+    TIMEOUT_VALUE: 45 minutes
   retry:
     max: 2
     when: runner_system_failure
-  timeout: 45 minutes
-  interruptible: true
+  timeout: "$TIMEOUT_VALUE"
+  interruptible: "$INTERRUPTIBLE_FLAG"
+  allow_failure:
+    exit_codes:
+      - "$OPTIONAL_EXIT_CODE"
   resource_group: deploy-$RESOURCE_SUFFIX
   coverage: '/$COVERAGE_PREFIX: \\d+\\.\\d+%/'
   script:
@@ -2414,6 +2420,8 @@ metadata_job:
     assert job["retry_attempt"] == 0
     assert job["timeout"] == 2700
     assert job["interruptible"] is True
+    assert job["allow_failure"] is False
+    assert job["allow_failure_exit_codes"] == [137]
     assert job["resource_group"] == "deploy-production"
     assert job["coverage"] is None
     assert job["coverage_regex"] == "/Coverage: \\d+\\.\\d+%/"
@@ -2427,6 +2435,7 @@ metadata_job:
     payload = request.json()
     assert payload["runner_info"]["timeout"] == 2700
     assert payload["steps"][0]["timeout"] == 2700
+    assert payload["steps"][0]["allow_failure"] is False
 
     trace = await client.patch(
         f"{API}/jobs/{payload['id']}/trace?debug_trace=false",
