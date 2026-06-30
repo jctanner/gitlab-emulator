@@ -3536,7 +3536,9 @@ src_compare_to:
 
 async def test_create_pipeline_rejects_unsupported_cache_option(client, test_token):
     project = await _create_project(client, test_token)
-    ci_yaml = """
+    cases = [
+        (
+            """
 cache_probe:
   cache:
     paths:
@@ -3544,26 +3546,68 @@ cache_probe:
     policy: invalid
   script:
     - echo cache
-"""
-    write = await client.put(
-        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
-        headers=auth_headers(test_token),
-        json={
-            "message": "add unsupported cache ci",
-            "content": base64.b64encode(ci_yaml.encode()).decode(),
-            "branch": "main",
-        },
-    )
-    assert write.status_code == 201
+""",
+            "cache policy is not supported",
+            "invalid",
+        ),
+        (
+            """
+cache_probe:
+  cache:
+    key:
+      files:
+        - uv.lock
+      unsupported: true
+    paths:
+      - .cache/
+  script:
+    - echo cache
+""",
+            "cache key option(s) not supported",
+            "unsupported",
+        ),
+        (
+            """
+cache_probe:
+  cache:
+    - key: one
+      paths: [one/]
+    - key: two
+      paths: [two/]
+    - key: three
+      paths: [three/]
+    - key: four
+      paths: [four/]
+    - key: five
+      paths: [five/]
+  script:
+    - echo cache
+""",
+            "cache supports at most 4 entries",
+            "4",
+        ),
+    ]
 
-    resp = await client.post(
-        f"{API}/projects/{project['id']}/pipeline",
-        json={"ref": "main"},
-        headers=auth_headers(test_token),
-    )
-    assert resp.status_code == 400
-    assert "cache policy is not supported" in resp.text
-    assert "invalid" in resp.text
+    for index, (ci_yaml, message, detail) in enumerate(cases, start=1):
+        write = await client.put(
+            f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+            headers=auth_headers(test_token),
+            json={
+                "message": f"add unsupported cache ci {index}",
+                "content": base64.b64encode(ci_yaml.encode()).decode(),
+                "branch": "main",
+            },
+        )
+        assert write.status_code in {200, 201}
+
+        resp = await client.post(
+            f"{API}/projects/{project['id']}/pipeline",
+            json={"ref": "main"},
+            headers=auth_headers(test_token),
+        )
+        assert resp.status_code == 400
+        assert message in resp.text
+        assert detail in resp.text
 
 
 async def test_create_pipeline_schedules_delayed_gitlab_ci_job(
