@@ -30,8 +30,8 @@
     <div class="Box-row">
         <div class="d-flex flex-items-center mb-1">
             <span class="color-fg-muted mr-1">{{ repo_icon(16) }}</span>
-            <a href="{{ url_prefix }}/{{ repo.owner_login }}/{{ repo.name }}" class="text-bold Link--primary">
-                {{ repo.owner_login }}/{{ repo.name }}
+            <a href="{{ url_prefix }}/{{ repo.full_name }}" class="text-bold Link--primary">
+                {{ repo.full_name }}
             </a>
             {% if repo.private %}
             <span class="Label Label--secondary ml-2">Private</span>

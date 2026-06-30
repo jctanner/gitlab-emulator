@@ -53,11 +53,12 @@ async def test_ui_create_repo_under_nested_group_namespace(
     """The repository create form can target a nested GitLab group namespace."""
     parent = Organization(login="redhat", name="Red Hat")
     child = Organization(login="redhat/rhel-ai", name="RHEL AI")
-    db_session.add_all([parent, child])
+    grandchild = Organization(login="redhat/rhel-ai/agentic-ci", name="Agentic CI")
+    db_session.add_all([parent, child, grandchild])
     await db_session.flush()
     db_session.add(
         OrgMembership(
-            org_id=child.id,
+            org_id=grandchild.id,
             user_id=test_user.id,
             role="admin",
             state="active",
@@ -68,13 +69,13 @@ async def test_ui_create_repo_under_nested_group_namespace(
     _ui_session(client, test_user.login)
     form = await client.get("/ui/new")
     assert form.status_code == 200
-    assert '<option value="redhat/rhel-ai"' in form.text
+    assert '<option value="redhat/rhel-ai/agentic-ci"' in form.text
 
     create_repo = await client.post(
         "/ui/new",
         data={
-            "namespace_path": "redhat/rhel-ai",
-            "name": "agentic-ci",
+            "namespace_path": "redhat/rhel-ai/agentic-ci",
+            "name": "strat-pipeline",
             "description": "Nested project",
             "private": "true",
             "auto_init": "true",
@@ -82,20 +83,91 @@ async def test_ui_create_repo_under_nested_group_namespace(
         follow_redirects=False,
     )
     assert create_repo.status_code in (302, 303)
-    assert create_repo.headers["location"] == "/ui/redhat/rhel-ai/agentic-ci"
+    assert (
+        create_repo.headers["location"]
+        == "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline"
+    )
 
     repo = (
         await db_session.execute(
-            select(Repository).where(Repository.full_name == "redhat/rhel-ai/agentic-ci")
+            select(Repository).where(
+                Repository.full_name == "redhat/rhel-ai/agentic-ci/strat-pipeline"
+            )
         )
     ).scalar_one()
     assert repo.owner_type == "Organization"
     assert repo.private is True
 
-    nested_page = await client.get("/ui/redhat/rhel-ai/agentic-ci")
+    nested_page = await client.get("/ui/redhat/rhel-ai/agentic-ci/strat-pipeline")
     assert nested_page.status_code == 200
-    assert "agentic-ci" in nested_page.text
+    assert "strat-pipeline" in nested_page.text
     assert "Nested project" in nested_page.text
+
+    new_file_page = await client.get(
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/new/main"
+    )
+    assert new_file_page.status_code == 200
+    assert "Create new file" in new_file_page.text
+
+    create_file = await client.post(
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/new/main",
+        data={
+            "filename": "README.md",
+            "content": "# Strategy pipeline\n",
+            "commit_message": "Create nested source file",
+        },
+        follow_redirects=False,
+    )
+    assert create_file.status_code in (302, 303)
+    assert (
+        create_file.headers["location"]
+        == "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/blob/main/README.md"
+    )
+
+    blob = await client.get(
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/blob/main/README.md"
+    )
+    assert blob.status_code == 200
+    assert "Strategy pipeline" in blob.text
+
+    pipelines_page = await client.get(
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/pipelines"
+    )
+    assert pipelines_page.status_code == 200
+    assert "Run pipeline" in pipelines_page.text
+    assert "Recent pipelines" in pipelines_page.text
+    assert (
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/pipelines"
+        in pipelines_page.text
+    )
+
+    left_nav_paths = [
+        "/settings",
+        "/issues",
+        "/pulls",
+        "/branches",
+        "/commits/main",
+        "/tags",
+        "/edit/main/.gitlab-ci.yml",
+        "/-/members",
+        "/-/labels",
+        "/-/snippets",
+        "/-/milestones",
+        "/-/variables",
+        "/-/secrets",
+        "/-/deploy_keys",
+        "/-/hooks",
+        "/-/releases",
+        "/-/pipeline_schedules",
+        "/-/pipeline_schedules/new",
+        "/-/jobs",
+        "/-/artifacts",
+    ]
+    for suffix in left_nav_paths:
+        response = await client.get(
+            f"/ui/redhat/rhel-ai/agentic-ci/strat-pipeline{suffix}"
+        )
+        assert response.status_code == 200, suffix
 
 
 @pytest.mark.asyncio

@@ -38,7 +38,7 @@
                 <span>Manage</span>
                 <span class="gl-sidebar-caret">⌄</span>
             </div>
-            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            {% if can_manage_repo|default(false) %}
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'members' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/members">Members</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'labels' %} selected{% endif %}"
@@ -62,7 +62,7 @@
                 {% endif %}
             </a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Issue boards</span>
-            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            {% if can_manage_repo|default(false) %}
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'milestones' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/milestones">Milestones</a>
             {% else %}
@@ -129,7 +129,7 @@
                 <span>Secure</span>
                 <span class="gl-sidebar-caret">⌄</span>
             </div>
-            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            {% if can_manage_repo|default(false) %}
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_variables' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables">CI/CD variables</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'ci_secrets' %} selected{% endif %}"
@@ -149,7 +149,7 @@
                 <span>Deploy</span>
                 <span class="gl-sidebar-caret">⌄</span>
             </div>
-            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            {% if can_manage_repo|default(false) %}
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'settings' %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/settings">Settings</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'webhooks' %} selected{% endif %}"

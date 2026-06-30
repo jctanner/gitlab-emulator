@@ -148,12 +148,39 @@ def _ctx(request: Request, **extra) -> dict:
     context["url_prefix"] = _URL_PREFIX
     # current_user is set by individual route handlers via extra kwargs
     context.setdefault("current_user", None)
+    repo = context.get("repo")
+    current_user = context.get("current_user")
+    if "can_manage_repo" not in context and repo is not None and current_user is not None:
+        context["can_manage_repo"] = bool(
+            current_user.site_admin
+            or (
+                getattr(repo, "owner_type", "User") == "User"
+                and current_user.id == repo.owner_id
+            )
+            or getattr(repo, "owner_type", "User") == "Organization"
+        )
     return context
 
 
-def _can_manage_repo(user: Optional[User], repo: Repository) -> bool:
+async def _can_manage_repo(user: Optional[User], repo: Repository, db: AsyncSession) -> bool:
     """Return whether a UI user can mutate repository settings or source."""
-    return bool(user and (user.site_admin or user.id == repo.owner_id))
+    if not user:
+        return False
+    if user.site_admin:
+        return True
+    if repo.owner_type == "User":
+        return user.id == repo.owner_id
+    if repo.owner_type == "Organization":
+        result = await db.execute(
+            select(OrgMembership.id).where(
+                OrgMembership.org_id == repo.owner_id,
+                OrgMembership.user_id == user.id,
+                OrgMembership.role == "admin",
+                OrgMembership.state == "active",
+            )
+        )
+        return result.scalar_one_or_none() is not None
+    return False
 
 
 def _ci_visibility(masked: bool, hidden: bool) -> str:
@@ -290,7 +317,7 @@ async def _managed_repo_or_response(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return current_user, None, HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return current_user, repo, HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
     return current_user, repo, None
 
@@ -780,7 +807,7 @@ async def repo_settings_page(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     return templates.TemplateResponse(
@@ -817,7 +844,7 @@ async def repo_settings_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     new_name = name.strip()
@@ -929,7 +956,7 @@ async def repo_delete_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     expected = repo.full_name
@@ -2985,7 +3012,7 @@ async def repo_create_pipeline(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     try:
@@ -3030,7 +3057,7 @@ async def repo_cancel_pipeline(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     pipeline = (
@@ -3074,7 +3101,7 @@ async def repo_job_action(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     job = (
@@ -3524,7 +3551,7 @@ async def new_file_page(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     return templates.TemplateResponse(
@@ -3557,7 +3584,7 @@ async def new_file_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     # Build full file path
@@ -3612,7 +3639,7 @@ async def edit_file_page(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     content = ""
@@ -3650,7 +3677,7 @@ async def edit_file_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     if not commit_message:
@@ -3703,7 +3730,7 @@ async def delete_file_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    if not _can_manage_repo(current_user, repo):
+    if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
     if not commit_message:
@@ -3990,6 +4017,7 @@ async def raw_file_view(
 # ---------------------------------------------------------------------------
 
 @router.get("/{project_path:path}", response_class=HTMLResponse)
+@router.post("/{project_path:path}", response_class=HTMLResponse)
 async def nested_repo_page(
     request: Request,
     project_path: str,
@@ -3999,13 +4027,434 @@ async def nested_repo_page(
     normalized = project_path.strip("/")
     if "/" not in normalized:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-    result = await db.execute(select(Repository).where(Repository.full_name == normalized))
-    repo = result.scalar_one_or_none()
+    repo, action_parts = await _resolve_repo_and_remainder(db, normalized)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
     owner = repo.full_name.rsplit("/", 1)[0]
     current_user = await _get_current_user(request, db)
+
+    if action_parts:
+        if request.method == "GET" and action_parts[0] == "settings" and len(action_parts) == 1:
+            return await repo_settings_page(
+                request,
+                owner,
+                repo.name,
+                saved=request.query_params.get("saved") in {"1", "true", "True"},
+                db=db,
+            )
+
+        if request.method == "GET" and action_parts[0] == "issues":
+            if len(action_parts) == 1:
+                return await issues_list(
+                    request,
+                    owner,
+                    repo.name,
+                    state=request.query_params.get("state", "all"),
+                    db=db,
+                )
+            if len(action_parts) == 2 and action_parts[1] == "new":
+                return await new_issue_page(request, owner, repo.name, db=db)
+            if len(action_parts) == 2 and action_parts[1].isdigit():
+                return await issue_detail(request, owner, repo.name, int(action_parts[1]), db=db)
+
+        if request.method == "GET" and action_parts[0] == "pulls":
+            if len(action_parts) == 1:
+                return await pulls_list(
+                    request,
+                    owner,
+                    repo.name,
+                    state=request.query_params.get("state", "open"),
+                    db=db,
+                )
+            if len(action_parts) == 2 and action_parts[1] == "new":
+                return await new_pull_page(request, owner, repo.name, db=db)
+            if len(action_parts) == 2 and action_parts[1].isdigit():
+                return await pull_detail(request, owner, repo.name, int(action_parts[1]), db=db)
+
+        if request.method == "GET" and action_parts[0] == "branches" and len(action_parts) == 1:
+            return await branches_list(request, owner, repo.name, db=db)
+
+        if request.method == "GET" and action_parts[0] == "tags" and len(action_parts) == 1:
+            return await tags_list(request, owner, repo.name, db=db)
+
+        if request.method == "GET" and action_parts[0] == "commits" and len(action_parts) >= 2:
+            return await commits_list(
+                request,
+                owner,
+                repo.name,
+                "/".join(action_parts[1:]),
+                page=int(request.query_params.get("page", "1")),
+                db=db,
+            )
+
+        if request.method == "GET" and action_parts[0] == "commit" and len(action_parts) == 2:
+            return await commit_detail_view(request, owner, repo.name, action_parts[1], db=db)
+
+        if request.method == "GET" and action_parts[0] == "edit" and len(action_parts) >= 3:
+            return await edit_file_page(
+                request,
+                owner,
+                repo.name,
+                action_parts[1],
+                "/".join(action_parts[2:]),
+                db=db,
+            )
+
+        if action_parts[0] == "-" and len(action_parts) >= 2:
+            section = action_parts[1]
+            if request.method == "GET":
+                message = request.query_params.get("message")
+                error = request.query_params.get("error")
+                if section == "members" and len(action_parts) == 2:
+                    return await repo_members_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "labels" and len(action_parts) == 2:
+                    return await repo_labels_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "variables" and len(action_parts) == 2:
+                    return await repo_variables_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "secrets" and len(action_parts) == 2:
+                    return await repo_secrets_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "snippets":
+                    if len(action_parts) == 2:
+                        return await repo_snippets_page(
+                            request, owner, repo.name, message=message, error=error, db=db
+                        )
+                    if len(action_parts) == 3 and action_parts[2].isdigit():
+                        return await repo_snippet_detail_page(
+                            request,
+                            owner,
+                            repo.name,
+                            int(action_parts[2]),
+                            message=message,
+                            error=error,
+                            db=db,
+                        )
+                if section == "milestones" and len(action_parts) == 2:
+                    return await repo_milestones_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "releases" and len(action_parts) == 2:
+                    return await repo_releases_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "deploy_keys" and len(action_parts) == 2:
+                    return await repo_deploy_keys_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "hooks" and len(action_parts) == 2:
+                    return await repo_webhooks_page(
+                        request, owner, repo.name, message=message, error=error, db=db
+                    )
+                if section == "pipeline_schedules":
+                    if len(action_parts) == 2:
+                        return await repo_pipeline_schedules_page(
+                            request, owner, repo.name, message=message, error=error, db=db
+                        )
+                    if len(action_parts) == 3 and action_parts[2] == "new":
+                        return await repo_pipeline_schedule_new_page(
+                            request, owner, repo.name, error=error, db=db
+                        )
+
+            if request.method == "GET" and section == "pipelines":
+                if len(action_parts) == 2:
+                    pipeline_id = request.query_params.get("pipeline_id")
+                    job_id = request.query_params.get("job_id")
+                    return await _repo_ci_template(
+                        request,
+                        owner,
+                        repo,
+                        current_user,
+                        db,
+                        pipeline_id=int(pipeline_id) if pipeline_id else None,
+                        job_id=int(job_id) if job_id else None,
+                        flash_message=request.query_params.get("flash_message"),
+                        flash_type=request.query_params.get("flash_type", "info"),
+                    )
+                if len(action_parts) == 3 and action_parts[2].isdigit():
+                    return await _repo_ci_template(
+                        request,
+                        owner,
+                        repo,
+                        current_user,
+                        db,
+                        pipeline_id=int(action_parts[2]),
+                        flash_message=request.query_params.get("flash_message"),
+                        flash_type=request.query_params.get("flash_type", "info"),
+                    )
+
+            if request.method == "POST" and section == "pipelines":
+                if not current_user:
+                    return RedirectResponse(url="/ui/login", status_code=302)
+                if not await _can_manage_repo(current_user, repo, db):
+                    return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    ref = str(form.get("ref") or "main").strip() or repo.default_branch or "main"
+                    try:
+                        pipeline = await _create_pipeline(
+                            repo.id,
+                            CreatePipelineRequest(ref=ref),
+                            db,
+                            source="web",
+                            actor=current_user,
+                        )
+                    except Exception as exc:
+                        await db.rollback()
+                        detail = exc.detail if hasattr(exc, "detail") else str(exc)
+                        return _repo_ci_redirect(
+                            owner,
+                            repo.name,
+                            flash_message=f"Could not create pipeline: {detail}",
+                            flash_type="error",
+                        )
+                    return _repo_ci_redirect(
+                        owner,
+                        repo.name,
+                        pipeline_id=pipeline.id,
+                        flash_message=f"Pipeline #{pipeline.id} created.",
+                        flash_type="success",
+                    )
+                if (
+                    len(action_parts) == 4
+                    and action_parts[2].isdigit()
+                    and action_parts[3] == "cancel"
+                ):
+                    pipeline = (
+                        await db.execute(
+                            select(Pipeline)
+                            .options(selectinload(Pipeline.jobs))
+                            .where(Pipeline.project_id == repo.id, Pipeline.id == int(action_parts[2]))
+                        )
+                    ).scalar_one_or_none()
+                    if pipeline is None:
+                        return HTMLResponse(content="<h1>404 - Pipeline Not Found</h1>", status_code=404)
+                    now = datetime.now(timezone.utc)
+                    for job in pipeline.jobs:
+                        if job.status in {"pending", "running", "manual", "scheduled"}:
+                            job.status = "canceled"
+                            job.finished_at = job.finished_at or now
+                    await _derive_pipeline_status(pipeline, db)
+                    await db.commit()
+                    return _repo_ci_redirect(
+                        owner,
+                        repo.name,
+                        pipeline_id=pipeline.id,
+                        flash_message="Pipeline canceled.",
+                        flash_type="success",
+                    )
+
+            if request.method == "GET" and section == "jobs":
+                if len(action_parts) == 2:
+                    jobs = list((
+                        await db.execute(
+                            select(PipelineJob)
+                            .options(selectinload(PipelineJob.pipeline))
+                            .where(PipelineJob.project_id == repo.id)
+                            .order_by(PipelineJob.id.desc())
+                            .limit(100)
+                        )
+                    ).scalars().all())
+                    return templates.TemplateResponse(
+                        request=request,
+                        name="repo_jobs.html",
+                        context=_ctx(
+                            request,
+                            owner=owner,
+                            repo=repo,
+                            repo_name=repo.name,
+                            current_user=current_user,
+                            jobs=jobs,
+                        ),
+                    )
+                if len(action_parts) == 3 and action_parts[2].isdigit():
+                    return await _repo_ci_template(
+                        request,
+                        owner,
+                        repo,
+                        current_user,
+                        db,
+                        job_id=int(action_parts[2]),
+                        flash_message=request.query_params.get("flash_message"),
+                        flash_type=request.query_params.get("flash_type", "info"),
+                    )
+
+            if (
+                request.method == "POST"
+                and section == "jobs"
+                and len(action_parts) == 4
+                and action_parts[2].isdigit()
+            ):
+                if not current_user:
+                    return RedirectResponse(url="/ui/login", status_code=302)
+                if not await _can_manage_repo(current_user, repo, db):
+                    return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
+                action = action_parts[3]
+                job = (
+                    await db.execute(
+                        select(PipelineJob)
+                        .options(
+                            selectinload(PipelineJob.pipeline).selectinload(Pipeline.jobs),
+                            selectinload(PipelineJob.trace),
+                        )
+                        .where(PipelineJob.project_id == repo.id, PipelineJob.id == int(action_parts[2]))
+                    )
+                ).scalar_one_or_none()
+                if job is None:
+                    return HTMLResponse(content="<h1>404 - Job Not Found</h1>", status_code=404)
+                now = datetime.now(timezone.utc)
+                message = "Job updated."
+                if action == "cancel":
+                    if job.status in {"pending", "running", "manual", "scheduled"}:
+                        job.status = "canceled"
+                        job.finished_at = job.finished_at or now
+                    message = "Job canceled."
+                elif action == "play":
+                    if job.status != "manual":
+                        return _repo_ci_redirect(
+                            owner, repo.name, pipeline_id=job.pipeline_id, job_id=job.id,
+                            flash_message="Job is not playable.", flash_type="error",
+                        )
+                    job.status = "pending"
+                    job.queued_at = now
+                    job.failure_reason = None
+                    job.exit_code = None
+                    message = "Job queued."
+                elif action == "retry":
+                    if job.status not in {"failed", "canceled", "skipped", "success"}:
+                        return _repo_ci_redirect(
+                            owner, repo.name, pipeline_id=job.pipeline_id, job_id=job.id,
+                            flash_message="Job is not retryable.", flash_type="error",
+                        )
+                    _reset_job_for_retry(job, now)
+                    message = "Job retried."
+                else:
+                    return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+                await _derive_pipeline_status(job.pipeline, db)
+                if job.pipeline.status in {"pending", "running"}:
+                    job.pipeline.finished_at = None
+                await db.commit()
+                return _repo_ci_redirect(
+                    owner,
+                    repo.name,
+                    job_id=job.id,
+                    flash_message=message,
+                    flash_type="success",
+                )
+
+            if request.method == "GET" and section == "artifacts" and len(action_parts) == 2:
+                rows = (
+                    await db.execute(
+                        select(JobArtifact, PipelineJob, Pipeline)
+                        .join(PipelineJob, JobArtifact.job_id == PipelineJob.id)
+                        .join(Pipeline, PipelineJob.pipeline_id == Pipeline.id)
+                        .where(Pipeline.project_id == repo.id)
+                        .order_by(JobArtifact.created_at.desc(), JobArtifact.id.desc())
+                        .limit(100)
+                    )
+                ).all()
+                artifacts = [
+                    {
+                        "artifact": artifact,
+                        "job": job,
+                        "pipeline": pipeline,
+                        "download_url": f"/api/v4/projects/{repo.id}/jobs/{job.id}/artifacts",
+                    }
+                    for artifact, job, pipeline in rows
+                ]
+                return templates.TemplateResponse(
+                    request=request,
+                    name="repo_artifacts.html",
+                    context=_ctx(
+                        request,
+                        owner=owner,
+                        repo=repo,
+                        repo_name=repo.name,
+                        current_user=current_user,
+                        artifacts=artifacts,
+                    ),
+                )
+
+            return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+
+        if action_parts[0] == "new" and len(action_parts) >= 2:
+            if not current_user:
+                return RedirectResponse(url="/ui/login", status_code=302)
+            if not await _can_manage_repo(current_user, repo, db):
+                return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
+            ref = action_parts[1]
+            dir_path = "/".join(action_parts[2:])
+            if request.method == "POST":
+                form = await request.form()
+                filename = str(form.get("filename") or "")
+                content = str(form.get("content") or "")
+                commit_message = str(form.get("commit_message") or "")
+                full_path = f"{dir_path}/{filename}" if dir_path else filename
+                if not commit_message:
+                    commit_message = f"Create {full_path}"
+                try:
+                    await write_file(
+                        disk_path=repo.disk_path,
+                        branch=ref,
+                        path=full_path,
+                        content=content.encode("utf-8"),
+                        message=commit_message,
+                        author_name=current_user.name or current_user.login,
+                        author_email=current_user.email or f"{current_user.login}@users.noreply.gitlab-emulator.local",
+                    )
+                    return RedirectResponse(
+                        url=f"/ui/{repo.full_name}/blob/{ref}/{full_path}",
+                        status_code=302,
+                    )
+                except Exception as exc:
+                    return templates.TemplateResponse(
+                        request=request,
+                        name="new_file.html",
+                        context=_ctx(
+                            request, owner=owner, repo=repo, repo_name=repo.name,
+                            ref=ref, dir_path=dir_path, current_user=current_user,
+                            error=str(exc),
+                        ),
+                    )
+            return templates.TemplateResponse(
+                request=request,
+                name="new_file.html",
+                context=_ctx(
+                    request, owner=owner, repo=repo, repo_name=repo.name,
+                    ref=ref, dir_path=dir_path, current_user=current_user, error=None,
+                ),
+            )
+
+        if request.method == "GET" and action_parts[0] == "blob" and len(action_parts) >= 3:
+            ref = action_parts[1]
+            path = "/".join(action_parts[2:])
+            content = None
+            if repo.disk_path and os.path.isdir(repo.disk_path):
+                raw = await get_file_content(repo.disk_path, ref, path)
+                if raw:
+                    try:
+                        content = raw.decode("utf-8", errors="replace")
+                    except Exception:
+                        content = None
+            return templates.TemplateResponse(
+                request=request,
+                name="blob.html",
+                context=_ctx(
+                    request, owner=owner, repo=repo, repo_name=repo.name,
+                    ref=ref, path=path, content=content,
+                    current_user=current_user,
+                ),
+            )
+
+        return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+
     tree_entries = None
     readme_content = None
     default_branch = repo.default_branch or "main"
@@ -4074,7 +4523,27 @@ async def _get_repo(
 ) -> Optional[Repository]:
     """Look up a repository by owner login and repo name."""
     full_name = f"{owner}/{repo_name}"
+    return await _get_repo_by_full_path(db, full_name)
+
+
+async def _get_repo_by_full_path(
+    db: AsyncSession, full_name: str
+) -> Optional[Repository]:
+    """Look up a repository by its full GitLab project path."""
+    normalized = full_name.strip("/")
     result = await db.execute(
-        select(Repository).where(Repository.full_name == full_name)
+        select(Repository).where(Repository.full_name == normalized)
     )
     return result.scalar_one_or_none()
+
+
+async def _resolve_repo_and_remainder(
+    db: AsyncSession, project_path: str
+) -> tuple[Optional[Repository], list[str]]:
+    """Resolve the longest repository full path prefix and return trailing parts."""
+    parts = [part for part in project_path.strip("/").split("/") if part]
+    for index in range(len(parts), 1, -1):
+        repo = await _get_repo_by_full_path(db, "/".join(parts[:index]))
+        if repo is not None:
+            return repo, parts[index:]
+    return None, []
