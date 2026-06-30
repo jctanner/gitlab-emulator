@@ -341,7 +341,7 @@ harness architecture.
   high-level `glab repo`, high-level `glab repo search`, high-level
   `glab repo update`, high-level `glab repo contributors`, high-level
   `glab repo archive`, high-level `glab repo fork`, high-level
-  `glab repo members`, high-level
+  `glab repo members`, high-level `glab deploy-key`, high-level
   `glab issue`, high-level `glab label`, high-level `glab milestone`,
   high-level `glab variable`, high-level `glab mr`, high-level
   `glab ci`/`glab pipeline`, high-level `glab schedule`, high-level

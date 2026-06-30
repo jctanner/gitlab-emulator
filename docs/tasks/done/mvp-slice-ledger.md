@@ -344,6 +344,10 @@ Done when:
   - `glab repo clone`
   - `glab repo fork`
   - `glab repo delete`
+  - `glab deploy-key add`
+  - `glab deploy-key list --output json`
+  - `glab deploy-key get --output json`
+  - `glab deploy-key delete`
   - `glab issue create`
   - `glab issue list --output json`
   - `glab issue view --output json`

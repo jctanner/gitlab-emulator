@@ -544,6 +544,56 @@ variables_after_delete=$("$GLAB" variable list \
 assert_json_field "glab variable delete visible" "$variables_after_delete" \
     'map(.key) | index("GLAB_SMOKE_VAR") | not'
 
+section "Deploy Key CLI via glab"
+
+DEPLOY_KEY_FILE="$TEST_HOME/deploy-key.pub"
+cat > "$DEPLOY_KEY_FILE" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeDeployKeyForGitLabEmulatorSmokeOnly deploy-key-smoke@example.com
+EOF
+
+deploy_key_add=$("$GLAB" deploy-key add "$DEPLOY_KEY_FILE" \
+    --repo "admin/$PROJECT_PATH" \
+    --title "glab deploy key smoke" \
+    --can-push 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab deploy-key add"
+else
+    fail "glab deploy-key add: $deploy_key_add"
+fi
+
+deploy_key_list=$("$GLAB" deploy-key list \
+    --repo "admin/$PROJECT_PATH" \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab deploy-key list json" "$deploy_key_list" \
+    'map(.title) | index("glab deploy key smoke")'
+
+DEPLOY_KEY_ID=$(echo "$deploy_key_list" | jq -r '.[] | select(.title == "glab deploy key smoke") | .id' | head -1)
+if [ -n "$DEPLOY_KEY_ID" ] && [ "$DEPLOY_KEY_ID" != "null" ]; then
+    deploy_key_get=$("$GLAB" deploy-key get "$DEPLOY_KEY_ID" \
+        --repo "admin/$PROJECT_PATH" \
+        --output json 2>&1)
+    assert_json_field "glab deploy-key get json" "$deploy_key_get" \
+        '.title == "glab deploy key smoke" and .can_push == true'
+
+    deploy_key_delete=$(printf 'y\n' | "$GLAB" deploy-key delete "$DEPLOY_KEY_ID" \
+        --repo "admin/$PROJECT_PATH" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab deploy-key delete"
+    else
+        fail "glab deploy-key delete: $deploy_key_delete"
+    fi
+
+    deploy_keys_after_delete=$("$GLAB" deploy-key list \
+        --repo "admin/$PROJECT_PATH" \
+        --output json \
+        --per-page 100 2>&1)
+    assert_json_field "glab deploy-key delete visible" "$deploy_keys_after_delete" \
+        "map(.id) | index($DEPLOY_KEY_ID | tonumber) | not"
+else
+    fail "glab deploy-key list did not return the created key: $deploy_key_list"
+fi
+
 section "Issue CLI via glab"
 
 issue_create=$("$GLAB" issue create \
