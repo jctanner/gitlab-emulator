@@ -336,7 +336,8 @@ harness architecture.
 - Client VM `glab` validation exists through `make vm-test`; it installs a
   pinned `glab` release inside the client VM and runs isolated `glab api`, Git
   Smart HTTP, direct CI pipeline/job/trace API checks, merge request, pipeline,
-  high-level `glab repo`, high-level `glab repo members`, high-level
+  high-level `glab repo`, high-level `glab repo search`, high-level
+  `glab repo members`, high-level
   `glab issue`, high-level `glab label`, high-level `glab milestone`,
   high-level `glab variable`, high-level `glab mr`, high-level
   `glab ci`/`glab pipeline`, high-level `glab ci trigger`, high-level

@@ -309,6 +309,9 @@ if [ -n "$CLI_PROJECT_ID" ]; then
     repo_list=$("$GLAB" repo list --all --output json --per-page 100 2>&1)
     assert_json_field "glab repo list json" "$repo_list" "map(.path_with_namespace) | index(\"admin/$CLI_PROJECT_PATH\")"
 
+    repo_search=$("$GLAB" repo search --search "$CLI_PROJECT_PATH" --output json --per-page 100 2>&1)
+    assert_json_field "glab repo search json" "$repo_search" "map(.path_with_namespace) | index(\"admin/$CLI_PROJECT_PATH\")"
+
     cli_readme_payload=$(jq -n \
         --arg branch "main" \
         --arg message "seed cli repo" \
