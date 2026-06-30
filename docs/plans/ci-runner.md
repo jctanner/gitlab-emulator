@@ -137,6 +137,9 @@ and cache APIs for controlled integration testing.
   archives by job ID or by ref plus job name
 - project, pipeline, and bridge job listing APIs support GitLab-shaped `scope`
   and `scope[]` status filters
+- project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
+  `status`, `source`, `ref`, `sha`, `yaml_errors`, `order_by`, and `sort`
+  filters
 - pipeline test report and test report summary APIs aggregate stored JUnit
   report artifacts into GitLab-shaped suite and test case counts
 - dotenv report artifacts from successful upstream dependency jobs are parsed

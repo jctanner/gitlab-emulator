@@ -4609,6 +4609,30 @@ api_only:
     assert pipeline["source"] == "trigger"
     assert pipeline["ref"] == "main"
 
+    trigger_pipelines = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"source": "trigger", "ref": "main", "sha": pipeline["sha"]},
+        headers=auth_headers(test_token),
+    )
+    assert trigger_pipelines.status_code == 200
+    assert [item["id"] for item in trigger_pipelines.json()] == [pipeline["id"]]
+
+    pending_scope = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params=[("scope[]", "pending")],
+        headers=auth_headers(test_token),
+    )
+    assert pending_scope.status_code == 200
+    assert pipeline["id"] in [item["id"] for item in pending_scope.json()]
+
+    yaml_error_pipelines = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"yaml_errors": "true"},
+        headers=auth_headers(test_token),
+    )
+    assert yaml_error_pipelines.status_code == 200
+    assert yaml_error_pipelines.json() == []
+
     request = await client.post(
         f"{API}/jobs/request",
         headers={"RUNNER-TOKEN": RUNNER_TOKEN},
@@ -4695,6 +4719,22 @@ api_only:
     assert play_resp.status_code == 201
     pipeline = play_resp.json()
     assert pipeline["source"] == "schedule"
+
+    schedule_pipelines = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"source": "schedule", "status": pipeline["status"]},
+        headers=auth_headers(test_token),
+    )
+    assert schedule_pipelines.status_code == 200
+    assert [item["id"] for item in schedule_pipelines.json()] == [pipeline["id"]]
+
+    ascending = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"order_by": "id", "sort": "asc", "per_page": 1},
+        headers=auth_headers(test_token),
+    )
+    assert ascending.status_code == 200
+    assert ascending.headers["x-page"] == "1"
 
     pipeline_variables = await client.get(
         f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/variables",

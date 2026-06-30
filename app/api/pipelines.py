@@ -2445,18 +2445,51 @@ async def list_pipelines(
     request: Request,
     db: DbSession,
     current_user: CurrentUser,
+    scope: list[str] | None = Query(None),
+    scope_array: list[str] | None = Query(None, alias="scope[]"),
+    status: str | None = None,
+    source: str | None = None,
+    ref: str | None = None,
+    sha: str | None = None,
+    yaml_errors: bool | None = None,
+    order_by: str = Query("id", pattern="^(id|status|ref|updated_at|created_at)$"),
+    sort: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(30, ge=1, le=100),
 ):
     project = await _get_project_ref(
         project_ref, db, current_user, enforce_read_access=True
     )
-    query = (
-        select(Pipeline)
-        .options(selectinload(Pipeline.jobs))
-        .where(Pipeline.project_id == project.id)
-        .order_by(Pipeline.id.desc())
+    query = select(Pipeline).options(selectinload(Pipeline.jobs)).where(
+        Pipeline.project_id == project.id
     )
+    scopes = _scope_values(scope, scope_array)
+    if scopes:
+        query = query.where(Pipeline.status.in_(scopes))
+    if status:
+        query = query.where(Pipeline.status == status)
+    if source:
+        query = query.where(Pipeline.source == source)
+    if ref:
+        query = query.where(Pipeline.ref == ref)
+    if sha:
+        query = query.where(Pipeline.sha == sha)
+    if yaml_errors:
+        query = query.where(False)
+
+    order_columns = {
+        "id": Pipeline.id,
+        "status": Pipeline.status,
+        "ref": Pipeline.ref,
+        "updated_at": Pipeline.updated_at,
+        "created_at": Pipeline.created_at,
+    }
+    order_column = order_columns[order_by]
+    query = query.order_by(
+        order_column.asc() if sort == "asc" else order_column.desc()
+    )
+    if order_by != "id":
+        query = query.order_by(Pipeline.id.desc())
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar() or 0
