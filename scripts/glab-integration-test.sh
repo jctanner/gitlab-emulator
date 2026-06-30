@@ -394,6 +394,66 @@ if [ -n "$PIPELINE_ID" ]; then
     fi
 fi
 
+section "Variable CLI via glab"
+
+variable_set=$("$GLAB" variable set GLAB_SMOKE_VAR "initial-value" \
+    --repo "admin/$PROJECT_PATH" \
+    --description "glab variable smoke" \
+    --scope review \
+    --raw 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab variable set"
+else
+    fail "glab variable set: $variable_set"
+fi
+
+variable_get=$("$GLAB" variable get GLAB_SMOKE_VAR \
+    --repo "admin/$PROJECT_PATH" \
+    --scope review \
+    --output json 2>&1)
+assert_json_field "glab variable get json" "$variable_get" \
+    '.key == "GLAB_SMOKE_VAR" and .value == "initial-value" and .environment_scope == "review" and .raw == true'
+
+variable_list=$("$GLAB" variable list \
+    --repo "admin/$PROJECT_PATH" \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab variable list json" "$variable_list" \
+    'map(.key) | index("GLAB_SMOKE_VAR")'
+
+variable_update=$("$GLAB" variable update GLAB_SMOKE_VAR "updated-value" \
+    --repo "admin/$PROJECT_PATH" \
+    --scope review \
+    --description "updated glab variable smoke" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab variable update"
+else
+    fail "glab variable update: $variable_update"
+fi
+
+variable_updated=$("$GLAB" variable get GLAB_SMOKE_VAR \
+    --repo "admin/$PROJECT_PATH" \
+    --scope review \
+    --output json 2>&1)
+assert_json_field "glab variable update visible" "$variable_updated" \
+    '.key == "GLAB_SMOKE_VAR" and .value == "updated-value" and .description == "updated glab variable smoke"'
+
+variable_delete=$(printf 'y\n' | "$GLAB" variable delete GLAB_SMOKE_VAR \
+    --repo "admin/$PROJECT_PATH" \
+    --scope review 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab variable delete"
+else
+    fail "glab variable delete: $variable_delete"
+fi
+
+variables_after_delete=$("$GLAB" variable list \
+    --repo "admin/$PROJECT_PATH" \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab variable delete visible" "$variables_after_delete" \
+    'map(.key) | index("GLAB_SMOKE_VAR") | not'
+
 section "Issue CLI via glab"
 
 issue_create=$("$GLAB" issue create \

@@ -462,6 +462,37 @@ async def test_project_variables_crud_and_environment_scope(
     assert get_scoped.json()["variable_type"] == "file"
     assert get_scoped.json()["protected"] is True
 
+    update_scoped = await client.put(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        params={"environment_scope": "production"},
+        json={"value": "token-prod-updated", "description": "scoped update"},
+        headers=auth_headers(test_token),
+    )
+    assert update_scoped.status_code == 200
+    assert update_scoped.json()["value"] == "token-prod-updated"
+    assert update_scoped.json()["description"] == "scoped update"
+    assert update_scoped.json()["environment_scope"] == "production"
+
+    create_scoped_only = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={
+            "key": "SCOPED_ONLY",
+            "value": "scoped-only",
+            "environment_scope": "review",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert create_scoped_only.status_code == 201
+
+    update_scoped_only_without_filter = await client.put(
+        f"{API}/projects/{project_id}/variables/SCOPED_ONLY",
+        json={"value": "scoped-only-updated"},
+        headers=auth_headers(test_token),
+    )
+    assert update_scoped_only_without_filter.status_code == 200
+    assert update_scoped_only_without_filter.json()["value"] == "scoped-only-updated"
+    assert update_scoped_only_without_filter.json()["environment_scope"] == "review"
+
     updated = await client.put(
         f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
         json={"value": "token-two", "masked": False, "description": "updated"},
@@ -471,6 +502,20 @@ async def test_project_variables_crud_and_environment_scope(
     assert updated.json()["value"] == "token-two"
     assert updated.json()["masked"] is False
     assert updated.json()["description"] == "updated"
+
+    deleted_scoped = await client.delete(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        params={"environment_scope": "production"},
+        headers=auth_headers(test_token),
+    )
+    assert deleted_scoped.status_code == 204
+
+    missing_scoped = await client.get(
+        f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",
+        params={"filter[environment_scope]": "production"},
+        headers=auth_headers(test_token),
+    )
+    assert missing_scoped.status_code == 404
 
     deleted = await client.delete(
         f"{API}/projects/{project_id}/variables/DEPLOY_TOKEN",

@@ -337,10 +337,11 @@ harness architecture.
   pinned `glab` release inside the client VM and runs isolated `glab api`, Git
   Smart HTTP, direct CI pipeline/job/trace API checks, merge request, pipeline,
   high-level `glab repo`, high-level
-  `glab issue`, high-level `glab mr`, high-level `glab ci`/`glab pipeline`,
-  high-level `glab ci trigger`, high-level `glab ci cancel`, high-level
-  `glab ci retry`, high-level `glab job artifact`, and high-level
-  `glab release` verification against `glemu.local`.
+  `glab issue`, high-level `glab variable`, high-level `glab mr`, high-level
+  `glab ci`/`glab pipeline`, high-level `glab ci trigger`, high-level
+  `glab ci cancel`, high-level `glab ci retry`, high-level
+  `glab job artifact`, and high-level `glab release` verification against
+  `glemu.local`.
 - Current validation has passed locally and in VMs: `make test-affected` passed
   190 tests, and `make vm-validate` passed after deploying the server VM. The
   VM path included 119 client `glab`/Git checks plus official runner variable,

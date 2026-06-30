@@ -259,6 +259,17 @@ def _variable_json(variable: CiVariable) -> dict:
     }
 
 
+def _requested_environment_scope(
+    filter_environment_scope: str | None,
+    environment_scope: str | None,
+) -> str | None:
+    return (
+        filter_environment_scope
+        if filter_environment_scope is not None
+        else environment_scope
+    )
+
+
 def _secret_json(secret: CiSecret) -> dict:
     return {
         "name": secret.name,
@@ -305,16 +316,30 @@ async def _get_project_variable_or_404(
     key: str,
     environment_scope: str | None = None,
 ) -> CiVariable:
+    variable_key = _validate_variable_key(key)
     query = select(CiVariable).where(
         CiVariable.scope_type == "project",
         CiVariable.scope_id == project.id,
-        CiVariable.key == _validate_variable_key(key),
+        CiVariable.key == variable_key,
     )
     if environment_scope is not None:
         query = query.where(CiVariable.environment_scope == environment_scope)
     else:
         query = query.where(CiVariable.environment_scope == "*")
     variable = (await db.execute(query)).scalar_one_or_none()
+    if variable is None and environment_scope is None:
+        fallback_query = (
+            select(CiVariable)
+            .where(
+                CiVariable.scope_type == "project",
+                CiVariable.scope_id == project.id,
+                CiVariable.key == variable_key,
+            )
+            .order_by(CiVariable.environment_scope)
+        )
+        matches = (await db.execute(fallback_query)).scalars().all()
+        if len(matches) == 1:
+            variable = matches[0]
     if variable is None:
         raise HTTPException(status_code=404, detail="404 Variable Not Found")
     return variable
@@ -1286,12 +1311,21 @@ async def get_project_variable(
     key: str,
     user: AuthUser,
     db: DbSession,
-    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    filter_environment_scope: str | None = Query(
+        None,
+        alias="filter[environment_scope]",
+    ),
+    environment_scope: str | None = Query(None),
 ):
     """Get one project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
     await _require_project_maintainer(project, user, db)
-    variable = await _get_project_variable_or_404(project, db, key, environment_scope)
+    variable = await _get_project_variable_or_404(
+        project,
+        db,
+        key,
+        _requested_environment_scope(filter_environment_scope, environment_scope),
+    )
     return _variable_json(variable)
 
 
@@ -1302,12 +1336,21 @@ async def update_project_variable(
     body: ProjectVariableUpdate,
     user: AuthUser,
     db: DbSession,
-    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    filter_environment_scope: str | None = Query(
+        None,
+        alias="filter[environment_scope]",
+    ),
+    environment_scope: str | None = Query(None),
 ):
     """Update one project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
     await _require_project_maintainer(project, user, db)
-    variable = await _get_project_variable_or_404(project, db, key, environment_scope)
+    variable = await _get_project_variable_or_404(
+        project,
+        db,
+        key,
+        _requested_environment_scope(filter_environment_scope, environment_scope),
+    )
     if body.value is not None:
         variable.value = body.value
     if body.variable_type is not None:
@@ -1342,12 +1385,21 @@ async def delete_project_variable(
     key: str,
     user: AuthUser,
     db: DbSession,
-    environment_scope: str | None = Query(None, alias="filter[environment_scope]"),
+    filter_environment_scope: str | None = Query(
+        None,
+        alias="filter[environment_scope]",
+    ),
+    environment_scope: str | None = Query(None),
 ):
     """Delete one project CI/CD variable."""
     project = await _get_project_or_404(project_ref, db, user)
     await _require_project_maintainer(project, user, db)
-    variable = await _get_project_variable_or_404(project, db, key, environment_scope)
+    variable = await _get_project_variable_or_404(
+        project,
+        db,
+        key,
+        _requested_environment_scope(filter_environment_scope, environment_scope),
+    )
     await db.delete(variable)
     await db.commit()
     return Response(status_code=204)
