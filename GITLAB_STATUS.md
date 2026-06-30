@@ -247,8 +247,9 @@ harness architecture.
   map to persisted event names. Actual outbound delivery remains limited to the
   existing delivery scaffolding.
 - GitLab-shaped global search exists at `/api/v4/search` for `projects`,
-  `users`, `issues`, `merge_requests`, indexed code `blobs`/`code`, and
-  indexed `commits`. The endpoint returns GitLab-style arrays while the older
+  `users`, `issues`, `merge_requests`, `milestones`, indexed code
+  `blobs`/`code`, and indexed `commits`. The endpoint returns GitLab-style
+  arrays while the older
   GitHub-shaped `/search/*`
   endpoints remain available for scaffold compatibility.
 - Main GitLab-facing list endpoints return exact GitLab pagination headers and

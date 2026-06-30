@@ -357,6 +357,60 @@ async def test_gitlab_global_search_merge_requests(client, test_user, test_token
 
 
 @pytest.mark.asyncio
+async def test_gitlab_global_search_milestones(client, test_user, test_token):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "gitlab-search-milestone"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    milestone = await client.post(
+        f"{API}/projects/{project_id}/milestones",
+        json={
+            "title": "Needle milestone",
+            "description": "Searchable milestone body",
+            "due_on": "2026-07-01",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert milestone.status_code == 201
+    milestone_id = milestone.json()["id"]
+
+    issue = await client.post(
+        f"{API}/repos/testuser/gitlab-search-milestone/issues",
+        json={
+            "title": "Needle milestone issue",
+            "body": "Searchable issue body",
+            "milestone": 1,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert issue.status_code == 201
+
+    resp = await client.get(
+        f"{API}/search",
+        params={"scope": "milestones", "search": "Needle milestone"},
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["id"] == milestone_id
+    assert data[0]["project_id"] == project_id
+    assert data[0]["title"] == "Needle milestone"
+    assert data[0]["description"] == "Searchable milestone body"
+    assert data[0]["due_date"] == "2026-07-01"
+    assert data[0]["open_issues"] == 1
+    assert data[0]["closed_issues"] == 0
+    assert data[0]["web_url"].endswith(
+        "/testuser/gitlab-search-milestone/-/milestones/1"
+    )
+
+
+@pytest.mark.asyncio
 async def test_gitlab_global_search_blobs(client, test_user, test_token, db_session):
     project = await client.post(
         f"{API}/projects",

@@ -6,9 +6,11 @@ from sqlalchemy import select, or_
 from app.api.deps import CurrentUser, DbSession
 from app.api.pagination import paginated_json
 from app.api.projects import _project_json
+from app.api.milestones import _count_issues, _gitlab_milestone_json
 from app.config import settings
 from app.models.issue import Issue
 from app.models.merge_request import MergeRequest
+from app.models.milestone import Milestone
 from app.models.project import Project
 from app.models.user import User
 from app.models.search_index import FileContent, CommitMetadata
@@ -225,6 +227,45 @@ async def gitlab_search(
             per_page,
             total,
         )
+
+    if scope == "milestones":
+        query = (
+            select(Milestone)
+            .where(
+                or_(
+                    Milestone.title.ilike(pattern),
+                    Milestone.description.ilike(pattern),
+                )
+            )
+            .order_by(Milestone.due_on.asc(), Milestone.number.asc())
+        )
+        milestones = (await db.execute(query)).scalars().all()
+        projects = await _project_map_for_repo_ids(
+            {milestone.repo_id for milestone in milestones},
+            db,
+        )
+        milestones = [
+            milestone
+            for milestone in milestones
+            if await _can_read_project(projects.get(milestone.repo_id), current_user, db)
+        ]
+        total = len(milestones)
+        items = []
+        for milestone in milestones[offset : offset + per_page]:
+            project = projects.get(milestone.repo_id)
+            if project is None:
+                continue
+            open_count = await _count_issues(db, milestone.id, "open")
+            closed_count = await _count_issues(db, milestone.id, "closed")
+            items.append(
+                _gitlab_milestone_json(
+                    milestone,
+                    project,
+                    open_count,
+                    closed_count,
+                )
+            )
+        return paginated_json(items, request, page, per_page, total)
 
     if scope in {"blobs", "code"}:
         query = (
