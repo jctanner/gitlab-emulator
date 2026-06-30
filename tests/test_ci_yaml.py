@@ -762,6 +762,75 @@ deploy_downstream:
     }
 
 
+def test_parse_gitlab_ci_supports_script_only_run_steps():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  TARGET: world
+
+run_job:
+  image: alpine:3.20
+  run:
+    - name: setup
+      env:
+        MESSAGE: "hello $TARGET"
+      script:
+        - echo "$MESSAGE"
+    - name: test
+      script: echo test
+""",
+    )
+
+    assert jobs[0].name == "run_job"
+    assert jobs[0].script == [
+        "export MESSAGE='hello world'",
+        'echo "$MESSAGE"',
+        "echo test",
+    ]
+
+
+def test_parse_gitlab_ci_rejects_unsupported_run_forms():
+    cases = [
+        (
+            """
+run_job:
+  script: echo script
+  run:
+    - name: test
+      script: echo run
+""",
+            "run cannot be used with script, before_script, or after_script",
+        ),
+        (
+            """
+run_job:
+  run:
+    - name: predefined
+      step: gitlab.com/example/step@v1
+""",
+            "run predefined steps are not supported",
+        ),
+        (
+            """
+run_job:
+  run:
+    - name: bad
+      script: echo run
+      step: gitlab.com/example/step@v1
+""",
+            "run steps must define exactly one of script or step",
+        ),
+    ]
+
+    for content, message in cases:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError("unsupported run form should fail")
+
+
 def test_parse_gitlab_ci_expands_integer_parallel_jobs():
     jobs = parse_gitlab_ci(
         """

@@ -106,6 +106,9 @@ Already working:
   return 404; stored JUnit reports can be queried through pipeline test report
   APIs, and dotenv reports from successful dependency jobs are injected into
   downstream runner variables
+- script-only CI `run` steps are translated into official-runner script
+  commands, including per-step `env` expansion; predefined `run:step` entries
+  and invalid `run`/`script` combinations fail clearly during pipeline creation
 - job `dependencies` are parsed, persisted, validated against earlier-stage
   jobs, exposed in job API payloads, and used to shape runner artifact
   dependency payloads; explicit `dependencies: []` disables default artifact

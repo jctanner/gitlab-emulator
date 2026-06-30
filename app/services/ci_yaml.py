@@ -7,6 +7,7 @@ import fnmatch
 import hashlib
 from itertools import product
 import re
+import shlex
 from typing import Any
 
 import yaml
@@ -103,6 +104,7 @@ SUPPORTED_HOOKS = {
     "pre_get_sources_script",
     "post_get_sources_script",
 }
+SUPPORTED_RUN_STEP_KEYS = {"name", "script", "env", "inputs", "step"}
 PUSH_DIFF_SOURCES = {"push", "merge_request_event", "external_pull_request_event"}
 DURATION_SECONDS_BY_UNIT = {
     "second": 1,
@@ -824,6 +826,36 @@ def _hooks_config(value: Any, variables: dict[str, str]) -> list[dict]:
     return hooks
 
 
+def _run_script(value: Any, variables: dict[str, str]) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("run must be a non-empty list of steps")
+    script: list[str] = []
+    for raw_step in value:
+        if not isinstance(raw_step, dict):
+            raise ValueError("run steps must be mappings")
+        unsupported = sorted(set(raw_step) - SUPPORTED_RUN_STEP_KEYS)
+        if unsupported:
+            raise ValueError(f"run step option(s) not supported: {', '.join(unsupported)}")
+        if not raw_step.get("name"):
+            raise ValueError("run steps must define a name")
+        has_script = raw_step.get("script") is not None
+        has_step = raw_step.get("step") is not None
+        if has_script == has_step:
+            raise ValueError("run steps must define exactly one of script or step")
+        if has_step:
+            raise ValueError("run predefined steps are not supported")
+        env = raw_step.get("env")
+        if env is not None:
+            if not isinstance(env, dict):
+                raise ValueError("run step env must be a mapping")
+            for key, raw_value in env.items():
+                name = str(key)
+                value = _expand_ci_variables(str(raw_value), variables)
+                script.append(f"export {name}={shlex.quote(value)}")
+        script.extend(_string_list(raw_step.get("script")))
+    return script
+
+
 def _ref_values(value: Any) -> list[str]:
     if value is None:
         return []
@@ -1108,7 +1140,7 @@ def _parallel_job_names(parsed: dict) -> dict[str, list[str]]:
             _resolve_job_config(str(name), parsed, resolved=resolved_configs),
             default,
         )
-        if "script" not in config and config.get("trigger") is None:
+        if "script" not in config and "run" not in config and config.get("trigger") is None:
             continue
         expanded_names = [
             f"{name} {suffix}" if suffix else str(name)
@@ -1858,8 +1890,14 @@ def parse_gitlab_ci(
         )
         _unsupported_job_keys(str(name), config)
         trigger = _trigger_config(config.get("trigger"), ref)
-        if "script" not in config and trigger is None:
+        if "script" not in config and "run" not in config and trigger is None:
             continue
+        if "run" in config and any(
+            key in config for key in ("script", "before_script", "after_script")
+        ):
+            raise ValueError(
+                "run cannot be used with script, before_script, or after_script"
+            )
         inherited_global_variables = _global_variables_for_job(config, global_variables)
         job_variable_entries = _variable_entries(config.get("variables"))
         merged_variable_entries = {
@@ -1898,6 +1936,7 @@ def parse_gitlab_ci(
         before = _string_list(config.get("before_script", global_before))
         script = _string_list(config.get("script"))
         after = _string_list(config.get("after_script", global_after))
+        raw_run = config.get("run")
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
         raw_services = (
             config.get("services") if "services" in config else global_services_config
@@ -1921,6 +1960,11 @@ def parse_gitlab_ci(
                 **pipeline_variables,
                 **expanded_variables,
             }
+            job_script = (
+                _run_script(raw_run, runtime_variables)
+                if raw_run is not None
+                else before + script + after
+            )
             image = _expand_ci_variables(
                 _image_name(raw_image, global_image),
                 runtime_variables,
@@ -1960,7 +2004,7 @@ def parse_gitlab_ci(
                     stage_index=stage_order.get(stage, len(stage_order)),
                     image=image,
                     image_config=image_config,
-                script=before + script + after,
+                    script=job_script,
                     variables=expanded_variables,
                     variable_metadata=expanded_variable_metadata,
                     needs=_needs(raw_needs, parallel_job_names),

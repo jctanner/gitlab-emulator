@@ -252,7 +252,8 @@ Target areas:
   rejection, and delayed/manual scheduling
 - remaining execution semantics for parsed job metadata beyond the current
   retry, timeout, resource-group, coverage, interruptible, image/service
-  executor option support, and per-matrix runner metadata expansion
+  executor option support, script-only `run` step translation, and per-matrix
+  runner metadata expansion
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, repository-derived prefix/files/files_commits keys, fallback keys,
   policy, `when`, `untracked`, `unprotect`, four-entry limit validation,

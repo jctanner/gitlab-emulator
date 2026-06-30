@@ -168,6 +168,9 @@ harness architecture.
   and `scope[]` status filters. Project and pipeline job lists support
   `order_by=id` and `sort`; pipeline job lists also accept `include_retried`,
   which is a no-op because emulator retries update the same persisted job row.
+- Script-only CI `run` steps are translated into runner script commands, with
+  per-step `env` expansion. Predefined `run:step` entries and invalid `run`
+  combinations fail clearly before runner assignment.
 - Project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
   `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
   `order_by`, and `sort` filters, plus `created_after`, `created_before`,

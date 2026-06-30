@@ -2183,6 +2183,60 @@ hooked_job:
     ]
 
 
+async def test_run_steps_reach_runner_payload_as_script(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: never
+
+run_job:
+  image: alpine:3.20
+  variables:
+    TARGET: runner
+  run:
+    - name: setup
+      env:
+        MESSAGE: "hello $TARGET"
+      script:
+        - echo "$MESSAGE"
+    - name: verify
+      script: echo done
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add run steps ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == "run_job"
+    assert payload["steps"][0]["script"] == [
+        "export MESSAGE='hello runner'",
+        'echo "$MESSAGE"',
+        "echo done",
+    ]
+
+
 async def test_id_tokens_reach_runner_payload_as_masked_variables(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """
