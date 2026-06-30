@@ -1866,11 +1866,6 @@ def parse_gitlab_ci(
         raw_image = config.get("image") if "image" in config else global_image_config
         image = _image_name(raw_image, global_image)
         image_config = _image_config(raw_image, image_variables)
-        cache_variables = {
-            "CI_COMMIT_BRANCH": ref,
-            "CI_COMMIT_REF_NAME": ref,
-            **variables,
-        }
         service_variables = {
             "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
             "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
@@ -1904,16 +1899,6 @@ def parse_gitlab_ci(
         hooks = _hooks_config(config.get("hooks"), artifact_variables)
         id_tokens = _id_token_entries(config.get("id_tokens"), artifact_variables)
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
-        cache = (
-            _cache_entries(
-                raw_cache,
-                cache_variables,
-                cache_key_files=cache_key_files,
-                cache_key_files_commits=cache_key_files_commits,
-            )
-            if raw_cache is not None
-            else []
-        )
         raw_services = (
             config.get("services") if "services" in config else global_services_config
         )
@@ -1941,6 +1926,16 @@ def parse_gitlab_ci(
                 **pipeline_variables,
                 **expanded_variables,
             }
+            cache = (
+                _cache_entries(
+                    raw_cache,
+                    runtime_variables,
+                    cache_key_files=cache_key_files,
+                    cache_key_files_commits=cache_key_files_commits,
+                )
+                if raw_cache is not None
+                else []
+            )
 
             jobs.append(
                 ParsedCiJob(

@@ -3357,6 +3357,12 @@ matrix_test:
     matrix:
       - PROVIDER: [aws, gcp]
         STACK: [app1, app2]
+  cache:
+    key: cache-$PROVIDER-$STACK
+    paths:
+      - .cache/$PROVIDER/$STACK
+    fallback_keys:
+      - fallback-$PROVIDER
   script:
     - echo $PROVIDER $STACK
 """
@@ -3401,6 +3407,17 @@ matrix_test:
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["PROVIDER"] == "aws"
     assert variables["STACK"] == "app1"
+    assert payload["cache"] == [
+        {
+            "key": "cache-aws-app1",
+            "untracked": False,
+            "unprotect": False,
+            "policy": "pull-push",
+            "paths": [".cache/aws/app1"],
+            "when": "on_success",
+            "fallback_keys": ["fallback-aws"],
+        }
+    ]
 
 
 async def test_create_pipeline_accepts_rules_changes_compare_to_option(

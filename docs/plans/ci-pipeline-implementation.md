@@ -90,8 +90,8 @@ Already working:
   referenced files falling back to `default`; cache paths, keys, cache policies,
   `when`, `untracked`, `unprotect`, and fallback keys expand merged CI
   variables before reaching the runner payload, including false-like boolean
-  strings; unsupported cache entry options and invalid cache policy/when values
-  fail clearly during pipeline creation;
+  strings and per-job `parallel:matrix` variables; unsupported cache entry
+  options and invalid cache policy/when values fail clearly during pipeline creation;
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve

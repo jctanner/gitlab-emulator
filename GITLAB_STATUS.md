@@ -194,7 +194,8 @@ harness architecture.
   referenced files' repository blob state and `files_commits` keys from the
   latest commit touching each referenced file, with absent referenced files
   falling back to `default`. Cache paths/keys/policies/when/fallback keys
-  expand variables before reaching runner payloads, and the emulator cache
+  expand merged and per-job matrix variables before reaching runner payloads,
+  and the emulator cache
   endpoints support fallback-key lookup for API-level cache coverage. Official
   runner cache validation still uses GitLab Runner's S3 adapter backed by
   MinIO.

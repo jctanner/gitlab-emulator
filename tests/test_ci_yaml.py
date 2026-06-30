@@ -2304,6 +2304,49 @@ cache_true:
     assert by_name["cache_true"].cache[0]["unprotect"] is True
 
 
+def test_parse_gitlab_ci_expands_matrix_variables_in_cache_metadata():
+    jobs = parse_gitlab_ci(
+        """
+matrix_cache:
+  parallel:
+    matrix:
+      - TARGET: [py, js]
+  cache:
+    key: cache-$TARGET
+    paths:
+      - .cache/$TARGET
+    fallback_keys:
+      - fallback-$TARGET
+  script:
+    - echo cache
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["matrix_cache [py]"].cache == [
+        {
+            "key": "cache-py",
+            "untracked": False,
+            "unprotect": False,
+            "policy": "pull-push",
+            "paths": [".cache/py"],
+            "when": "on_success",
+            "fallback_keys": ["fallback-py"],
+        }
+    ]
+    assert by_name["matrix_cache [js]"].cache == [
+        {
+            "key": "cache-js",
+            "untracked": False,
+            "unprotect": False,
+            "policy": "pull-push",
+            "paths": [".cache/js"],
+            "when": "on_success",
+            "fallback_keys": ["fallback-js"],
+        }
+    ]
+
+
 def test_parse_gitlab_ci_rejects_unsupported_cache_options():
     cases = [
         (
