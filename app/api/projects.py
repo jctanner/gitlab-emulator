@@ -503,6 +503,16 @@ async def _project_json(project: Project, base_url: str, db: DbSession) -> dict:
         }
         if owner
         else None,
+        "forked_from_project": {
+            "id": project.parent.id,
+            "name": project.parent.name,
+            "name_with_namespace": project.parent.full_name,
+            "path": project.parent.name,
+            "path_with_namespace": project.parent.full_name,
+            "web_url": f"{base_url}/{project.parent.full_name}",
+        }
+        if project.fork and project.parent
+        else None,
         "_links": {
             "self": f"{api}/projects/{project.id}",
             "issues": f"{api}/projects/{project.id}/issues",
@@ -903,6 +913,111 @@ async def create_project(body: dict, user: AuthUser, db: DbSession):
             await db.refresh(project)
 
     return await _project_json(project, settings.BASE_URL, db)
+
+
+@router.post("/projects/{project_ref:path}/fork", status_code=201)
+async def fork_project(
+    project_ref: str,
+    user: AuthUser,
+    db: DbSession,
+    body: dict = Body(default_factory=dict),
+):
+    """Fork a GitLab project into the current user or requested namespace."""
+    source = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(source, user, db, REPORTER)
+    if not source.allow_forking:
+        raise HTTPException(status_code=403, detail="Forking is disabled")
+
+    fork_path = str(body.get("path") or body.get("name") or source.name).strip("/")
+    if not fork_path:
+        raise HTTPException(status_code=400, detail="path is required")
+    namespace_path, owner_type = await _resolve_project_namespace(body, user, db)
+    full_name = f"{namespace_path}/{fork_path}"
+
+    existing = await db.execute(select(Project).where(Project.full_name == full_name))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Project already exists")
+
+    disk_path = os.path.join(settings.DATA_DIR, "repos", namespace_path, f"{fork_path}.git")
+    fork = Project(
+        owner_id=user.id,
+        owner_type=owner_type,
+        name=fork_path,
+        full_name=full_name,
+        description=body.get("description", source.description),
+        private=source.private,
+        fork=True,
+        parent_id=source.id,
+        default_branch=source.default_branch,
+        disk_path=disk_path,
+        visibility=source.visibility,
+        has_issues=source.has_issues,
+        has_wiki=source.has_wiki,
+        has_projects=source.has_projects,
+        has_downloads=source.has_downloads,
+        allow_forking=source.allow_forking,
+        pushed_at=source.pushed_at,
+    )
+    db.add(fork)
+    source.forks_count += 1
+    await db.commit()
+    await db.refresh(fork)
+
+    if source.disk_path and os.path.isdir(source.disk_path):
+        os.makedirs(os.path.dirname(disk_path), exist_ok=True)
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "clone",
+            "--bare",
+            source.disk_path,
+            disk_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Fork repository clone failed: {stderr.decode().strip()}",
+            )
+    else:
+        await _init_bare_repo(disk_path, fork.default_branch)
+
+    return await _project_json(fork, settings.BASE_URL, db)
+
+
+@router.get("/projects/{project_ref:path}/forks")
+async def list_project_forks(
+    project_ref: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+    sort: str = Query("created_desc"),
+):
+    """List GitLab-shaped forks for a project."""
+    source = await _get_project_or_404(project_ref, db, current_user)
+    await require_project_access(source, current_user, db, REPORTER)
+    query = select(Project).where(Project.parent_id == source.id)
+    if sort in {"created_asc", "oldest"}:
+        query = query.order_by(Project.created_at.asc())
+    else:
+        query = query.order_by(Project.created_at.desc())
+
+    all_forks = (await db.execute(query)).scalars().all()
+    start = (page - 1) * per_page
+    items = [
+        await _project_json(project, settings.BASE_URL, db)
+        for project in all_forks[start : start + per_page]
+    ]
+    return paginated_json(
+        items,
+        total=len(all_forks),
+        page=page,
+        per_page=per_page,
+        request=request,
+    )
 
 
 @router.get("/projects/{project_ref:path}/repository/contributors")

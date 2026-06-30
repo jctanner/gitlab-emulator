@@ -342,6 +342,7 @@ Done when:
   - `glab repo view --output json`
   - `glab repo list --output json`
   - `glab repo clone`
+  - `glab repo fork`
   - `glab repo delete`
   - `glab issue create`
   - `glab issue list --output json`

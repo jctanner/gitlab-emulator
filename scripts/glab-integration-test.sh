@@ -24,6 +24,8 @@ GROUP_PROJECT_REF="${GROUP_PATH}%2F${SUBGROUP_PATH}%2F${GROUP_PROJECT_PATH}"
 CLI_PROJECT_NAME="glab-repo-cli-${RUN_ID}"
 CLI_PROJECT_PATH="$CLI_PROJECT_NAME"
 CLI_PROJECT_REF="admin%2F${CLI_PROJECT_PATH}"
+FORK_PROJECT_PATH="glab-fork-${RUN_ID}"
+FORK_PROJECT_REF="admin%2F${FORK_PROJECT_PATH}"
 
 PASS=0
 FAIL=0
@@ -49,6 +51,8 @@ cleanup() {
             "$API/projects/$PROJECT_REF" >/dev/null 2>&1 || true
         curl -sk -X DELETE -H "PRIVATE-TOKEN: $TOKEN" \
             "$API/projects/$CLI_PROJECT_REF" >/dev/null 2>&1 || true
+        curl -sk -X DELETE -H "PRIVATE-TOKEN: $TOKEN" \
+            "$API/projects/$FORK_PROJECT_REF" >/dev/null 2>&1 || true
         curl -sk -X DELETE -H "PRIVATE-TOKEN: $TOKEN" \
             "$API/repos/admin/$PROJECT_PATH" >/dev/null 2>&1 || true
     fi
@@ -357,6 +361,20 @@ if [ -n "$CLI_PROJECT_ID" ]; then
     else
         fail "glab repo clone: $repo_clone"
     fi
+
+    repo_fork=$("$GLAB" repo fork "admin/$PROJECT_PATH" \
+        --path "$FORK_PROJECT_PATH" \
+        --clone=false \
+        --remote=false 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab repo fork"
+    else
+        fail "glab repo fork: $repo_fork"
+    fi
+
+    repo_forks=$(glab_api "projects/$PROJECT_REF/forks?per_page=100")
+    assert_json_field "glab repo fork visible" "$repo_forks" \
+        "map(.path_with_namespace) | index(\"admin/$FORK_PROJECT_PATH\")"
 else
     fail "glab repo view did not return a project id: $repo_view"
 fi

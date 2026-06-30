@@ -51,7 +51,7 @@ Replace or add GitLab-shaped resources for:
 - groups/namespaces: MVP group create/list/get/list-projects, namespace
   list/get, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/
-  list-user-projects implemented
+  list-user-projects/fork/list-forks implemented
 - issues: MVP project list/create/get/update implemented with labels,
   assignees, and milestone assignment
 - merge requests: MVP create/list/get/update/merge/commits/changes implemented
@@ -179,9 +179,9 @@ Validated:
 - nested group/subgroup namespace behavior used by the current client workflow
 
 Latest evidence: `make vm-test` passed from the client VM on June 30, 2026
-with 149 `glab` smoke checks covering auth, users, projects, nested groups,
-repo create/view/list/search/update/contributors/archive/clone/delete/member
-add/remove, Git Smart HTTP push/fetch, repository files, direct CI
+with 151 `glab` smoke checks covering auth, users, projects, nested groups,
+repo create/view/list/search/update/contributors/archive/clone/fork/delete/
+member add/remove, Git Smart HTTP push/fetch, repository files, direct CI
 pipeline/job/trace APIs, issues, high-level label CLI workflows, high-level
 milestone CLI workflows, branches, protected branches, tags, releases, project
 CI/CD variable CLI workflows, commit APIs, repository compare, commit statuses,
