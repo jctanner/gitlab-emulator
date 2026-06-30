@@ -143,7 +143,8 @@ and cache APIs for controlled integration testing.
   `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
   `order_by`, and `sort` filters, plus `created_after`, `created_before`,
   `updated_after`, and `updated_before` time-window filters; pipeline payloads
-  include the creating `user` when available
+  include the creating `user` when available, plus start/finish timestamps and
+  derived duration fields
 - project pipeline delete APIs remove persisted pipelines and their associated
   jobs, traces, and artifact rows
 - pipeline test report and test report summary APIs aggregate stored JUnit

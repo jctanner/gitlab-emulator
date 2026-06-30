@@ -158,7 +158,7 @@ harness architecture.
   `order_by`, and `sort` filters, plus `created_after`, `created_before`,
   `updated_after`, and `updated_before` time-window filters. Pipeline payloads
   include the creating `user` when the pipeline was created by an authenticated
-  actor.
+  actor, plus start/finish timestamps and derived duration fields.
 - Project pipeline delete APIs remove persisted pipelines and their associated
   jobs, traces, and artifact rows.
 - Dotenv report artifacts from successful upstream dependency jobs are parsed

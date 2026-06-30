@@ -2430,21 +2430,34 @@ metadata_job:
         headers=auth_headers(test_token),
     )
     assert completed_pipeline_resp.status_code == 200
-    assert completed_pipeline_resp.json()["coverage"] == "87.5"
+    completed_pipeline = completed_pipeline_resp.json()
+    assert completed_pipeline["coverage"] == "87.5"
+    assert completed_pipeline["started_at"] is not None
+    assert completed_pipeline["finished_at"] is not None
+    assert isinstance(completed_pipeline["duration"], int)
+    assert completed_pipeline["duration"] >= 0
+    assert isinstance(completed_pipeline["queued_duration"], int)
+    assert completed_pipeline["queued_duration"] >= 0
 
     latest_pipeline_resp = await client.get(
         f"{API}/projects/{project['id']}/pipelines/latest",
         headers=auth_headers(test_token),
     )
     assert latest_pipeline_resp.status_code == 200
-    assert latest_pipeline_resp.json()["coverage"] == "87.5"
+    latest_pipeline = latest_pipeline_resp.json()
+    assert latest_pipeline["coverage"] == "87.5"
+    assert isinstance(latest_pipeline["duration"], int)
+    assert isinstance(latest_pipeline["queued_duration"], int)
 
     pipeline_list_resp = await client.get(
         f"{API}/projects/{project['id']}/pipelines",
         headers=auth_headers(test_token),
     )
     assert pipeline_list_resp.status_code == 200
-    assert pipeline_list_resp.json()[0]["coverage"] == "87.5"
+    listed_pipeline = pipeline_list_resp.json()[0]
+    assert listed_pipeline["coverage"] == "87.5"
+    assert isinstance(listed_pipeline["duration"], int)
+    assert isinstance(listed_pipeline["queued_duration"], int)
 
 
 async def test_compound_timeout_reaches_runner_payload(client, test_token):

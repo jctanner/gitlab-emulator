@@ -1092,6 +1092,10 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "security_warnings": pipeline.security_warnings or [],
         "created_at": _fmt_dt(pipeline.created_at),
         "updated_at": _fmt_dt(pipeline.updated_at),
+        "started_at": _fmt_dt(pipeline.started_at),
+        "finished_at": _fmt_dt(pipeline.finished_at),
+        "duration": _elapsed_seconds(pipeline.started_at, pipeline.finished_at),
+        "queued_duration": _elapsed_seconds(pipeline.created_at, pipeline.started_at),
         "web_url": f"{settings.BASE_URL}/{pipeline.project.full_name}/-/pipelines/{pipeline.id}"
         if pipeline.project
         else None,
