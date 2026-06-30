@@ -269,6 +269,45 @@ async def test_gitlab_global_search_projects_and_issues(client, test_user, test_
 
 
 @pytest.mark.asyncio
+async def test_gitlab_global_search_users(client, db_session):
+    from app.models.user import User
+
+    db_session.add_all(
+        [
+            User(
+                login="global-search-user-a",
+                name="Global Search User A",
+                email="global-search-a@example.com",
+                hashed_password="x",
+            ),
+            User(
+                login="global-search-user-b",
+                name="Global Search User B",
+                email="global-search-b@example.com",
+                hashed_password="x",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    resp = await client.get(
+        f"{API}/search",
+        params={"scope": "users", "search": "global-search", "page": 1, "per_page": 1},
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Total"] == "2"
+    assert resp.headers["X-Total-Pages"] == "2"
+    assert resp.headers["X-Next-Page"] == "2"
+    assert "rel=\"next\"" in resp.headers["Link"]
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["username"] == "global-search-user-a"
+    assert data[0]["public_email"] == "global-search-a@example.com"
+    assert data[0]["web_url"].endswith("/global-search-user-a")
+
+
+@pytest.mark.asyncio
 async def test_gitlab_global_search_merge_requests(client, test_user, test_token):
     project = await client.post(
         f"{API}/projects",

@@ -38,8 +38,8 @@ Vagrant architecture.
   by numeric project ID or URL-encoded project path.
 - Minimal GitLab merge request APIs exist for create, list, get, update, and
   merge by numeric project ID or URL-encoded project path.
-- GitLab global search exists for projects, issues, merge requests, indexed
-  blobs/code, and indexed commits.
+- GitLab global search exists for projects, users, issues, merge requests,
+  indexed blobs/code, and indexed commits.
 
 ## Work Remaining
 

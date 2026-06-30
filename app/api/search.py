@@ -137,6 +137,31 @@ async def gitlab_search(
             total,
         )
 
+    if scope == "users":
+        query = (
+            select(User)
+            .where(
+                or_(
+                    User.login.ilike(pattern),
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                )
+            )
+            .order_by(User.id)
+        )
+        users = (await db.execute(query)).scalars().all()
+        total = len(users)
+        return paginated_json(
+            [
+                UserResponse.from_db(user, BASE).model_dump()
+                for user in users[offset : offset + per_page]
+            ],
+            request,
+            page,
+            per_page,
+            total,
+        )
+
     if scope == "issues":
         query = (
             select(Issue)
