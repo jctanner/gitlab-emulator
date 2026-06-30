@@ -5536,6 +5536,81 @@ include:
     assert variables["MESSAGE"] == "from-input"
 
 
+async def test_gitlab_ci_input_component_hidden_job_can_be_extended(
+    client, test_token
+):
+    project = await _create_project(client, test_token)
+    include_yaml = """
+spec:
+  inputs:
+    LIB_REF:
+      default: main
+      type: string
+---
+.component_setup:
+  variables:
+    LIB_REF: "$[[ inputs.LIB_REF ]]"
+    LIB_DIR: /tmp/component-lib
+  before_script:
+    - echo setup "$LIB_REF"
+"""
+    include_write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/component-setup.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add setup component",
+            "content": base64.b64encode(include_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert include_write.status_code == 201
+
+    ci_yaml = """
+include:
+  - local: component-setup.yml
+    inputs:
+      LIB_REF: v1
+
+consumer:
+  extends: .component_setup
+  script:
+    - echo consume "$LIB_DIR"
+"""
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add component consumer",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert resp.status_code == 201
+
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == "consumer"
+    assert payload["steps"][0]["script"] == [
+        'echo setup "$LIB_REF"',
+        'echo consume "$LIB_DIR"',
+    ]
+    variables = {item["key"]: item["value"] for item in payload["variables"]}
+    assert variables["LIB_REF"] == "v1"
+    assert variables["LIB_DIR"] == "/tmp/component-lib"
+
+
 async def test_gitlab_ci_supports_nested_local_includes(client, test_token):
     project = await _create_project(client, test_token)
     base_yaml = """
