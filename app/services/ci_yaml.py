@@ -24,6 +24,7 @@ RESERVED_TOP_LEVEL_KEYS = {
     "only",
     "secrets",
     "services",
+    "spec",
     "stages",
     "variables",
     "workflow",
@@ -119,6 +120,9 @@ DURATION_SECONDS_BY_UNIT = {
     "weeks": 604800,
     "w": 604800,
 }
+INPUT_EXPRESSION_RE = re.compile(
+    r"\$\[\[\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)\s*\]\]"
+)
 
 
 @dataclass
@@ -164,6 +168,69 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     return [str(value)]
+
+
+def _load_ci_documents(content: str) -> list[dict]:
+    documents = [document or {} for document in yaml.safe_load_all(content)]
+    if not documents:
+        return [{}]
+    for document in documents:
+        if not isinstance(document, dict):
+            raise ValueError(".gitlab-ci.yml must contain a mapping")
+    return documents
+
+
+def _input_defaults(spec: Any) -> dict[str, str]:
+    if not isinstance(spec, dict) or not isinstance(spec.get("inputs"), dict):
+        return {}
+    defaults: dict[str, str] = {}
+    for raw_name, config in spec["inputs"].items():
+        name = str(raw_name)
+        if isinstance(config, dict):
+            defaults[name] = str(config.get("default", ""))
+        else:
+            defaults[name] = str(config)
+    return defaults
+
+
+def _replace_input_expressions(value: str, inputs: dict[str, str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return inputs.get(name, match.group(0))
+
+    return INPUT_EXPRESSION_RE.sub(replace, value)
+
+
+def apply_ci_inputs(value: Any, inputs: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return _replace_input_expressions(value, inputs)
+    if isinstance(value, list):
+        return [apply_ci_inputs(item, inputs) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: apply_ci_inputs(item, inputs)
+            for key, item in value.items()
+        }
+    return value
+
+
+def load_gitlab_ci_config(
+    content: str,
+    inputs: dict[str, str] | None = None,
+) -> dict:
+    documents = _load_ci_documents(content)
+    spec: dict = {}
+    config: dict = documents[-1]
+    if len(documents) > 1 and isinstance(documents[0].get("spec"), dict):
+        spec = documents[0]["spec"]
+    elif isinstance(config.get("spec"), dict):
+        spec = config["spec"]
+        config = {key: value for key, value in config.items() if key != "spec"}
+    resolved_inputs = {
+        **_input_defaults(spec),
+        **{key: str(value) for key, value in (inputs or {}).items()},
+    }
+    return apply_ci_inputs(config, resolved_inputs)
 
 
 def _matrix_suffix(values: list[Any]) -> str:
@@ -1511,9 +1578,7 @@ def parse_gitlab_ci_workflow_name(
     changed_path_sets: dict[str, set[str]] | None = None,
 ) -> str | None:
     """Return the expanded `workflow:name` value for a parsed CI config."""
-    parsed = yaml.safe_load(content) or {}
-    if not isinstance(parsed, dict):
-        raise ValueError(".gitlab-ci.yml must contain a mapping")
+    parsed = load_gitlab_ci_config(content)
 
     workflow = parsed.get("workflow")
     if not isinstance(workflow, dict):
@@ -1699,9 +1764,7 @@ def parse_gitlab_ci(
     - common job `rules`, `only`, and `except` filters
     - common job `extends` inheritance from local template jobs
     """
-    parsed = yaml.safe_load(content) or {}
-    if not isinstance(parsed, dict):
-        raise ValueError(".gitlab-ci.yml must contain a mapping")
+    parsed = load_gitlab_ci_config(content)
 
     stages = _string_list(parsed.get("stages")) or ["test"]
     default = parsed.get("default") if isinstance(parsed.get("default"), dict) else {}

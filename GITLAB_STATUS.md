@@ -297,8 +297,8 @@ harness architecture.
   invalid extends-shape errors, and an extends depth guard. Pipeline creation
   resolves local includes, nested local includes, `include:project`, controlled
   `include:remote`, and built-in template includes before parsing, including
-  list-valued local/project/remote/template entries and `include:rules`
-  filtering.
+  list-valued local/project/remote/template entries, `include:rules`
+  filtering, and `spec:inputs` defaults with include-level `inputs` overrides.
 - The runner coordinator now uses persisted jobs only. The old in-memory smoke
   queue and `/api/v4/admin/runner/jobs` debug endpoints have been removed.
 - The admin UI now includes `/admin/ci-lab`, a compact CI job lab for creating

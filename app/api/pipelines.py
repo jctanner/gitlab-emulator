@@ -50,6 +50,7 @@ from app.services.ci_security import (
 from app.services.ci_secrets import ci_secret_metadata_entry, project_secret_entries
 from app.services.ci_variables import project_variable_entries
 from app.services.ci_yaml import (
+    load_gitlab_ci_config,
     ParsedCiJob,
     parse_gitlab_ci,
     parse_gitlab_ci_workflow_name,
@@ -476,7 +477,7 @@ async def _rules_changes_path_sets(
     sha: str,
     variables: dict[str, str],
 ) -> dict[str, set[str]]:
-    parsed = yaml.safe_load(content) or {}
+    parsed = load_gitlab_ci_config(content)
     if not isinstance(parsed, dict):
         return {}
     path_sets: dict[str, set[str]] = {}
@@ -546,7 +547,7 @@ async def _rules_exists_path_sets(
     variables: dict[str, str],
     db: DbSession,
 ) -> dict[tuple[str, str], set[str]]:
-    parsed = yaml.safe_load(content) or {}
+    parsed = load_gitlab_ci_config(content)
     if not isinstance(parsed, dict):
         return {}
     path_sets: dict[tuple[str, str], set[str]] = {}
@@ -589,10 +590,14 @@ async def _read_repo_file(
     return content
 
 
-def _ci_mapping(content: str, path: str) -> dict:
+def _ci_mapping(
+    content: str,
+    path: str,
+    inputs: dict[str, str] | None = None,
+) -> dict:
     try:
-        parsed = yaml.safe_load(content) or {}
-    except yaml.YAMLError as exc:
+        parsed = load_gitlab_ci_config(content, inputs)
+    except (ValueError, yaml.YAMLError) as exc:
         raise HTTPException(status_code=400, detail=f"{path} is invalid YAML") from exc
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail=f"{path} must contain a mapping")
@@ -620,6 +625,8 @@ def _include_items(value: Any) -> list[dict]:
                 include_item = {"kind": "local", "file": file_path}
                 if "rules" in item:
                     include_item["rules"] = item["rules"]
+                if isinstance(item.get("inputs"), dict):
+                    include_item["inputs"] = item["inputs"]
                 items.append(include_item)
         elif isinstance(item, dict) and item.get("project") and item.get("file"):
             for file_path in _include_values(item["file"]):
@@ -631,18 +638,24 @@ def _include_items(value: Any) -> list[dict]:
                 }
                 if "rules" in item:
                     include_item["rules"] = item["rules"]
+                if isinstance(item.get("inputs"), dict):
+                    include_item["inputs"] = item["inputs"]
                 items.append(include_item)
         elif isinstance(item, dict) and item.get("remote"):
             for remote_url in _include_values(item["remote"]):
                 include_item = {"kind": "remote", "remote": remote_url}
                 if "rules" in item:
                     include_item["rules"] = item["rules"]
+                if isinstance(item.get("inputs"), dict):
+                    include_item["inputs"] = item["inputs"]
                 items.append(include_item)
         elif isinstance(item, dict) and item.get("template"):
             for template_name in _include_values(item["template"]):
                 include_item = {"kind": "template", "template": template_name}
                 if "rules" in item:
                     include_item["rules"] = item["rules"]
+                if isinstance(item.get("inputs"), dict):
+                    include_item["inputs"] = item["inputs"]
                 items.append(include_item)
         elif isinstance(item, dict):
             raise HTTPException(
@@ -875,6 +888,7 @@ async def _read_ci_config_with_includes(
     changed_paths: set[str] | None = None,
     depth: int = 0,
     seen: set[tuple[str, str, str, str]] | None = None,
+    component_inputs: dict[str, str] | None = None,
 ) -> dict:
     if depth > 10:
         raise HTTPException(status_code=400, detail="CI include depth limit exceeded")
@@ -908,6 +922,7 @@ async def _read_ci_config_with_includes(
             changed_paths or set(),
             depth,
             seen,
+            component_inputs,
         )
     finally:
         seen.remove(key)
@@ -924,10 +939,11 @@ async def _read_ci_config_content_with_includes(
     changed_paths: set[str],
     depth: int,
     seen: set[tuple[str, str, str, str]],
+    component_inputs: dict[str, str] | None = None,
 ) -> dict:
     if depth > 10:
         raise HTTPException(status_code=400, detail="CI include depth limit exceeded")
-    root = _ci_mapping(content, path)
+    root = _ci_mapping(content, path, component_inputs)
     merged: dict = {}
     for include_item in _include_items(root.get("include")):
         if not _include_rules_match(
@@ -979,6 +995,7 @@ async def _read_include_config(
             changed_paths,
             depth,
             seen,
+            include_item.get("inputs"),
         )
     if include_item["kind"] == "remote":
         url = include_item["remote"]
@@ -1000,6 +1017,7 @@ async def _read_include_config(
                 changed_paths,
                 depth,
                 seen,
+                include_item.get("inputs"),
             )
         finally:
             seen.remove(key)
@@ -1023,6 +1041,7 @@ async def _read_include_config(
                 changed_paths,
                 depth,
                 seen,
+                include_item.get("inputs"),
             )
         finally:
             seen.remove(key)

@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-from app.services.ci_yaml import ParsedCiJob
+from app.services.ci_yaml import ParsedCiJob, load_gitlab_ci_config
 
 
 DEFAULT_CI_SECURITY_SETTINGS = {
@@ -77,8 +77,8 @@ def _image_ref_is_mutable(image: str) -> bool:
 
 def _remote_include_urls(ci_content: str) -> list[str]:
     try:
-        parsed = yaml.safe_load(ci_content) or {}
-    except yaml.YAMLError:
+        parsed = load_gitlab_ci_config(ci_content)
+    except (ValueError, yaml.YAMLError):
         return []
     if not isinstance(parsed, dict):
         return []

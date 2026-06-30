@@ -140,6 +140,32 @@ test:
     )
 
 
+def test_parse_gitlab_ci_supports_spec_inputs_defaults():
+    jobs = parse_gitlab_ci(
+        """
+spec:
+  inputs:
+    IMAGE:
+      default: alpine:3.20
+      type: string
+    MESSAGE:
+      default: hello
+      type: string
+---
+component_job:
+  image: "$[[ inputs.IMAGE ]]"
+  variables:
+    MESSAGE: "$[[ inputs.MESSAGE ]]"
+  script:
+    - echo "$MESSAGE"
+"""
+    )
+
+    assert [job.name for job in jobs] == ["component_job"]
+    assert jobs[0].image == "alpine:3.20"
+    assert jobs[0].variables["MESSAGE"] == "hello"
+
+
 def test_parse_gitlab_ci_job_variables_override_global_variables():
     jobs = parse_gitlab_ci(
         """
