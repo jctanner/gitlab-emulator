@@ -356,6 +356,7 @@ Done when:
   - `glab gpg-key list --output json`
   - `glab gpg-key get --output json`
   - `glab gpg-key delete`
+  - `glab snippet create`
   - `glab issue create`
   - `glab issue list --output json`
   - `glab issue view --output json`
@@ -383,6 +384,8 @@ Done when:
   link create/list/update/delete is covered.
 - REST support and high-level client-VM `glab` validation now exist for
   manual job trigger/play, pipeline/job cancel, and job retry.
+- REST support and high-level client-VM `glab` validation now exist for
+  project snippet creation and listing.
 - Client-VM `glab api` validation now includes project labels and milestones:
   create/list/get/update/delete coverage for the GitLab-shaped project routes.
 - Keep each workflow tied to implemented REST surfaces.

@@ -62,6 +62,8 @@ Replace or add GitLab-shaped resources for:
 - tags: MVP list/get/create/delete implemented
 - members: MVP project/group list/get/add/delete implemented
 - deploy keys: MVP project list/create/get/delete implemented
+- snippets: MVP personal/project list/create/get/delete implemented; high-level
+  project snippet creation is validated through `glab snippet create`
 - protected branches: MVP list/get/protect/unprotect plus Git Smart HTTP, SSH,
   repository file, and source-editor write enforcement implemented
 - releases: MVP list/create/get/update/delete implemented
@@ -180,14 +182,15 @@ Validated:
 - nested group/subgroup namespace behavior used by the current client workflow
 
 Latest evidence: `make vm-test` passed from the client VM on June 30, 2026
-with 166 `glab` smoke checks covering auth, users, projects, nested groups,
+with 168 `glab` smoke checks covering auth, users, projects, nested groups,
 repo create/view/list/search/update/contributors/archive/clone/fork/delete/
 member add/remove, Git Smart HTTP push/fetch, repository files, direct CI
 pipeline/job/trace APIs, issues, high-level deploy-key, ssh-key, and gpg-key
-workflows, high-level label CLI workflows, high-level milestone CLI workflows,
-branches, protected branches, tags, releases, project CI/CD variable CLI
-workflows, commit APIs, repository compare, commit statuses, merge request APIs,
-merge request CLI workflows, pipeline APIs, high-level
+workflows, high-level snippet create workflow, high-level label CLI workflows,
+high-level milestone CLI workflows, branches, protected branches, tags,
+releases, project CI/CD variable CLI workflows, commit APIs, repository
+compare, commit statuses, merge request APIs, merge request CLI workflows,
+pipeline APIs, high-level
 schedule create/list/update/run/delete workflows, CI trace/artifacts, manual
 jobs, cancel, and retry.
 

@@ -684,6 +684,29 @@ else
     fail "glab gpg-key list did not return the created key: $gpg_key_list"
 fi
 
+section "Snippet CLI via glab"
+
+SNIPPET_FILE="$TEST_HOME/snippet.py"
+cat > "$SNIPPET_FILE" <<'EOF'
+print("hello from glab snippet smoke")
+EOF
+
+snippet_create=$("$GLAB" snippet create "$SNIPPET_FILE" \
+    --repo "admin/$PROJECT_PATH" \
+    --title "glab snippet smoke" \
+    --description "created by glab snippet smoke" \
+    --filename "snippet.py" \
+    --visibility private 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab snippet create"
+else
+    fail "glab snippet create: $snippet_create"
+fi
+
+snippet_list=$(glab_api "projects/$PROJECT_REF/snippets?per_page=100")
+assert_json_field "glab snippet create visible" "$snippet_list" \
+    'map(.title) | index("glab snippet smoke")'
+
 section "Issue CLI via glab"
 
 issue_create=$("$GLAB" issue create \

@@ -342,13 +342,16 @@ harness architecture.
   `glab repo update`, high-level `glab repo contributors`, high-level
   `glab repo archive`, high-level `glab repo fork`, high-level
   `glab repo members`, high-level `glab deploy-key`, high-level
-  `glab ssh-key`, high-level `glab gpg-key`, high-level `glab issue`,
-  high-level `glab label`, high-level `glab milestone`, high-level
-  `glab variable`, high-level `glab mr`, high-level
+  `glab ssh-key`, high-level `glab gpg-key`, high-level `glab snippet`,
+  high-level `glab issue`, high-level `glab label`, high-level
+  `glab milestone`, high-level `glab variable`, high-level `glab mr`, high-level
   `glab ci`/`glab pipeline`, high-level `glab schedule`, high-level
   `glab ci trigger`, high-level `glab ci cancel`, high-level `glab ci retry`,
   high-level `glab job artifact`, and high-level `glab release` verification
   against `glemu.local`.
+- Minimal project and personal snippet APIs exist for list, create, get, and
+  delete. The project create path accepts the current GitLab snippet
+  `files: [{file_path, content}]` request shape used by `glab snippet create`.
 - Current validation has passed locally and in VMs: `make test-affected` passed
   190 tests, and `make vm-validate` passed after deploying the server VM. The
   VM path included 119 client `glab`/Git checks plus official runner variable,

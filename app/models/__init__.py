@@ -35,6 +35,7 @@ from app.models.ci import (
     JobArtifact,
 )
 from app.models.gist import Gist, GistFile
+from app.models.snippet import Snippet
 from app.models.ssh_key import SSHKey, GPGKey
 from app.models.search_index import FileContent, CommitMetadata
 from app.models.import_job import ImportJob
@@ -65,6 +66,7 @@ __all__ = [
     "Workflow", "WorkflowRun", "WorkflowJob", "Secret", "Variable",
     "Pipeline", "PipelineJob", "PipelineTrigger", "PipelineSchedule", "CiVariable", "CiSecret", "CiSecretAccessEvent", "CiRunner", "JobTrace", "JobArtifact",
     "Gist", "GistFile",
+    "Snippet",
     "SSHKey", "GPGKey",
     "FileContent", "CommitMetadata",
     "ImportJob",

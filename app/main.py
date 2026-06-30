@@ -164,6 +164,7 @@ def create_app() -> FastAPI:
     from app.api.teams import router as teams_router
     from app.api.notifications import router as notifications_router
     from app.api.gists import router as gists_router
+    from app.api.snippets import router as snippets_router
     from app.api.starring import router as starring_router
     from app.api.reviews import router as reviews_router
     from app.api.oauth import router as oauth_router
@@ -196,7 +197,7 @@ def create_app() -> FastAPI:
         collaborators_router, forks_router, reactions_router, events_router,
         search_router, orgs_router, groups_router, namespaces_router,
         teams_router, notifications_router,
-        gists_router, starring_router, reviews_router,
+        gists_router, snippets_router, starring_router, reviews_router,
         actions_router, application_router, markdown_router, emojis_router,
         gitignore_router,
         licenses_router, user_keys_router, deploy_keys_router,

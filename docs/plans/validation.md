@@ -191,6 +191,8 @@ Current client smoke coverage:
 - high-level `glab release create`, `glab release upload --assets-links`,
   `glab release upload --use-package-registry`, `glab release view`, and
   `glab release delete`
+- high-level `glab snippet create` against project snippets, with API
+  visibility validation
 - `glab api` release asset link create/list/update/delete coverage
 - `git clone`, `git fetch`, and `git push` over Git Smart HTTP
 
