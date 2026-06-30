@@ -50,3 +50,4 @@ No bug files are currently checked into `docs/bugs/open/`.
 - [ADR-0001: Preserve the GitHub emulator architecture](decisions/ADR-0001-preserve-github-emulator-architecture.md)
 - [ADR-0002: Use official GitLab Runner for job execution](decisions/ADR-0002-use-official-gitlab-runner.md)
 - [ADR-0003: Keep full GitLab parity deferred](decisions/ADR-0003-defer-full-gitlab-parity.md)
+- [ADR-0004: Model GitLab groups as namespace paths](decisions/ADR-0004-model-gitlab-groups-as-namespaces.md)

@@ -1,16 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}{{ "Edit" if edit_org else "Create" }} Organization - GitLab Emulator Admin{% endblock %}
+{% block title %}{{ "Edit" if edit_org else "Create" }} Group - GitLab Emulator Admin{% endblock %}
 
 {% block content %}
-<h2 class="f2 mb-3">{{ "Edit" if edit_org else "Create" }} Organization</h2>
+<h2 class="f2 mb-3">{{ "Edit" if edit_org else "Create" }} Group</h2>
 
 <div class="Box p-4">
     <form method="post" class="admin-form">
         <div class="form-group">
-            <label for="login">Login (slug) *</label>
+            <label for="login">Path slug *</label>
             <input type="text" id="login" name="login" class="form-control" value="{{ edit_org.login if edit_org else '' }}" required {{ 'readonly' if edit_org else '' }}>
         </div>
+        {% if not edit_org %}
+        <div class="form-group">
+            <label for="parent_id">Parent group</label>
+            <select id="parent_id" name="parent_id" class="form-control">
+                <option value="">No parent group</option>
+                {% for group in parent_groups or [] %}
+                <option value="{{ group.id }}">{{ group.login }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-hint">Use this to create nested groups such as redhat/rhel-ai.</div>
+        </div>
+        {% endif %}
         <div class="form-group">
             <label for="name">Display Name</label>
             <input type="text" id="name" name="name" class="form-control" value="{{ edit_org.name or '' if edit_org else '' }}">

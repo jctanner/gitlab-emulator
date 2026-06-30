@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}Organizations - GitLab Emulator Admin{% endblock %}
+{% block title %}Groups - GitLab Emulator Admin{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-items-center flex-justify-between mb-3">
-    <h2 class="f2">Organizations</h2>
-    <a href="/admin/orgs/create" class="btn btn-primary">Create Organization</a>
+    <h2 class="f2">Groups</h2>
+    <a href="/admin/orgs/create" class="btn btn-primary">Create Group</a>
 </div>
 
 <table class="admin-table">
     <thead>
         <tr>
             <th>ID</th>
-            <th>Login</th>
+            <th>Path</th>
             <th>Name</th>
             <th>Email</th>
             <th>Members</th>
@@ -33,7 +33,7 @@
             <td>{{ org.created_at.strftime('%Y-%m-%d %H:%M') if org.created_at else "" }}</td>
             <td class="actions">
                 <a href="/admin/orgs/{{ org.id }}" class="btn btn-sm">Edit</a>
-                <form method="post" action="/admin/orgs/{{ org.id }}/delete" class="inline-delete" onsubmit="return confirm('Delete organization {{ org.login }}?');">
+                <form method="post" action="/admin/orgs/{{ org.id }}/delete" class="inline-delete" onsubmit="return confirm('Delete group {{ org.login }}?');">
                     <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                 </form>
             </td>

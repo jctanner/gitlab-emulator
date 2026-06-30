@@ -72,9 +72,10 @@ async def create_repo(
     disk_path = os.path.join(settings.DATA_DIR, owner.login, f"{name}.git")
 
     # Build repository record
+    owner_type = getattr(owner, "type", owner.__class__.__name__)
     repo = Repository(
         owner_id=owner.id,
-        owner_type=owner.type,
+        owner_type=owner_type,
         name=name,
         full_name=full_name,
         description=description,

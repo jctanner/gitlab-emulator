@@ -51,7 +51,7 @@ from app.models.deploy_key import DeployKey
 from app.models.issue import Issue
 from app.models.label import Label
 from app.models.milestone import Milestone
-from app.models.organization import Organization
+from app.models.organization import Organization, OrgMembership
 from app.models.pull_request import PullRequest
 from app.models.release import Release
 from app.models.repository import Collaborator, Repository
@@ -295,6 +295,60 @@ async def _managed_repo_or_response(
     return current_user, repo, None
 
 
+async def _namespace_options(db: AsyncSession, current_user: User) -> list[dict]:
+    """Return user and group namespaces available in the web create flow."""
+    options = [
+        {
+            "kind": "user",
+            "path": current_user.login,
+            "label": f"{current_user.login} (user)",
+            "owner": current_user,
+        }
+    ]
+    query = select(Organization).order_by(Organization.login.asc())
+    if not current_user.site_admin:
+        query = (
+            query.join(OrgMembership, OrgMembership.org_id == Organization.id)
+            .where(
+                OrgMembership.user_id == current_user.id,
+                OrgMembership.role == "admin",
+                OrgMembership.state == "active",
+            )
+        )
+    groups = (await db.execute(query)).scalars().all()
+    for group in groups:
+        options.append(
+            {
+                "kind": "group",
+                "path": group.login,
+                "label": f"{group.login} (group)",
+                "owner": group,
+            }
+        )
+    return options
+
+
+async def _resolve_namespace_owner(
+    db: AsyncSession, current_user: User, namespace_path: str
+) -> User | Organization | None:
+    """Resolve a selected namespace into a user or organization owner."""
+    normalized = namespace_path.strip("/")
+    if normalized == current_user.login:
+        return current_user
+    result = await db.execute(select(User).where(User.login == normalized))
+    user = result.scalar_one_or_none()
+    if user is not None and (current_user.site_admin or user.id == current_user.id):
+        return user
+    query = select(Organization).where(Organization.login == normalized)
+    if not current_user.site_admin:
+        query = query.join(OrgMembership, OrgMembership.org_id == Organization.id).where(
+            OrgMembership.user_id == current_user.id,
+            OrgMembership.role == "admin",
+            OrgMembership.state == "active",
+        )
+    return (await db.execute(query)).scalar_one_or_none()
+
+
 def _repo_ci_redirect(
     owner: str,
     repo_name: str,
@@ -390,10 +444,17 @@ async def new_repo_page(request: Request, db: AsyncSession = Depends(get_db)):
     current_user = await _get_current_user(request, db)
     if not current_user:
         return RedirectResponse(url="/ui/login", status_code=302)
+    namespaces = await _namespace_options(db, current_user)
     return templates.TemplateResponse(
         request=request,
         name="new_repo.html",
-        context=_ctx(request, current_user=current_user, error=None),
+        context=_ctx(
+            request,
+            current_user=current_user,
+            error=None,
+            namespaces=namespaces,
+            selected_namespace=current_user.login,
+        ),
     )
 
 
@@ -401,6 +462,7 @@ async def new_repo_page(request: Request, db: AsyncSession = Depends(get_db)):
 async def new_repo_submit(
     request: Request,
     name: str = Form(...),
+    namespace_path: str = Form(""),
     description: str = Form(""),
     private: bool = Form(False),
     auto_init: bool = Form(False),
@@ -411,23 +473,45 @@ async def new_repo_submit(
     if not current_user:
         return RedirectResponse(url="/ui/login", status_code=302)
 
+    namespaces = await _namespace_options(db, current_user)
+    selected_namespace = namespace_path.strip("/") or current_user.login
+    owner = await _resolve_namespace_owner(db, current_user, selected_namespace)
+    if owner is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="new_repo.html",
+            context=_ctx(
+                request,
+                current_user=current_user,
+                error=f"Namespace '{selected_namespace}' is not available.",
+                namespaces=namespaces,
+                selected_namespace=selected_namespace,
+            ),
+        )
+
     try:
         repo = await repo_service.create_repo(
             db,
-            owner=current_user,
+            owner=owner,
             name=name,
             description=description or None,
             private=private,
             auto_init=auto_init,
         )
         return RedirectResponse(
-            url=f"/ui/{current_user.login}/{repo.name}", status_code=302
+            url=f"/ui/{repo.full_name}", status_code=302
         )
     except ValueError as exc:
         return templates.TemplateResponse(
             request=request,
             name="new_repo.html",
-            context=_ctx(request, current_user=current_user, error=str(exc)),
+            context=_ctx(
+                request,
+                current_user=current_user,
+                error=str(exc),
+                namespaces=namespaces,
+                selected_namespace=selected_namespace,
+            ),
         )
 
 
@@ -3899,6 +3983,86 @@ async def raw_file_view(
     if raw is None:
         return PlainTextResponse(content="Not Found", status_code=404)
     return PlainTextResponse(content=raw.decode("utf-8", errors="replace"))
+
+
+# ---------------------------------------------------------------------------
+# Nested repository overview fallback
+# ---------------------------------------------------------------------------
+
+@router.get("/{project_path:path}", response_class=HTMLResponse)
+async def nested_repo_page(
+    request: Request,
+    project_path: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Repository overview for nested GitLab paths such as group/subgroup/repo."""
+    normalized = project_path.strip("/")
+    if "/" not in normalized:
+        return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    result = await db.execute(select(Repository).where(Repository.full_name == normalized))
+    repo = result.scalar_one_or_none()
+    if repo is None:
+        return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+
+    owner = repo.full_name.rsplit("/", 1)[0]
+    current_user = await _get_current_user(request, db)
+    tree_entries = None
+    readme_content = None
+    default_branch = repo.default_branch or "main"
+    commit_count = 0
+    branch_count = 0
+    tag_count = 0
+
+    if repo.disk_path and os.path.isdir(repo.disk_path):
+        tree_entries = await list_tree(repo.disk_path, default_branch)
+        if tree_entries:
+            tree_entries.sort(key=lambda e: (0 if e["type"] == "tree" else 1, e["name"]))
+            for entry in tree_entries:
+                if entry["name"].lower().startswith("readme"):
+                    raw = await get_file_content(
+                        repo.disk_path, default_branch, entry["name"]
+                    )
+                    if raw:
+                        readme_content = raw.decode("utf-8", errors="replace")
+                    break
+
+        commit_count = await get_commit_count(repo.disk_path, default_branch)
+        branch_count = len(await get_branches(repo.disk_path))
+        tag_count = len(await get_tags(repo.disk_path))
+
+    pr_issue_ids = select(PullRequest.issue_id)
+    open_issues_count = (await db.execute(
+        select(func.count(Issue.id)).where(
+            Issue.repo_id == repo.id, Issue.state == "open",
+            ~Issue.id.in_(pr_issue_ids),
+        )
+    )).scalar() or 0
+    open_pulls_count = (await db.execute(
+        select(func.count(Issue.id)).where(
+            Issue.repo_id == repo.id, Issue.state == "open",
+            Issue.id.in_(pr_issue_ids),
+        )
+    )).scalar() or 0
+
+    return templates.TemplateResponse(
+        request=request,
+        name="repo.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            tree_entries=tree_entries,
+            readme_content=readme_content,
+            default_branch=default_branch,
+            open_issues_count=open_issues_count,
+            open_pulls_count=open_pulls_count,
+            commit_count=commit_count,
+            branch_count=branch_count,
+            tag_count=tag_count,
+            current_user=current_user,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

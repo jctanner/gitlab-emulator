@@ -238,6 +238,39 @@ async def test_admin_group_ci_variables_and_secrets_management(
 
 
 @pytest.mark.asyncio
+async def test_admin_create_nested_group(client, admin_user, db_session):
+    """Admin group creation supports parent/child GitLab namespace paths."""
+    _admin_session(client)
+
+    create_parent = await client.post(
+        "/admin/orgs/create",
+        data={"login": "redhat", "name": "Red Hat"},
+        follow_redirects=False,
+    )
+    assert create_parent.status_code in (302, 303)
+    parent = (
+        await db_session.execute(select(Organization).where(Organization.login == "redhat"))
+    ).scalar_one()
+
+    create_child = await client.post(
+        "/admin/orgs/create",
+        data={"login": "rhel-ai", "name": "RHEL AI", "parent_id": str(parent.id)},
+        follow_redirects=False,
+    )
+    assert create_child.status_code in (302, 303)
+    child = (
+        await db_session.execute(
+            select(Organization).where(Organization.login == "redhat/rhel-ai")
+        )
+    ).scalar_one()
+    assert child.name == "RHEL AI"
+
+    groups_page = await client.get("/admin/orgs")
+    assert groups_page.status_code == 200
+    assert "redhat/rhel-ai" in groups_page.text
+
+
+@pytest.mark.asyncio
 async def test_admin_repos_page(client, admin_user, test_user, test_token):
     """Admin repos page lists repositories."""
     await client.post(

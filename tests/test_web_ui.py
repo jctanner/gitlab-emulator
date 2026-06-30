@@ -4,7 +4,10 @@ import re
 from urllib.parse import urlsplit
 
 import pytest
+from sqlalchemy import select
 
+from app.models.organization import OrgMembership, Organization
+from app.models.repository import Repository
 from tests.test_projects_api import _create_user_and_token
 
 
@@ -41,6 +44,58 @@ async def test_ui_explore_lists_repositories_by_default_with_pagination(
     assert second_page.status_code == 200
     assert "Previous" in second_page.text
     assert "/ui/search?page=1&amp;per_page=2" in second_page.text
+
+
+@pytest.mark.asyncio
+async def test_ui_create_repo_under_nested_group_namespace(
+    client, test_user, db_session
+):
+    """The repository create form can target a nested GitLab group namespace."""
+    parent = Organization(login="redhat", name="Red Hat")
+    child = Organization(login="redhat/rhel-ai", name="RHEL AI")
+    db_session.add_all([parent, child])
+    await db_session.flush()
+    db_session.add(
+        OrgMembership(
+            org_id=child.id,
+            user_id=test_user.id,
+            role="admin",
+            state="active",
+        )
+    )
+    await db_session.commit()
+
+    _ui_session(client, test_user.login)
+    form = await client.get("/ui/new")
+    assert form.status_code == 200
+    assert '<option value="redhat/rhel-ai"' in form.text
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={
+            "namespace_path": "redhat/rhel-ai",
+            "name": "agentic-ci",
+            "description": "Nested project",
+            "private": "true",
+            "auto_init": "true",
+        },
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+    assert create_repo.headers["location"] == "/ui/redhat/rhel-ai/agentic-ci"
+
+    repo = (
+        await db_session.execute(
+            select(Repository).where(Repository.full_name == "redhat/rhel-ai/agentic-ci")
+        )
+    ).scalar_one()
+    assert repo.owner_type == "Organization"
+    assert repo.private is True
+
+    nested_page = await client.get("/ui/redhat/rhel-ai/agentic-ci")
+    assert nested_page.status_code == 200
+    assert "agentic-ci" in nested_page.text
+    assert "Nested project" in nested_page.text
 
 
 @pytest.mark.asyncio

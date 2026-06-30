@@ -37,7 +37,7 @@ from app.database import get_db
 from app.models.ci import CiRunner, CiSecret, CiVariable, Pipeline, PipelineJob
 from app.models.event import Event
 from app.models.issue import Issue
-from app.models.organization import Organization
+from app.models.organization import Organization, OrgMembership
 from app.models.pull_request import PullRequest
 from app.models.repository import Repository
 from app.models.token import PersonalAccessToken
@@ -1522,16 +1522,19 @@ async def list_orgs(
 
 
 @router.get("/orgs/create", response_class=HTMLResponse)
-async def create_org_form(request: Request):
+async def create_org_form(request: Request, db: AsyncSession = Depends(get_db)):
     """Render the create-organization form."""
     admin_user = _get_admin_user(request)
     if not admin_user:
         return RedirectResponse(url="/admin/login", status_code=302)
+    groups = (
+        await db.execute(select(Organization).order_by(Organization.login.asc()))
+    ).scalars().all()
 
     return templates.TemplateResponse(
         request=request,
         name="org_form.html",
-        context=_ctx(request, admin_user=admin_user, edit_org=None),
+        context=_ctx(request, admin_user=admin_user, edit_org=None, parent_groups=groups),
     )
 
 
@@ -1539,6 +1542,7 @@ async def create_org_form(request: Request):
 async def create_org_handler(
     request: Request,
     login: str = Form(...),
+    parent_id: str = Form(""),
     name: str = Form(""),
     description: str = Form(""),
     email: str = Form(""),
@@ -1552,10 +1556,54 @@ async def create_org_handler(
     admin_user = _get_admin_user(request)
     if not admin_user:
         return RedirectResponse(url="/admin/login", status_code=302)
+    admin_record = (
+        await db.execute(select(User).where(User.login == admin_user))
+    ).scalar_one_or_none()
+
+    groups = (
+        await db.execute(select(Organization).order_by(Organization.login.asc()))
+    ).scalars().all()
+    path = login.strip().strip("/")
+    if "/" in path:
+        return templates.TemplateResponse(
+            request=request,
+            name="org_form.html",
+            context=_ctx(
+                request,
+                admin_user=admin_user,
+                edit_org=None,
+                parent_groups=groups,
+                flash_message="Use the parent selector instead of slashes in the slug.",
+                flash_type="error",
+            ),
+        )
+    parent = None
+    if parent_id:
+        try:
+            selected_parent_id = int(parent_id)
+        except ValueError:
+            selected_parent_id = -1
+        parent = (
+            await db.execute(select(Organization).where(Organization.id == selected_parent_id))
+        ).scalar_one_or_none()
+        if parent is None:
+            return templates.TemplateResponse(
+                request=request,
+                name="org_form.html",
+                context=_ctx(
+                    request,
+                    admin_user=admin_user,
+                    edit_org=None,
+                    parent_groups=groups,
+                    flash_message="Selected parent group does not exist.",
+                    flash_type="error",
+                ),
+            )
+    full_path = f"{parent.login}/{path}" if parent else path
 
     # Check for duplicate login
     existing = await db.execute(
-        select(Organization).where(Organization.login == login)
+        select(Organization).where(Organization.login == full_path)
     )
     if existing.scalar_one_or_none():
         return templates.TemplateResponse(
@@ -1565,13 +1613,14 @@ async def create_org_handler(
                 request,
                 admin_user=admin_user,
                 edit_org=None,
-                flash_message=f"Organization '{login}' already exists.",
+                parent_groups=groups,
+                flash_message=f"Group '{full_path}' already exists.",
                 flash_type="error",
             ),
         )
 
     org = Organization(
-        login=login,
+        login=full_path,
         name=name or None,
         description=description or None,
         email=email or None,
@@ -1581,6 +1630,16 @@ async def create_org_handler(
         billing_email=billing_email or None,
     )
     db.add(org)
+    await db.flush()
+    if admin_record is not None:
+        db.add(
+            OrgMembership(
+                org_id=org.id,
+                user_id=admin_record.id,
+                role="admin",
+                state="active",
+            )
+        )
     await db.commit()
 
     return RedirectResponse(url="/admin/orgs", status_code=302)
