@@ -1,4 +1,4 @@
-# Remaining GitLab Emulator Slices
+# MVP Backlog Completion
 
 This is the working backlog after the current MVP support for GitLab-shaped
 projects, Git Smart HTTP, persisted pipelines/jobs, official GitLab Runner

@@ -23,16 +23,19 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   runner/TLS/token/image/pending/stale job issues.
 - `docs/plans/ci-pipeline-implementation.md`: detailed CI implementation slices
   and current CI status.
-- `docs/notes/runner-testing.md`: official GitLab Runner validation notes and known
+- `docs/runbooks/runner-testing.md`: official GitLab Runner validation notes and known
   runner behavior.
-- `docs/plans/kubernetes-runner-validation.md`: k3s-backed GitLab Runner
+- `docs/tasks/done/kubernetes-runner-validation.md`: k3s-backed GitLab Runner
   Kubernetes executor validation plan and results.
 - `docs/runbooks/runner-deployment.md`: supported runner deployment modes,
   registration flow, network/TLS requirements, and full k3s integration notes.
 - `docs/plans/ci-variables-secrets-security.md`: CI/CD variables, GitLab
   Secrets Manager compatibility, log redaction, and pipeline security
   guardrail plan.
-- `docs/tasks/done/mvp-slice-ledger.md`: completed MVP slice record and deferred work.
+- `docs/tasks/done/mvp-backlog-completion.md`: completed MVP slice record.
+- `docs/tasks/pending/targeted-gitlab-parity-followups.md`: explicitly
+  deferred parity work that should only be pulled when a target workflow needs
+  it.
 - `GITLAB_STATUS.md`: current status snapshot.
 
 ## Current State

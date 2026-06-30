@@ -141,6 +141,47 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
         tags_page.text,
     )
 
+    snippets_page = await client.get("/ui/testuser/ui-source-renamed/-/snippets")
+    assert snippets_page.status_code == 200
+    assert "New snippet" in snippets_page.text
+    assert re.search(
+        r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed/-/snippets">Snippets</a>',
+        snippets_page.text,
+    )
+
+    create_snippet = await client.post(
+        "/ui/testuser/ui-source-renamed/-/snippets",
+        data={
+            "title": "Reusable helper",
+            "file_name": "helper.py",
+            "description": "Small helper snippet",
+            "content": "def helper():\n    return 'ok'\n",
+            "visibility": "private",
+        },
+        follow_redirects=False,
+    )
+    assert create_snippet.status_code in (302, 303)
+    snippet_location = create_snippet.headers["location"]
+    assert snippet_location.startswith("/ui/testuser/ui-source-renamed/-/snippets/")
+
+    snippet_detail = await client.get(snippet_location)
+    assert snippet_detail.status_code == 200
+    assert "Reusable helper" in snippet_detail.text
+    assert "helper.py" in snippet_detail.text
+    assert "def helper():" in snippet_detail.text
+
+    snippet_id = urlsplit(snippet_location).path.rsplit("/", 1)[-1]
+    delete_snippet = await client.post(
+        f"/ui/testuser/ui-source-renamed/-/snippets/{snippet_id}/delete",
+        follow_redirects=False,
+    )
+    assert delete_snippet.status_code in (302, 303)
+
+    snippets_after_delete = await client.get("/ui/testuser/ui-source-renamed/-/snippets")
+    assert snippets_after_delete.status_code == 200
+    assert "No snippets yet." in snippets_after_delete.text
+    assert "Reusable helper" not in snippets_after_delete.text
+
     create_issue = await client.post(
         "/ui/testuser/ui-source-renamed/issues/new",
         data={
@@ -166,6 +207,10 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
     assert "Repository graph</span>" in work_item.text
     assert (
         'href="/ui/testuser/ui-source-renamed/branches">Branches</a>' in work_item.text
+    )
+    assert (
+        'href="/ui/testuser/ui-source-renamed/-/snippets">Snippets</a>'
+        in work_item.text
     )
     assert 'href="/ui/testuser/ui-source-renamed/-/jobs">Jobs</a>' in work_item.text
     assert (

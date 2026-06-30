@@ -55,6 +55,7 @@ from app.models.organization import Organization
 from app.models.pull_request import PullRequest
 from app.models.release import Release
 from app.models.repository import Collaborator, Repository
+from app.models.snippet import Snippet
 from app.models.user import User
 from app.models.webhook import Webhook
 from app.services.auth_service import verify_password
@@ -1586,6 +1587,180 @@ async def repo_label_delete(
         await db.commit()
     return RedirectResponse(
         url=f"/ui/{owner}/{repo.name}/-/labels?message={urlencode({'x': 'Label deleted.'})[2:]}",
+        status_code=302,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repository snippets
+# ---------------------------------------------------------------------------
+
+@router.get("/{owner}/{repo_name}/-/snippets", response_class=HTMLResponse)
+async def repo_snippets_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manage project snippets."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    snippets = (
+        await db.execute(
+            select(Snippet)
+            .where(Snippet.project_id == repo.id)
+            .order_by(Snippet.id.desc())
+        )
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_snippets.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            snippets=snippets,
+            selected_snippet=None,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.get("/{owner}/{repo_name}/-/snippets/{snippet_id}", response_class=HTMLResponse)
+async def repo_snippet_detail_page(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    snippet_id: int,
+    message: str | None = Query(None),
+    error: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Show a project snippet."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    snippets = (
+        await db.execute(
+            select(Snippet)
+            .where(Snippet.project_id == repo.id)
+            .order_by(Snippet.id.desc())
+        )
+    ).scalars().all()
+    selected = next((snippet for snippet in snippets if snippet.id == snippet_id), None)
+    if selected is None:
+        return RedirectResponse(
+            url=f"/ui/{owner}/{repo.name}/-/snippets?error=Snippet%20not%20found.",
+            status_code=302,
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="repo_snippets.html",
+        context=_ctx(
+            request,
+            owner=owner,
+            repo=repo,
+            repo_name=repo.name,
+            current_user=current_user,
+            snippets=snippets,
+            selected_snippet=selected,
+            message=message,
+            error=error,
+        ),
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/snippets", response_class=HTMLResponse)
+async def repo_snippet_create(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    title: str = Form(...),
+    file_name: str = Form("snippet.txt"),
+    content: str = Form(...),
+    description: str = Form(""),
+    visibility: str = Form("private"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project snippet from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    redirect = f"/ui/{owner}/{repo.name}/-/snippets"
+    try:
+        snippet_title = title.strip()
+        snippet_file = file_name.strip() or "snippet.txt"
+        snippet_content = content.strip("\n")
+        snippet_visibility = visibility.strip() or "private"
+        if not snippet_title:
+            raise ValueError("Title is required.")
+        if not snippet_content:
+            raise ValueError("Content is required.")
+        if snippet_visibility not in {"private", "internal", "public"}:
+            raise ValueError("Visibility must be private, internal, or public.")
+        snippet = Snippet(
+            user_id=current_user.id,
+            project_id=repo.id,
+            title=snippet_title,
+            description=description.strip() or None,
+            file_name=snippet_file,
+            content=snippet_content,
+            visibility=snippet_visibility,
+        )
+        db.add(snippet)
+        await db.commit()
+        await db.refresh(snippet)
+    except ValueError as exc:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{redirect}?error={urlencode({'x': str(exc)})[2:]}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        url=(
+            f"{redirect}/{snippet.id}"
+            f"?message={urlencode({'x': 'Snippet created.'})[2:]}"
+        ),
+        status_code=302,
+    )
+
+
+@router.post("/{owner}/{repo_name}/-/snippets/{snippet_id}/delete", response_class=HTMLResponse)
+async def repo_snippet_delete(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    snippet_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project snippet from the web UI."""
+    current_user, repo, response = await _managed_repo_or_response(
+        request, db, owner, repo_name
+    )
+    if response is not None:
+        return response
+    snippet = (
+        await db.execute(
+            select(Snippet).where(Snippet.id == snippet_id, Snippet.project_id == repo.id)
+        )
+    ).scalar_one_or_none()
+    if snippet is not None:
+        await db.delete(snippet)
+        await db.commit()
+    return RedirectResponse(
+        url=f"/ui/{owner}/{repo.name}/-/snippets?message={urlencode({'x': 'Snippet deleted.'})[2:]}",
         status_code=302,
     )
 

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Snippets - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "snippets" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="Subhead">
+    <div class="Subhead-heading">Snippets</div>
+    <div class="Subhead-description">Create small project-scoped source fragments.</div>
+</div>
+
+{% if error %}<div class="flash flash-error mb-3">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash-success mb-3">{{ message }}</div>{% endif %}
+
+<div class="Box mb-4">
+    <div class="Box-header"><h3 class="Box-title">New snippet</h3></div>
+    <div class="Box-row">
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/snippets">
+            <div class="form-group">
+                <label>Title</label>
+                <input class="form-control" name="title" required>
+            </div>
+            <div class="d-flex flex-items-end flex-wrap" style="gap:12px;">
+                <label>File name<br><input class="form-control" name="file_name" value="snippet.txt" required></label>
+                <label>Visibility<br>
+                    <select class="form-select" name="visibility">
+                        <option value="private">Private</option>
+                        <option value="internal">Internal</option>
+                        <option value="public">Public</option>
+                    </select>
+                </label>
+            </div>
+            <div class="form-group mt-2">
+                <label>Description</label>
+                <input class="form-control" name="description">
+            </div>
+            <div class="form-group mt-2">
+                <label>Content</label>
+                <textarea class="form-control" name="content" rows="8" required></textarea>
+            </div>
+            <button class="btn btn-primary" type="submit">Create snippet</button>
+        </form>
+    </div>
+</div>
+
+<div class="Box">
+    <div class="Box-header"><h3 class="Box-title">Project snippets</h3></div>
+    {% if snippets %}
+    {% for snippet in snippets %}
+    <div class="Box-row">
+        <div class="d-flex flex-justify-between flex-items-start flex-wrap" style="gap:12px;">
+            <div>
+                <a class="Link--primary" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/snippets/{{ snippet.id }}">
+                    <strong>{{ snippet.title }}</strong>
+                </a>
+                <div class="color-fg-muted text-small">
+                    {{ snippet.file_name }} · {{ snippet.visibility }} · #{{ snippet.id }}
+                </div>
+                {% if snippet.description %}
+                <div class="mt-1">{{ snippet.description }}</div>
+                {% endif %}
+            </div>
+            <form method="post"
+                  action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/snippets/{{ snippet.id }}/delete"
+                  onsubmit="return confirm('Delete snippet {{ snippet.title }}?');">
+                <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="Box-row color-fg-muted">No snippets yet.</div>
+    {% endif %}
+</div>
+
+{% if selected_snippet %}
+<div class="Box mt-4">
+    <div class="Box-header">
+        <h3 class="Box-title">{{ selected_snippet.title }}</h3>
+    </div>
+    <div class="Box-row color-fg-muted">
+        {{ selected_snippet.file_name }} · {{ selected_snippet.visibility }}
+    </div>
+    <div class="Box-row">
+        <pre class="blob-code" style="white-space:pre-wrap;">{{ selected_snippet.content }}</pre>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -101,7 +101,8 @@
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tags">Tags</a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Repository graph</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Compare revisions</span>
-            <span class="gl-sidebar-link gl-sidebar-subitem disabled">Snippets</span>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/snippets' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/snippets">Snippets</a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Locked files</span>
         </div>
         <div class="gl-sidebar-group">
