@@ -352,6 +352,64 @@ async def test_gitlab_global_search_blobs(client, test_user, test_token, db_sess
     assert any(item["filename"] == "docs/search.md" for item in data)
 
 
+async def test_gitlab_global_search_commits(client, test_user, test_token, db_session):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "gitlab-search-commit"},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    from app.models.search_index import CommitMetadata
+
+    db_session.add(
+        CommitMetadata(
+            repo_id=project_id,
+            commit_sha="d" * 40,
+            author_name="Search Author",
+            author_email="author@example.com",
+            committer_name="Search Committer",
+            committer_email="committer@example.com",
+            message="searchable commit title\n\ncommit body",
+            author_date="2026-01-01T00:00:00Z",
+            committer_date="2026-01-02T00:00:00Z",
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(
+        f"{API}/search",
+        params={"scope": "commits", "search": "searchable commit"},
+        headers=auth_headers(test_token),
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0] == {
+        "id": "d" * 40,
+        "short_id": "d" * 8,
+        "created_at": "2026-01-02T00:00:00Z",
+        "parent_ids": [],
+        "title": "searchable commit title",
+        "message": "searchable commit title\n\ncommit body",
+        "author_name": "Search Author",
+        "author_email": "author@example.com",
+        "authored_date": "2026-01-01T00:00:00Z",
+        "committer_name": "Search Committer",
+        "committer_email": "committer@example.com",
+        "committed_date": "2026-01-02T00:00:00Z",
+        "trailers": {},
+        "extended_trailers": {},
+        "web_url": data[0]["web_url"],
+        "project_id": project_id,
+    }
+    assert data[0]["web_url"].endswith(
+        "/testuser/gitlab-search-commit/-/commit/" + ("d" * 40)
+    )
+
+
 @pytest.mark.asyncio
 async def test_search_hides_private_project_content_from_non_members(
     client, db_session, test_token
@@ -420,6 +478,7 @@ async def test_search_hides_private_project_content_from_non_members(
         ),
         (f"{API}/search", {"scope": "issues", "search": "private-search-needle"}, None),
         (f"{API}/search", {"scope": "blobs", "search": "private-search-needle"}, None),
+        (f"{API}/search", {"scope": "commits", "search": "private-search-needle"}, None),
         (f"{API}/search/repositories", {"q": "private-search-needle"}, "items"),
         (f"{API}/search/issues", {"q": "private-search-needle"}, "items"),
         (f"{API}/search/code", {"q": "private-search-needle"}, "items"),
@@ -475,3 +534,11 @@ async def test_search_hides_private_project_content_from_non_members(
     )
     assert commits.status_code == 200
     assert [item["sha"] for item in commits.json()["items"]] == ["c" * 40]
+
+    gitlab_commits = await client.get(
+        f"{API}/search",
+        params={"scope": "commits", "search": "private-search-needle"},
+        headers=auth_headers(reporter_token),
+    )
+    assert gitlab_commits.status_code == 200
+    assert [item["id"] for item in gitlab_commits.json()] == ["c" * 40]

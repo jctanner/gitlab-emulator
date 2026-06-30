@@ -23,6 +23,30 @@ router = APIRouter(tags=["search"])
 BASE = settings.BASE_URL
 
 
+def _gitlab_commit_search_json(commit: CommitMetadata, project: Project) -> dict:
+    sha = commit.commit_sha
+    message = commit.message or ""
+    title = message.splitlines()[0] if message else ""
+    return {
+        "id": sha,
+        "short_id": sha[:8],
+        "created_at": commit.committer_date,
+        "parent_ids": [],
+        "title": title,
+        "message": message,
+        "author_name": commit.author_name,
+        "author_email": commit.author_email,
+        "authored_date": commit.author_date,
+        "committer_name": commit.committer_name,
+        "committer_email": commit.committer_email,
+        "committed_date": commit.committer_date,
+        "trailers": {},
+        "extended_trailers": {},
+        "web_url": f"{BASE}/{project.full_name}/-/commit/{sha}",
+        "project_id": project.id,
+    }
+
+
 def _parse_qualifiers(q: str) -> tuple[str, dict[str, str]]:
     """Parse GitLab-style qualifiers from query string.
 
@@ -213,7 +237,28 @@ async def gitlab_search(
                     "project_id": project_id,
                     "project_path": project_path,
                 }
-            )
+        )
+        return paginated_json(items, request, page, per_page, total)
+
+    if scope == "commits":
+        query = (
+            select(CommitMetadata)
+            .where(CommitMetadata.message.ilike(pattern))
+            .order_by(CommitMetadata.id.desc())
+        )
+        rows = (await db.execute(query)).scalars().all()
+        projects = await _project_map_for_repo_ids({row.repo_id for row in rows}, db)
+        rows = [
+            row
+            for row in rows
+            if await _can_read_project(projects.get(row.repo_id), current_user, db)
+        ]
+        total = len(rows)
+        items = [
+            _gitlab_commit_search_json(row, projects[row.repo_id])
+            for row in rows[offset : offset + per_page]
+            if row.repo_id in projects
+        ]
         return paginated_json(items, request, page, per_page, total)
 
     raise HTTPException(status_code=400, detail="scope is invalid")

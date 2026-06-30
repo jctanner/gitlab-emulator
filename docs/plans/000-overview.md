@@ -180,6 +180,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   and merge requests. The pass expands common GitLab-shaped fields, filters,
   encoded/nested path behavior, repository file metadata, tree pagination,
   commit stats/diff metadata, and merge request diffs/merge validation.
+- GitLab global search supports projects, issues, merge requests, indexed
+  blobs/code, and indexed commits with readable-project filtering.
 - `/api/v4/version` exposes configurable GitLab-shaped server version metadata
   for CLI compatibility probes.
 - `/api/v4/metadata` exposes matching GitLab-shaped server metadata, including
