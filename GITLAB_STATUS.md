@@ -45,7 +45,10 @@ harness architecture.
 - Job runtime metadata expands CI variables before persistence for `timeout`,
   `interruptible`, `allow_failure`, `allow_failure:exit_codes`,
   `resource_group`, `coverage`, and delayed `start_in`; runner scheduling uses
-  the expanded `resource_group` value.
+  the expanded `resource_group` value. Per-job `parallel:matrix` variables are
+  also applied when materializing runner-facing image names/options, service
+  metadata, tags, artifact metadata, environment metadata, hooks, ID token
+  audiences, and cache entries.
 - Persisted jobs now use stage dependency gating. Later-stage jobs are not
   assigned until all earlier-stage jobs succeed, same-stage jobs remain eligible
   for parallel runners, and later pending jobs are skipped after an earlier

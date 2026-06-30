@@ -86,6 +86,8 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   and default prior-stage artifact dependency payloads,
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
   `resource_group`, `coverage`, and structured `environment` name/URL/action,
+  per-job `parallel:matrix` variable expansion for runner-facing image,
+  service, tag, artifact, environment, hook, ID token, and cache metadata,
   runner-facing job hooks for `pre_get_sources_script` and
   `post_get_sources_script`,
   YAML `id_tokens` emitted as masked JWT-style runner variables,
@@ -244,8 +246,8 @@ Target areas:
   rule variables, rule-level `needs`/`interruptible`, unsupported rule-key
   rejection, and delayed/manual scheduling
 - remaining execution semantics for parsed job metadata beyond the current
-  retry, timeout, resource-group, coverage, interruptible, and image/service
-  executor option support
+  retry, timeout, resource-group, coverage, interruptible, image/service
+  executor option support, and per-matrix runner metadata expansion
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, repository-derived prefix/files/files_commits keys, fallback keys,
   policy, `when`, `untracked`, `unprotect`, clear unsupported option rejection,

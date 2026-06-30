@@ -119,6 +119,8 @@ Already working:
   APIs, used to derive project environment list/detail/stop and project or
   environment deployment list/detail payloads, and sent to runner payloads as
   `CI_ENVIRONMENT_NAME`, `CI_ENVIRONMENT_URL`, and `CI_ENVIRONMENT_ACTION`;
+  per-job `parallel:matrix` variables are expanded into runner-facing image,
+  service, tag, artifact, environment, hook, ID token, and cache metadata;
   `default:` inheritance
   applies to `retry`, `timeout`, and `interruptible`; job hooks for
   `pre_get_sources_script` and `post_get_sources_script` are parsed,
@@ -403,8 +405,8 @@ Still needed:
 
 - remaining long-tail `rules` / `only` / `except` edge cases
 - implement deeper long-tail execution semantics for parsed runtime metadata
-  beyond the current retry, timeout, resource-group, coverage, and
-  interruptible behavior
+  beyond the current retry, timeout, resource-group, coverage, interruptible,
+  and per-matrix runner metadata behavior
 
 ## Slice 7: Repository Checkout
 

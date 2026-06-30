@@ -1856,56 +1856,13 @@ def parse_gitlab_ci(
 
         stage = str(config.get("stage") or (stages[0] if stages else "test"))
         variables = _variable_values(merged_variable_entries)
-        image_variables = {
-            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
-            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
-            "CI_COMMIT_REF_NAME": ref,
-            **pipeline_variables,
-            **variables,
-        }
         raw_image = config.get("image") if "image" in config else global_image_config
-        image = _image_name(raw_image, global_image)
-        image_config = _image_config(raw_image, image_variables)
-        service_variables = {
-            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
-            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
-            "CI_COMMIT_REF_NAME": ref,
-            **pipeline_variables,
-            **variables,
-        }
-        artifact_variables = {
-            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
-            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
-            "CI_COMMIT_REF_NAME": ref,
-            **pipeline_variables,
-            **variables,
-        }
-        environment_variables = {
-            "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
-            "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
-            "CI_COMMIT_REF_NAME": ref,
-            **pipeline_variables,
-            **variables,
-        }
-        environment_config = _environment_config(
-            config.get("environment"),
-            environment_variables,
-        )
         before = _string_list(config.get("before_script", global_before))
         script = _string_list(config.get("script"))
         after = _string_list(config.get("after_script", global_after))
-        artifact_config = _artifact_config(config.get("artifacts"), artifact_variables)
-        artifact_paths = artifact_config.get("paths", [])
-        hooks = _hooks_config(config.get("hooks"), artifact_variables)
-        id_tokens = _id_token_entries(config.get("id_tokens"), artifact_variables)
         raw_cache = config.get("cache") if "cache" in config else global_cache_config
         raw_services = (
             config.get("services") if "services" in config else global_services_config
-        )
-        services = (
-            _service_entries(raw_services, service_variables)
-            if raw_services is not None
-            else []
         )
         parallel_expansions = _parallel_expansions(config.get("parallel"))
         raw_needs = decision.needs if decision.needs_set else config.get("needs")
@@ -1926,6 +1883,16 @@ def parse_gitlab_ci(
                 **pipeline_variables,
                 **expanded_variables,
             }
+            image = _expand_ci_variables(
+                _image_name(raw_image, global_image),
+                runtime_variables,
+            )
+            image_config = _image_config(raw_image, runtime_variables)
+            services = (
+                _service_entries(raw_services, runtime_variables)
+                if raw_services is not None
+                else []
+            )
             cache = (
                 _cache_entries(
                     raw_cache,
@@ -1936,6 +1903,17 @@ def parse_gitlab_ci(
                 if raw_cache is not None
                 else []
             )
+            artifact_config = _artifact_config(
+                config.get("artifacts"),
+                runtime_variables,
+            )
+            artifact_paths = artifact_config.get("paths", [])
+            environment_config = _environment_config(
+                config.get("environment"),
+                runtime_variables,
+            )
+            hooks = _hooks_config(config.get("hooks"), runtime_variables)
+            id_tokens = _id_token_entries(config.get("id_tokens"), runtime_variables)
 
             jobs.append(
                 ParsedCiJob(
@@ -1949,7 +1927,10 @@ def parse_gitlab_ci(
                     variable_metadata=expanded_variable_metadata,
                     needs=_needs(raw_needs, parallel_job_names),
                     dependencies=_dependencies(config.get("dependencies")),
-                    tags=_string_list(config.get("tags", global_tags)),
+                    tags=_expand_string_list(
+                        config.get("tags", global_tags),
+                        runtime_variables,
+                    ),
                     services=services,
                     cache=cache,
                     artifacts_paths=artifact_paths,

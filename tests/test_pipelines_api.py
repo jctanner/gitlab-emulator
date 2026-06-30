@@ -3357,12 +3357,25 @@ matrix_test:
     matrix:
       - PROVIDER: [aws, gcp]
         STACK: [app1, app2]
+  image:
+    name: registry.example.test/build:$PROVIDER-$STACK
+    entrypoint: ["/bin/$STACK"]
+    pull_policy: [if-not-present]
+  services:
+    - name: postgres:$PROVIDER
+      alias: db-$STACK
   cache:
     key: cache-$PROVIDER-$STACK
     paths:
       - .cache/$PROVIDER/$STACK
     fallback_keys:
       - fallback-$PROVIDER
+  artifacts:
+    name: artifacts-$PROVIDER-$STACK
+    paths:
+      - out/$PROVIDER/$STACK
+    exclude:
+      - out/$PROVIDER/$STACK/tmp
   script:
     - echo $PROVIDER $STACK
 """
@@ -3407,6 +3420,14 @@ matrix_test:
     variables = {item["key"]: item["value"] for item in payload["variables"]}
     assert variables["PROVIDER"] == "aws"
     assert variables["STACK"] == "app1"
+    assert payload["image"] == {
+        "name": "registry.example.test/build:aws-app1",
+        "entrypoint": ["/bin/app1"],
+        "pull_policy": ["if-not-present"],
+    }
+    assert payload["services"] == [
+        {"name": "postgres:aws", "alias": "db-app1"}
+    ]
     assert payload["cache"] == [
         {
             "key": "cache-aws-app1",
@@ -3416,6 +3437,18 @@ matrix_test:
             "paths": [".cache/aws/app1"],
             "when": "on_success",
             "fallback_keys": ["fallback-aws"],
+        }
+    ]
+    assert payload["artifacts"] == [
+        {
+            "name": "artifacts-aws-app1",
+            "untracked": False,
+            "paths": ["out/aws/app1"],
+            "exclude": ["out/aws/app1/tmp"],
+            "when": "on_success",
+            "artifact_type": "archive",
+            "artifact_format": "zip",
+            "expire_in": "",
         }
     ]
 

@@ -2347,6 +2347,96 @@ matrix_cache:
     ]
 
 
+def test_parse_gitlab_ci_expands_matrix_variables_in_runner_metadata():
+    jobs = parse_gitlab_ci(
+        """
+matrix_runtime:
+  parallel:
+    matrix:
+      - TARGET: [py, js]
+  image:
+    name: registry.example.test/build:$TARGET
+    entrypoint: ["/bin/$TARGET"]
+    pull_policy: ["$PULL_POLICY"]
+  variables:
+    PULL_POLICY: if-not-present
+  services:
+    - name: postgres:$TARGET
+      alias: db-$TARGET
+      variables:
+        SERVICE_TARGET: "$TARGET"
+  tags:
+    - runner-$TARGET
+  artifacts:
+    name: artifacts-$TARGET
+    paths:
+      - out/$TARGET
+    exclude:
+      - out/$TARGET/tmp
+    expire_in: "$TARGET week"
+  environment:
+    name: review/$TARGET
+    url: https://$TARGET.example.test
+  hooks:
+    pre_get_sources_script:
+      - echo pre-$TARGET
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://vault.$TARGET.example.test
+  script:
+    - echo runtime
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    py = by_name["matrix_runtime [py]"]
+    assert py.image == "registry.example.test/build:py"
+    assert py.image_config == {
+        "entrypoint": ["/bin/py"],
+        "pull_policy": ["if-not-present"],
+    }
+    assert py.services == [
+        {
+            "name": "postgres:py",
+            "alias": "db-py",
+            "variables": [
+                {
+                    "key": "SERVICE_TARGET",
+                    "value": "py",
+                    "public": True,
+                    "file": False,
+                    "masked": False,
+                    "raw": False,
+                }
+            ],
+        }
+    ]
+    assert py.tags == ["runner-py"]
+    assert py.artifacts_paths == ["out/py"]
+    assert py.artifacts["name"] == "artifacts-py"
+    assert py.artifacts["exclude"] == ["out/py/tmp"]
+    assert py.artifacts["expire_in"] == "py week"
+    assert py.environment == "review/py"
+    assert py.environment_url == "https://py.example.test"
+    assert py.hooks == [
+        {"name": "pre_get_sources_script", "script": ["echo pre-py"]}
+    ]
+    assert py.id_tokens == {
+        "VAULT_ID_TOKEN": {"aud": ["https://vault.py.example.test"]}
+    }
+
+    js = by_name["matrix_runtime [js]"]
+    assert js.image == "registry.example.test/build:js"
+    assert js.services[0]["name"] == "postgres:js"
+    assert js.tags == ["runner-js"]
+    assert js.artifacts_paths == ["out/js"]
+    assert js.environment == "review/js"
+    assert js.hooks[0]["script"] == ["echo pre-js"]
+    assert js.id_tokens["VAULT_ID_TOKEN"]["aud"] == [
+        "https://vault.js.example.test"
+    ]
+
+
 def test_parse_gitlab_ci_rejects_unsupported_cache_options():
     cases = [
         (
