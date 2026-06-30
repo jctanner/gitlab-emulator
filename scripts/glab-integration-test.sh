@@ -182,6 +182,48 @@ assert_json_field "glab api project by id" "$project_by_id" ".id == $PROJECT_ID"
 project_by_path=$(glab_api "projects/$PROJECT_REF")
 assert_json_field "glab api project by encoded path" "$project_by_path" ".path_with_namespace == \"admin/$PROJECT_PATH\""
 
+section "Project Members CLI via glab"
+
+MEMBER_USERNAME="glab-member-${RUN_ID}"
+member_user_json=$(curl -sk -X POST \
+    -H "PRIVATE-TOKEN: $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"login\":\"$MEMBER_USERNAME\",\"password\":\"member-password\",\"name\":\"Glab Member\",\"email\":\"$MEMBER_USERNAME@example.com\"}" \
+    "$API/admin/users")
+MEMBER_USER_ID=$(echo "$member_user_json" | jq -r '.id // empty' 2>/dev/null)
+if [ -n "$MEMBER_USER_ID" ]; then
+    pass "member user created"
+else
+    fail "member user create: $member_user_json"
+fi
+
+member_add=$("$GLAB" repo members add \
+    --repo "admin/$PROJECT_PATH" \
+    --username "$MEMBER_USERNAME" \
+    --role developer 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab repo members add"
+else
+    fail "glab repo members add: $member_add"
+fi
+
+project_members=$(glab_api "projects/$PROJECT_REF/members?query=$MEMBER_USERNAME")
+assert_json_field "glab repo members add visible" "$project_members" \
+    "map(select(.username == \"$MEMBER_USERNAME\" and .access_level == 30)) | length == 1"
+
+member_remove=$("$GLAB" repo members remove \
+    --repo "admin/$PROJECT_PATH" \
+    --username "$MEMBER_USERNAME" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab repo members remove"
+else
+    fail "glab repo members remove: $member_remove"
+fi
+
+project_members_after_remove=$(glab_api "projects/$PROJECT_REF/members?query=$MEMBER_USERNAME")
+assert_json_field "glab repo members remove visible" "$project_members_after_remove" \
+    "map(.username) | index(\"$MEMBER_USERNAME\") | not"
+
 section "Groups API via glab"
 
 group_json=$(curl -sk -X POST \
