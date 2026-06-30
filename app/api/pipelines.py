@@ -2468,6 +2468,7 @@ async def list_pipelines(
     source: str | None = None,
     ref: str | None = None,
     sha: str | None = None,
+    name: str | None = None,
     yaml_errors: bool | None = None,
     created_after: str | None = None,
     created_before: str | None = None,
@@ -2495,6 +2496,8 @@ async def list_pipelines(
         query = query.where(Pipeline.ref == ref)
     if sha:
         query = query.where(Pipeline.sha == sha)
+    if name:
+        query = query.where(Pipeline.name == name)
     if yaml_errors:
         query = query.where(False)
     created_after_dt = _parse_filter_datetime(created_after)

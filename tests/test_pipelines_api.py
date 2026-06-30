@@ -2917,6 +2917,24 @@ compile:
     assert pipeline["sha"] == commit_sha
     assert pipeline["name"] == "api pipeline for main"
 
+    listed_by_name = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"name": "api pipeline for main"},
+        headers=auth_headers(test_token),
+    )
+    assert listed_by_name.status_code == 200
+    named_pipelines = listed_by_name.json()
+    assert pipeline["id"] in {item["id"] for item in named_pipelines}
+    assert {item["name"] for item in named_pipelines} == {"api pipeline for main"}
+
+    missing_name = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"name": "scheduled pipeline for main"},
+        headers=auth_headers(test_token),
+    )
+    assert missing_name.status_code == 200
+    assert missing_name.json() == []
+
     jobs = await client.get(
         f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
     )
