@@ -136,6 +136,13 @@ async def test_gitlab_project_issue_crud(
     client, test_user, test_token, repo_with_issues
 ):
     """GitLab-shaped project issue endpoints work by project ID."""
+    milestone = await client.post(
+        f"{API}/projects/{repo_with_issues['id']}/milestones",
+        json={"title": "Issue milestone"},
+        headers=auth_headers(test_token),
+    )
+    assert milestone.status_code == 201
+
     resp = await client.post(
         f"{API}/projects/{repo_with_issues['id']}/issues",
         json={
@@ -143,6 +150,7 @@ async def test_gitlab_project_issue_crud(
             "description": "Project issue body",
             "labels": "bug,backend",
             "assignee_ids": [test_user.id],
+            "milestone_id": milestone.json()["id"],
         },
         headers=auth_headers(test_token),
     )
@@ -155,6 +163,7 @@ async def test_gitlab_project_issue_crud(
     assert data["author"]["username"] == "testuser"
     assert data["assignees"][0]["username"] == "testuser"
     assert data["labels"] == ["bug", "backend"]
+    assert data["milestone"]["title"] == "Issue milestone"
     assert data["web_url"].endswith("/testuser/issue-repo/-/issues/1")
     assert data["references"]["full"] == "testuser/issue-repo#1"
     assert "repository_url" not in data
@@ -164,16 +173,22 @@ async def test_gitlab_project_issue_crud(
     get_resp = await client.get(f"{API}/projects/{repo_with_issues['id']}/issues/1")
     assert get_resp.status_code == 200
     assert get_resp.json()["title"] == "GitLab issue"
+    assert get_resp.json()["milestone"]["title"] == "Issue milestone"
 
     update_resp = await client.put(
         f"{API}/projects/{repo_with_issues['id']}/issues/1",
-        json={"title": "Closed GitLab issue", "state_event": "close"},
+        json={
+            "title": "Closed GitLab issue",
+            "state_event": "close",
+            "milestone_id": None,
+        },
         headers=auth_headers(test_token),
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["title"] == "Closed GitLab issue"
     assert update_resp.json()["state"] == "closed"
     assert update_resp.json()["closed_by"]["username"] == "testuser"
+    assert update_resp.json()["milestone"] is None
 
     list_closed = await client.get(
         f"{API}/projects/{repo_with_issues['id']}/issues?state=closed"

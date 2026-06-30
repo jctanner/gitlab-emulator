@@ -212,8 +212,8 @@ harness architecture.
 - GitLab-shaped project issue APIs exist for list, create, get, and update by
   numeric project ID or URL-encoded project path. Responses expose GitLab-style
   `iid`, `project_id`, `description`, `author`, string labels, assignees,
-  `state` as `opened`/`closed`, references, and `web_url`, while reusing the
-  existing issue storage.
+  milestone assignment, `state` as `opened`/`closed`, references, and
+  `web_url`, while reusing the existing issue storage.
 - GitLab-shaped project and group member APIs exist for list, get, add, and
   delete. Project members map GitLab access levels onto existing repository
   collaborator permissions, group members map access levels onto existing

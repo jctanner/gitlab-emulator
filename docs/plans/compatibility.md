@@ -52,7 +52,8 @@ Replace or add GitLab-shaped resources for:
   list/get, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/
   list-user-projects implemented
-- issues
+- issues: MVP project list/create/get/update implemented with labels,
+  assignees, and milestone assignment
 - merge requests: MVP create/list/get/update/merge/commits/changes implemented
 - repository files: MVP get/raw/tree/create/update/delete implemented, with
   protected-branch push access enforcement on writes
@@ -64,7 +65,8 @@ Replace or add GitLab-shaped resources for:
   repository file, and source-editor write enforcement implemented
 - releases: MVP list/create/get/update/delete implemented
 - webhooks: MVP project/group list/create/get/update/delete implemented
-- search: MVP global projects/issues/merge_requests/blobs implemented
+- search: MVP global projects/users/issues/merge_requests/milestones/blobs/
+  commits implemented
 
 ### Behavior
 

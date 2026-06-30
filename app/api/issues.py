@@ -13,6 +13,7 @@ from app.api.pagination import paginated_json
 from app.config import settings
 from app.models.issue import Issue, IssueLabel, IssueAssignee
 from app.models.label import Label
+from app.models.milestone import Milestone
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
@@ -253,6 +254,46 @@ async def _apply_issue_assignees(
             db.add(IssueAssignee(issue_id=issue.id, user_id=assignee.id))
 
 
+async def _apply_project_issue_milestone(
+    issue: Issue,
+    project: Project,
+    body: dict,
+    db: DbSession,
+) -> None:
+    if "milestone_id" in body:
+        if body["milestone_id"] in (None, ""):
+            issue.milestone_id = None
+            return
+        if not str(body["milestone_id"]).isdigit():
+            return
+        result = await db.execute(
+            select(Milestone).where(
+                Milestone.repo_id == project.id,
+                Milestone.id == int(body["milestone_id"]),
+            )
+        )
+        milestone = result.scalar_one_or_none()
+        if milestone:
+            issue.milestone_id = milestone.id
+        return
+
+    if "milestone" in body:
+        if body["milestone"] in (None, ""):
+            issue.milestone_id = None
+            return
+        if not str(body["milestone"]).isdigit():
+            return
+        result = await db.execute(
+            select(Milestone).where(
+                Milestone.repo_id == project.id,
+                Milestone.number == int(body["milestone"]),
+            )
+        )
+        milestone = result.scalar_one_or_none()
+        if milestone:
+            issue.milestone_id = milestone.id
+
+
 async def _project_issue_or_404(
     project: Project, issue_iid: int, db: DbSession
 ) -> Issue:
@@ -345,6 +386,7 @@ async def create_project_issue(
         [int(value) for value in body.get("assignee_ids", []) if str(value).isdigit()],
         db,
     )
+    await _apply_project_issue_milestone(issue, project, body, db)
     await db.commit()
     await db.refresh(issue)
     return _gitlab_issue_json(issue, BASE)
@@ -416,6 +458,7 @@ async def update_project_issue(
             ],
             db,
         )
+    await _apply_project_issue_milestone(issue, project, body, db)
     await db.commit()
     await db.refresh(issue)
     return _gitlab_issue_json(issue, BASE)

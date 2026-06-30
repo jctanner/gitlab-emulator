@@ -309,9 +309,9 @@ Target resource areas:
   list-descendant-groups, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/
   list-user-projects implemented
-- issues: MVP project list/create/get/update implemented; response tests assert
-  GitLab-shaped project issue payloads do not expose inherited GitHub issue
-  fields
+- issues: MVP project list/create/get/update implemented, including milestone
+  assignment; response tests assert GitLab-shaped project issue payloads do not
+  expose inherited GitHub issue fields
 - merge requests: MVP create/list/get/update/merge/commits/changes implemented
   with create/update label support and merge-request event pipeline label
   variables
@@ -331,7 +331,8 @@ Target resource areas:
   GitLab-shaped response fields, search, pagination, and issue counts
 - milestones: MVP project list/create/get/update/delete implemented with
   GitLab-shaped response fields, filters, pagination, and encoded path lookup
-- search: MVP global projects/issues/merge_requests/blobs implemented
+- search: MVP global projects/users/issues/merge_requests/milestones/blobs/
+  commits implemented
 
 Target behavior areas:
 
