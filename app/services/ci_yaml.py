@@ -73,6 +73,7 @@ SUPPORTED_CACHE_ENTRY_KEYS = {
 }
 SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
 SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
+SUPPORTED_ARTIFACT_WHEN = {"on_success", "on_failure", "always"}
 SUPPORTED_JOB_WHEN = {
     "on_success",
     "on_failure",
@@ -731,16 +732,20 @@ def _artifact_config(value: Any, variables: dict[str, str] | None = None) -> dic
     variables = variables or {}
     paths = _expand_string_list(value.get("paths"), variables)
     reports = _artifact_reports(value.get("reports"), variables)
-    if not paths and not value.get("untracked") and not reports:
+    untracked = _bool_value(value.get("untracked", False), variables)
+    if not paths and not untracked and not reports:
         return {}
     name = _expand_ci_variables(str(value.get("name") or "artifacts"), variables)
     expire_in = _expand_ci_variables(str(value.get("expire_in") or ""), variables)
+    when = _expand_ci_variables(str(value.get("when") or "on_success"), variables)
+    if when not in SUPPORTED_ARTIFACT_WHEN:
+        raise ValueError(f"artifacts when is not supported: {when}")
     config = {
         "name": name,
-        "untracked": bool(value.get("untracked", False)),
+        "untracked": untracked,
         "paths": paths,
         "exclude": _expand_string_list(value.get("exclude"), variables),
-        "when": str(value.get("when") or "on_success"),
+        "when": when,
         "expire_in": expire_in,
         "artifact_type": "archive",
         "artifact_format": "zip",

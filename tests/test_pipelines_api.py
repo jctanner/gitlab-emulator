@@ -1768,6 +1768,8 @@ variables:
   ARTIFACT_NAME: "$CI_COMMIT_REF_NAME-artifacts"
   OUTPUT_DIR: out
   EXCLUDE_DIR: tmp
+  ARTIFACT_WHEN: always
+  ARTIFACT_UNTRACKED: "true"
 
 workflow:
   rules:
@@ -1784,7 +1786,8 @@ artifact_metadata:
       - "$OUTPUT_DIR/"
     exclude:
       - "$OUTPUT_DIR/$EXCLUDE_DIR/"
-    when: always
+    untracked: "$ARTIFACT_UNTRACKED"
+    when: "$ARTIFACT_WHEN"
     expire_in: "$ARTIFACT_TTL"
 """
     write = await client.put(
@@ -1816,6 +1819,7 @@ artifact_metadata:
     assert request.status_code == 201
     artifact = request.json()["artifacts"][0]
     assert artifact["name"] == "main-artifacts"
+    assert artifact["untracked"] is True
     assert artifact["paths"] == ["out/"]
     assert artifact["exclude"] == ["out/tmp/"]
     assert artifact["when"] == "always"

@@ -152,7 +152,8 @@ harness architecture.
   through MinIO across a two-stage pipeline, and dependency artifact download
   through `needs:artifacts` across a two-stage pipeline.
 - Artifact metadata now preserves runner-facing `name`, `exclude`, `untracked`,
-  `when`, and `expire_in` settings. YAML `artifacts:reports` entries expand
+  `when`, and `expire_in` settings, and those fields expand CI variables
+  before reaching runner payloads. YAML `artifacts:reports` entries expand
   into official-runner upload entries for report artifact types such as
   `junit`, `dotenv`, and `coverage_report`. Uploaded artifact records store
   file type, file format, size, creation time, and expiration time, and expired

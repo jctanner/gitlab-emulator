@@ -195,6 +195,8 @@ def test_parse_gitlab_ci_expands_variables_in_artifact_metadata():
 variables:
   DIST_DIR: dist
   ARTIFACT_NAME: "$CI_COMMIT_REF_NAME-package"
+  ARTIFACT_WHEN: always
+  ARTIFACT_UNTRACKED: "true"
 
 artifact_probe:
   variables:
@@ -207,6 +209,8 @@ artifact_probe:
       - "$DIST_DIR/*.zip"
     exclude:
       - "$EXCLUDE_DIR/**"
+    untracked: "$ARTIFACT_UNTRACKED"
+    when: "$ARTIFACT_WHEN"
     expire_in: "$EXPIRY"
 """,
         ref="release-1",
@@ -216,14 +220,33 @@ artifact_probe:
     assert jobs[0].artifacts_paths == ["dist/*.zip"]
     assert jobs[0].artifacts == {
         "name": "release-1-package",
-        "untracked": False,
+        "untracked": True,
         "paths": ["dist/*.zip"],
         "exclude": ["tmp/**"],
-        "when": "on_success",
+        "when": "always",
         "expire_in": "2 weeks",
         "artifact_type": "archive",
         "artifact_format": "zip",
     }
+
+
+def test_parse_gitlab_ci_rejects_unsupported_artifact_when():
+    try:
+        parse_gitlab_ci(
+            """
+artifact_probe:
+  script:
+    - echo artifacts
+  artifacts:
+    paths:
+      - out/
+    when: sometimes
+"""
+        )
+    except ValueError as exc:
+        assert "artifacts when is not supported: sometimes" in str(exc)
+    else:
+        raise AssertionError("unsupported artifacts:when should fail")
 
 
 def test_parse_gitlab_ci_preserves_artifact_reports_without_archive_paths():
