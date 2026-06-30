@@ -1710,6 +1710,60 @@ metadata_job:
     assert jobs[0].environment_action == "start"
 
 
+def test_parse_gitlab_ci_expands_variables_in_runtime_metadata():
+    jobs = parse_gitlab_ci(
+        """
+variables:
+  TIMEOUT_VALUE: 45 minutes
+  DELAY_VALUE: 10 minutes
+  OPTIONAL_EXIT_CODE: "137"
+  OPTIONAL_JOB: "false"
+  INTERRUPTIBLE_JOB: "true"
+
+optional_probe:
+  script: echo optional
+  allow_failure: "$OPTIONAL_JOB"
+  timeout: "$TIMEOUT_VALUE"
+  interruptible: "$INTERRUPTIBLE_JOB"
+
+exit_code_probe:
+  script: echo exit code
+  allow_failure:
+    exit_codes:
+      - "$OPTIONAL_EXIT_CODE"
+
+delayed_probe:
+  script: echo delayed
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      when: delayed
+      start_in: "$RULE_DELAY"
+      variables:
+        RULE_DELAY: "$DELAY_VALUE"
+
+matrix_probe:
+  parallel:
+    matrix:
+      - TARGET: [one, two]
+  resource_group: deploy-$TARGET
+  coverage: '/Coverage $TARGET: \\d+%/'
+  script: echo matrix
+"""
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert by_name["optional_probe"].allow_failure is False
+    assert by_name["optional_probe"].timeout_seconds == 2700
+    assert by_name["optional_probe"].interruptible is True
+    assert by_name["exit_code_probe"].allow_failure is False
+    assert by_name["exit_code_probe"].allow_failure_exit_codes == [137]
+    assert by_name["delayed_probe"].start_in_seconds == 600
+    assert by_name["matrix_probe [one]"].resource_group == "deploy-one"
+    assert by_name["matrix_probe [one]"].coverage == "/Coverage one: \\d+%/"
+    assert by_name["matrix_probe [two]"].resource_group == "deploy-two"
+    assert by_name["matrix_probe [two]"].coverage == "/Coverage two: \\d+%/"
+
+
 def test_parse_gitlab_ci_preserves_job_hooks():
     jobs = parse_gitlab_ci(
         """

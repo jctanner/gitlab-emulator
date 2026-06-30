@@ -797,7 +797,11 @@ class _RuleDecision:
     needs_set: bool = False
 
 
-def _allow_failure_config(value: Any) -> tuple[bool, list[int]]:
+def _allow_failure_config(
+    value: Any,
+    variables: dict[str, str] | None = None,
+) -> tuple[bool, list[int]]:
+    variables = variables or {}
     if isinstance(value, dict):
         unsupported = set(value) - {"exit_codes"}
         if unsupported:
@@ -812,8 +816,13 @@ def _allow_failure_config(value: Any) -> tuple[bool, list[int]]:
             codes = [raw_codes]
         parsed_codes: list[int] = []
         for code in codes:
+            raw_code = (
+                _expand_ci_variables(code, variables)
+                if isinstance(code, str)
+                else code
+            )
             try:
-                parsed = int(code)
+                parsed = int(raw_code)
             except (TypeError, ValueError) as exc:
                 raise ValueError(
                     f"allow_failure exit code is not supported: {code}"
@@ -826,15 +835,21 @@ def _allow_failure_config(value: Any) -> tuple[bool, list[int]]:
         if not parsed_codes:
             raise ValueError("allow_failure exit_codes cannot be empty")
         return False, parsed_codes
-    return bool(value), []
+    return _bool_value(value, variables), []
 
 
-def _allow_failure_setting(value: Any) -> bool:
-    return _allow_failure_config(value)[0]
+def _allow_failure_setting(
+    value: Any,
+    variables: dict[str, str] | None = None,
+) -> bool:
+    return _allow_failure_config(value, variables)[0]
 
 
-def _allow_failure_exit_codes_setting(value: Any) -> list[int]:
-    return _allow_failure_config(value)[1]
+def _allow_failure_exit_codes_setting(
+    value: Any,
+    variables: dict[str, str] | None = None,
+) -> list[int]:
+    return _allow_failure_config(value, variables)[1]
 
 
 def _when_setting(value: Any) -> str:
@@ -844,18 +859,25 @@ def _when_setting(value: Any) -> str:
     return when
 
 
-def _start_in_seconds(value: Any) -> int:
+def _start_in_seconds(
+    value: Any,
+    variables: dict[str, str] | None = None,
+) -> int:
     if value is None:
         raise ValueError("start_in is required when when delayed is used")
-    return _duration_seconds(value, "start_in")
+    return _duration_seconds(value, "start_in", variables)
 
 
-def _duration_seconds(value: Any, keyword: str) -> int:
+def _duration_seconds(
+    value: Any,
+    keyword: str,
+    variables: dict[str, str] | None = None,
+) -> int:
     if isinstance(value, int):
         if value <= 0:
             raise ValueError(f"{keyword} must be greater than zero")
         return value
-    raw = str(value).strip().lower()
+    raw = _expand_ci_variables(str(value), variables or {}).strip().lower()
     normalized = re.sub(r"\band\b|,", " ", raw)
     matches = list(re.finditer(r"(\d+)\s*([a-z]+)", normalized))
     if not matches:
@@ -879,10 +901,13 @@ def _duration_seconds(value: Any, keyword: str) -> int:
     return total_seconds
 
 
-def _timeout_seconds(value: Any) -> int | None:
+def _timeout_seconds(
+    value: Any,
+    variables: dict[str, str] | None = None,
+) -> int | None:
     if value is None:
         return None
-    return _duration_seconds(value, "timeout")
+    return _duration_seconds(value, "timeout", variables)
 
 
 def _trigger_config(value: Any, ref: str) -> dict | None:
@@ -1038,10 +1063,14 @@ def _retry_config(value: Any) -> dict:
     return {"max": max_attempts, "when": when, "exit_codes": exit_codes}
 
 
-def _delayed_start_in_seconds(config: dict, decision: _RuleDecision) -> int | None:
+def _delayed_start_in_seconds(
+    config: dict,
+    decision: _RuleDecision,
+    variables: dict[str, str] | None = None,
+) -> int | None:
     start_in = decision.start_in if decision.start_in is not None else config.get("start_in")
     if decision.when == "delayed":
-        return _start_in_seconds(start_in)
+        return _start_in_seconds(start_in, variables)
     if start_in is not None:
         raise ValueError("start_in is only supported with when delayed")
     return None
@@ -1367,7 +1396,8 @@ def _job_rule_decision(
             allow_failure_exit_codes = None
             if allow_failure is not None:
                 allow_failure_enabled, allow_failure_exit_codes = _allow_failure_config(
-                    allow_failure
+                    allow_failure,
+                    variables,
                 )
             return _RuleDecision(
                 included=when != "never",
@@ -1404,19 +1434,27 @@ def _job_rule_decision(
     )
 
 
-def _allow_failure(config: dict, decision: _RuleDecision) -> bool:
+def _allow_failure(
+    config: dict,
+    decision: _RuleDecision,
+    variables: dict[str, str] | None = None,
+) -> bool:
     if decision.allow_failure is not None:
         return decision.allow_failure
     if "allow_failure" in config:
-        return _allow_failure_setting(config["allow_failure"])
+        return _allow_failure_setting(config["allow_failure"], variables)
     return "rules" not in config and decision.when == "manual"
 
 
-def _allow_failure_exit_codes(config: dict, decision: _RuleDecision) -> list[int]:
+def _allow_failure_exit_codes(
+    config: dict,
+    decision: _RuleDecision,
+    variables: dict[str, str] | None = None,
+) -> list[int]:
     if decision.allow_failure_exit_codes is not None:
         return decision.allow_failure_exit_codes
     if "allow_failure" in config:
-        return _allow_failure_exit_codes_setting(config["allow_failure"])
+        return _allow_failure_exit_codes_setting(config["allow_failure"], variables)
     return []
 
 
@@ -1833,6 +1871,13 @@ def parse_gitlab_ci(
                     **parallel_variables,
                 }
                 expanded_variables = _variable_values(expanded_variable_metadata)
+            runtime_variables = {
+                "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
+                "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
+                "CI_COMMIT_REF_NAME": ref,
+                **pipeline_variables,
+                **expanded_variables,
+            }
 
             jobs.append(
                 ParsedCiJob(
@@ -1852,23 +1897,37 @@ def parse_gitlab_ci(
                     artifacts_paths=artifact_paths,
                     artifacts=artifact_config,
                     when=decision.when,
-                    start_in_seconds=_delayed_start_in_seconds(config, decision),
-                    allow_failure=_allow_failure(config, decision),
-                    allow_failure_exit_codes=_allow_failure_exit_codes(config, decision),
+                    start_in_seconds=_delayed_start_in_seconds(
+                        config,
+                        decision,
+                        runtime_variables,
+                    ),
+                    allow_failure=_allow_failure(config, decision, runtime_variables),
+                    allow_failure_exit_codes=_allow_failure_exit_codes(
+                        config,
+                        decision,
+                        runtime_variables,
+                    ),
                     retry=_retry_config(config.get("retry")),
-                    timeout_seconds=_timeout_seconds(config.get("timeout")),
+                    timeout_seconds=_timeout_seconds(
+                        config.get("timeout"),
+                        runtime_variables,
+                    ),
                     interruptible=decision.interruptible
                     if decision.interruptible is not None
-                    else bool(config.get("interruptible", False)),
+                    else _bool_value(
+                        config.get("interruptible", False),
+                        runtime_variables,
+                    ),
                     resource_group=_expand_ci_variables(
                         str(config["resource_group"]),
-                        artifact_variables,
+                        runtime_variables,
                     )
                     if config.get("resource_group") is not None
                     else None,
                     coverage=_expand_ci_variables(
                         str(config["coverage"]),
-                        artifact_variables,
+                        runtime_variables,
                     )
                     if config.get("coverage") is not None
                     else None,

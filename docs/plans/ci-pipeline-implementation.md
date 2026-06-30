@@ -110,7 +110,10 @@ Already working:
   downloads, while omitted dependencies use prior-stage artifacts when present
 - common job runtime metadata is parsed, persisted, and exposed in job API
   payloads for `retry`, `timeout`, `interruptible`, `resource_group`, and
-  `coverage`; `resource_group` and `coverage` values expand CI variables before persistence;
+  `coverage`; job-level `timeout`, `interruptible`, `allow_failure`,
+  `allow_failure:exit_codes`, `resource_group`, and `coverage` values expand
+  CI variables before persistence, and delayed `start_in` supports the same
+  expansion;
   pipeline API payloads expose aggregate coverage from completed jobs; job
   `environment` names, URLs, and actions are persisted, exposed in job
   APIs, used to derive project environment list/detail/stop and project or

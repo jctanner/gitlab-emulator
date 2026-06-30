@@ -40,9 +40,10 @@ harness architecture.
   an artifact archive for a YAML-defined job, the emulator persisted it under
   `DATA_DIR/artifacts`, project job APIs returned artifact metadata, and the
   archive was downloaded back through the emulator API.
-- Job `resource_group` runtime metadata expands CI variables before persistence,
-  and runner scheduling uses the expanded value. Job coverage regex metadata
-  also expands CI variables before persistence.
+- Job runtime metadata expands CI variables before persistence for `timeout`,
+  `interruptible`, `allow_failure`, `allow_failure:exit_codes`,
+  `resource_group`, `coverage`, and delayed `start_in`; runner scheduling uses
+  the expanded `resource_group` value.
 - Persisted jobs now use stage dependency gating. Later-stage jobs are not
   assigned until all earlier-stage jobs succeed, same-stage jobs remain eligible
   for parallel runners, and later pending jobs are skipped after an earlier
