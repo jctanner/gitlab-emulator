@@ -629,13 +629,59 @@ if [ -n "$SSH_KEY_ID" ] && [ "$SSH_KEY_ID" != "null" ]; then
         fail "glab ssh-key delete: $ssh_key_delete"
     fi
 
-    ssh_keys_after_delete=$("$GLAB" ssh-key list \
+ssh_keys_after_delete=$("$GLAB" ssh-key list \
         --output json \
         --per-page 100 2>&1)
     assert_json_field "glab ssh-key delete visible" "$ssh_keys_after_delete" \
         "map(.id) | index($SSH_KEY_ID | tonumber) | not"
 else
     fail "glab ssh-key list did not return the created key: $ssh_key_list"
+fi
+
+section "GPG Key CLI via glab"
+
+GPG_KEY_FILE="$TEST_HOME/gpg-key.asc"
+cat > "$GPG_KEY_FILE" <<'EOF'
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEZZZZZxYJKwYBBAHaRw8BAQdAzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+zzO0LUdpdExhYiBFbXVsYXRvciBTbW9rZSA8Z3BnLWtleS1zbW9rZUBleGFtcGxl
+LmNvbT6IlgQTFggAPhYhBFAAAAAAAAAAAAAAAAAAAAAAAAAABQJlmlpnAhsDBQkH
+hh8ABQsJCAcCBhUKCQgLAgQWAgMBAh4BAheAAAoJEAAAAAAAAAAABQMA/0fake
+fakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefa
+=smok
+-----END PGP PUBLIC KEY BLOCK-----
+EOF
+
+gpg_key_add=$("$GLAB" gpg-key add "$GPG_KEY_FILE" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab gpg-key add"
+else
+    fail "glab gpg-key add: $gpg_key_add"
+fi
+
+gpg_key_list=$("$GLAB" gpg-key list --output json 2>&1)
+assert_json_field "glab gpg-key list json" "$gpg_key_list" \
+    'length >= 1'
+
+GPG_KEY_ID=$(echo "$gpg_key_list" | jq -r '.[0].id // empty' | head -1)
+if [ -n "$GPG_KEY_ID" ] && [ "$GPG_KEY_ID" != "null" ]; then
+    gpg_key_get=$("$GLAB" gpg-key get "$GPG_KEY_ID" --output json 2>&1)
+    assert_json_field "glab gpg-key get json" "$gpg_key_get" \
+        ".id == ($GPG_KEY_ID | tonumber) and .key != null"
+
+    gpg_key_delete=$(printf 'y\n' | "$GLAB" gpg-key delete "$GPG_KEY_ID" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab gpg-key delete"
+    else
+        fail "glab gpg-key delete: $gpg_key_delete"
+    fi
+
+    gpg_keys_after_delete=$("$GLAB" gpg-key list --output json 2>&1)
+    assert_json_field "glab gpg-key delete visible" "$gpg_keys_after_delete" \
+        "map(.id) | index($GPG_KEY_ID | tonumber) | not"
+else
+    fail "glab gpg-key list did not return the created key: $gpg_key_list"
 fi
 
 section "Issue CLI via glab"

@@ -149,7 +149,12 @@ async def list_gpg_keys(user: AuthUser, db: DbSession):
 @router.post("/user/gpg_keys", status_code=201)
 async def create_gpg_key(body: dict, user: AuthUser, db: DbSession):
     """Add a GPG key for the authenticated user."""
-    armored_key = body.get("armored_public_key", "")
+    armored_key = (
+        body.get("armored_public_key")
+        or body.get("key")
+        or body.get("public_key")
+        or ""
+    )
     if not armored_key:
         raise HTTPException(status_code=422, detail="armored_public_key is required")
 

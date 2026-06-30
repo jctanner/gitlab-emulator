@@ -352,6 +352,10 @@ Done when:
   - `glab ssh-key list --output json`
   - `glab ssh-key get --output json`
   - `glab ssh-key delete`
+  - `glab gpg-key add`
+  - `glab gpg-key list --output json`
+  - `glab gpg-key get --output json`
+  - `glab gpg-key delete`
   - `glab issue create`
   - `glab issue list --output json`
   - `glab issue view --output json`
