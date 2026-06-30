@@ -1677,6 +1677,7 @@ def test_parse_gitlab_ci_preserves_job_runtime_metadata():
         """
 metadata_job:
   variables:
+    COVERAGE_PREFIX: Coverage
     RESOURCE_SUFFIX: production
   retry:
     max: 2
@@ -1685,7 +1686,7 @@ metadata_job:
   timeout: 45 minutes
   interruptible: true
   resource_group: deploy-$RESOURCE_SUFFIX
-  coverage: '/Coverage: \\d+\\.\\d+%/'
+  coverage: '/$COVERAGE_PREFIX: \\d+\\.\\d+%/'
   environment:
     name: review/$CI_COMMIT_REF_NAME
     url: https://example.test/$CI_COMMIT_REF_NAME

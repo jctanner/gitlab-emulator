@@ -1866,7 +1866,10 @@ def parse_gitlab_ci(
                     )
                     if config.get("resource_group") is not None
                     else None,
-                    coverage=str(config["coverage"])
+                    coverage=_expand_ci_variables(
+                        str(config["coverage"]),
+                        artifact_variables,
+                    )
                     if config.get("coverage") is not None
                     else None,
                     environment=environment_config["name"],

@@ -2369,6 +2369,7 @@ async def test_job_runtime_metadata_reaches_api_and_runner_payload(client, test_
 metadata_job:
   image: alpine:3.20
   variables:
+    COVERAGE_PREFIX: Coverage
     RESOURCE_SUFFIX: production
   retry:
     max: 2
@@ -2376,7 +2377,7 @@ metadata_job:
   timeout: 45 minutes
   interruptible: true
   resource_group: deploy-$RESOURCE_SUFFIX
-  coverage: '/Coverage: \\d+\\.\\d+%/'
+  coverage: '/$COVERAGE_PREFIX: \\d+\\.\\d+%/'
   script:
     - echo metadata
 """

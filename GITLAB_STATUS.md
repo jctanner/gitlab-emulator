@@ -41,7 +41,8 @@ harness architecture.
   `DATA_DIR/artifacts`, project job APIs returned artifact metadata, and the
   archive was downloaded back through the emulator API.
 - Job `resource_group` runtime metadata expands CI variables before persistence,
-  and runner scheduling uses the expanded value.
+  and runner scheduling uses the expanded value. Job coverage regex metadata
+  also expands CI variables before persistence.
 - Persisted jobs now use stage dependency gating. Later-stage jobs are not
   assigned until all earlier-stage jobs succeed, same-stage jobs remain eligible
   for parallel runners, and later pending jobs are skipped after an earlier
