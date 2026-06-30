@@ -172,6 +172,7 @@ vm-sync:
 		--exclude 'data/' \
 		--exclude '.vagrant' \
 		--exclude '.vagrant-ssh-config' \
+		--exclude '*.swp' \
 		-e "ssh -F .vagrant-ssh-config" \
 		. server:$(VM_PROJECT_DIR)/
 	@rm -f .vagrant-ssh-config

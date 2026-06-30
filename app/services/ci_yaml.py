@@ -106,6 +106,8 @@ SUPPORTED_HOOKS = {
     "post_get_sources_script",
 }
 SUPPORTED_RUN_STEP_KEYS = {"name", "script", "env", "inputs", "step"}
+SUPPORTED_TRIGGER_KEYS = {"project", "branch", "ref", "strategy", "forward"}
+SUPPORTED_TRIGGER_FORWARD_KEYS = {"pipeline_variables", "yaml_variables"}
 PUSH_DIFF_SOURCES = {"push", "merge_request_event", "external_pull_request_event"}
 DURATION_SECONDS_BY_UNIT = {
     "second": 1,
@@ -1050,7 +1052,7 @@ def _trigger_config(value: Any, ref: str) -> dict | None:
         return {"project": project, "ref": ref, "strategy": None}
     if not isinstance(value, dict):
         raise ValueError("trigger value is not supported")
-    unsupported = set(value) - {"project", "branch", "ref", "strategy"}
+    unsupported = set(value) - SUPPORTED_TRIGGER_KEYS
     if unsupported:
         names = ", ".join(sorted(str(item) for item in unsupported))
         raise ValueError(f"trigger option(s) not supported: {names}")
@@ -1063,7 +1065,22 @@ def _trigger_config(value: Any, ref: str) -> dict | None:
     strategy = value.get("strategy")
     if strategy is not None and str(strategy) not in {"depend"}:
         raise ValueError(f"trigger strategy is not supported: {strategy}")
-    return {"project": project, "ref": trigger_ref, "strategy": strategy}
+    trigger = {"project": project, "ref": trigger_ref, "strategy": strategy}
+    forward = value.get("forward")
+    if forward is not None:
+        if not isinstance(forward, dict):
+            raise ValueError("trigger forward value is not supported")
+        unsupported_forward = set(forward) - SUPPORTED_TRIGGER_FORWARD_KEYS
+        if unsupported_forward:
+            names = ", ".join(sorted(str(item) for item in unsupported_forward))
+            raise ValueError(f"trigger forward option(s) not supported: {names}")
+        trigger["forward"] = {
+            "pipeline_variables": _bool_value(
+                forward.get("pipeline_variables", False)
+            ),
+            "yaml_variables": _bool_value(forward.get("yaml_variables", True)),
+        }
+    return trigger
 
 
 def _metadata_variable(value: Any) -> dict:

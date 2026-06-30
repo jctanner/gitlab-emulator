@@ -749,6 +749,9 @@ deploy_downstream:
     project: group/downstream
     branch: main
     strategy: depend
+    forward:
+      pipeline_variables: true
+      yaml_variables: "false"
 """
     )
 
@@ -759,7 +762,48 @@ deploy_downstream:
         "project": "group/downstream",
         "ref": "main",
         "strategy": "depend",
+        "forward": {
+            "pipeline_variables": True,
+            "yaml_variables": False,
+        },
     }
+
+    for content, expected in [
+        (
+            """
+bad_trigger:
+  trigger:
+    project: group/downstream
+    unsupported: true
+""",
+            "trigger option(s) not supported: unsupported",
+        ),
+        (
+            """
+bad_forward:
+  trigger:
+    project: group/downstream
+    forward:
+      unsupported: true
+""",
+            "trigger forward option(s) not supported: unsupported",
+        ),
+        (
+            """
+bad_forward_shape:
+  trigger:
+    project: group/downstream
+    forward: true
+""",
+            "trigger forward value is not supported",
+        ),
+    ]:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            assert expected in str(exc)
+        else:
+            raise AssertionError("expected unsupported trigger value to fail")
 
 
 def test_parse_gitlab_ci_supports_script_only_run_steps():

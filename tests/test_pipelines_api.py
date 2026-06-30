@@ -3349,6 +3349,9 @@ deploy_downstream:
     project: testuser/downstream
     branch: main
     strategy: depend
+    forward:
+      pipeline_variables: true
+      yaml_variables: false
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",

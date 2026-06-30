@@ -98,7 +98,8 @@ harness architecture.
   created, listed, deleted, and used to create `source=trigger` pipelines.
   Bridge `trigger` jobs can create same-emulator downstream
   `source=parent_pipeline` pipelines and expose the downstream pipeline ID on
-  the bridge job.
+  the bridge job. Project bridge jobs accept validated `trigger:forward`
+  metadata.
   Project pipeline schedules can be created, listed, updated, deleted, and
   played manually to create `source=schedule` pipelines.
 - GitLab-style pipeline/job cancel and retry endpoints exist. Pipeline cancel

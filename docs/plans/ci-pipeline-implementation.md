@@ -166,7 +166,8 @@ Already working:
 - Bridge `trigger` jobs create same-emulator downstream
   `source=parent_pipeline` pipelines, mark the bridge job successful, and
   expose the downstream pipeline ID in job API payloads and the pipeline
-  bridges API.
+  bridges API. Project bridge jobs accept validated `trigger:forward`
+  metadata.
 
 Temporary parts replaced:
 
