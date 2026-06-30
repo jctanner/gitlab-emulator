@@ -140,6 +140,8 @@ and cache APIs for controlled integration testing.
 - project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
   `status`, `source`, `ref`, `sha`, `yaml_errors`, `order_by`, and `sort`
   filters
+- project pipeline delete APIs remove persisted pipelines and their associated
+  jobs, traces, and artifact rows
 - pipeline test report and test report summary APIs aggregate stored JUnit
   report artifacts into GitLab-shaped suite and test case counts
 - dotenv report artifacts from successful upstream dependency jobs are parsed

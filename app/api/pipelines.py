@@ -2730,6 +2730,20 @@ async def get_pipeline(
     return _pipeline_json(pipeline)
 
 
+@router.delete("/projects/{project_ref:path}/pipelines/{pipeline_id}", status_code=204)
+async def delete_pipeline(
+    project_ref: str,
+    pipeline_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    pipeline = await _get_pipeline_for_project_ref(project_ref, pipeline_id, db)
+    await require_project_access(pipeline.project, current_user, db, DEVELOPER)
+    await db.delete(pipeline)
+    await db.commit()
+    return Response(status_code=204)
+
+
 @router.get("/projects/{project_ref:path}/pipelines/{pipeline_id}/variables")
 async def get_pipeline_variables(
     project_ref: str, pipeline_id: int, db: DbSession, current_user: CurrentUser

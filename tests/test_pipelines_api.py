@@ -381,6 +381,18 @@ async def test_ci_management_actions_require_project_roles(
     )
     assert cancel_allowed.status_code == 200
 
+    delete_denied = await client.delete(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}",
+        headers=auth_headers(reporter_token),
+    )
+    assert delete_denied.status_code == 403
+
+    delete_allowed = await client.delete(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}",
+        headers=auth_headers(developer_token),
+    )
+    assert delete_allowed.status_code == 204
+
     trigger_denied = await client.post(
         f"{API}/projects/{project['id']}/triggers",
         json={"description": "developer trigger"},
@@ -1242,6 +1254,49 @@ manual_gate:
         "compile": "pending",
         "manual_gate": "manual",
     }
+
+
+async def test_delete_pipeline_removes_pipeline_and_jobs(client, test_token):
+    project = await _create_project(client, test_token)
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={
+            "ref": "main",
+            "job": {"name": "delete_me", "script": ["echo delete"]},
+        },
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["delete_me"]
+
+    deleted = await client.delete(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert deleted.status_code == 204
+    assert deleted.text == ""
+
+    missing = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}",
+        headers=auth_headers(test_token),
+    )
+    assert missing.status_code == 404
+
+    project_jobs = await client.get(
+        f"{API}/projects/{project['id']}/jobs",
+        headers=auth_headers(test_token),
+    )
+    assert project_jobs.status_code == 200
+    assert pipeline["id"] not in [
+        job["pipeline"]["id"] for job in project_jobs.json()
+    ]
 
 
 async def test_pipeline_and_job_routes_accept_encoded_project_path(client, test_token):
