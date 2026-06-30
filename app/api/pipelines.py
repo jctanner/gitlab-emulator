@@ -121,6 +121,11 @@ class CreatePipelineRequest(BaseModel):
     job: PipelineJobDefinition | None = None
 
 
+class PlayJobRequest(BaseModel):
+    job_variables_attributes: list[PipelineVariable] = Field(default_factory=list)
+    variables: dict[str, str] = Field(default_factory=dict)
+
+
 class CiLintRequest(BaseModel):
     content: str
     ref: str = "main"
@@ -3187,12 +3192,25 @@ async def play_project_job(
     job_id: int,
     db: DbSession,
     current_user: CurrentUser,
+    body: PlayJobRequest | None = None,
 ):
     job = await _get_job_for_project_ref(project_ref, job_id, db)
     await require_project_access(job.project, current_user, db, DEVELOPER)
     if job.status != "manual":
         raise HTTPException(status_code=400, detail="Job is not playable")
     now = datetime.now(timezone.utc)
+    raw_variables = body.variables if body else {}
+    play_variables = {
+        key: _variable_entry(value)
+        for key, value in (raw_variables or {}).items()
+    }
+    if body and body.job_variables_attributes:
+        play_variables.update(_pipeline_variable_entries(body.job_variables_attributes))
+    if play_variables:
+        job.variables = {
+            **(job.variables or {}),
+            **_simple_variable_values(play_variables),
+        }
     job.status = "pending"
     job.queued_at = now
     job.failure_reason = None

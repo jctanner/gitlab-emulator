@@ -8122,6 +8122,13 @@ manual_review:
     played = await client.post(
         f"{API}/projects/{project['id']}/jobs/{job['id']}/play",
         headers=auth_headers(test_token),
+        json={
+            "variables": {"PLAY_SIMPLE": "from-simple"},
+            "job_variables_attributes": [
+                {"key": "PLAY_ATTRIBUTE", "value": "from-attribute"},
+                {"key": "PLAY_SIMPLE", "value": "overridden"},
+            ],
+        },
     )
     assert played.status_code == 200
     assert played.json()["status"] == "pending"
@@ -8132,8 +8139,12 @@ manual_review:
         json={"token": RUNNER_TOKEN},
     )
     assert request.status_code == 201
-    assert request.json()["id"] == job["id"]
-    assert request.json()["job_info"]["name"] == "manual_review"
+    payload = request.json()
+    assert payload["id"] == job["id"]
+    assert payload["job_info"]["name"] == "manual_review"
+    variables = {item["key"]: item["value"] for item in payload["variables"]}
+    assert variables["PLAY_SIMPLE"] == "overridden"
+    assert variables["PLAY_ATTRIBUTE"] == "from-attribute"
 
 
 async def test_non_manual_job_play_is_rejected(client, test_token):

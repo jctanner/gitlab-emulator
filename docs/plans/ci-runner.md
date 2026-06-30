@@ -44,6 +44,8 @@ and cache APIs for controlled integration testing.
   `&&`/`||`
 - `rules:exists`, commit-local `rules:changes`, `when: never`, and persisted
   non-runnable `manual` jobs
+- manual job play requeues jobs and merges play-time variables into the runner
+  payload
 - matching rule-level `needs` overrides for job-level `needs`
 - compound `timeout` and delayed `start_in` duration values such as
   `1 hour 30 minutes` and `1h 15m`

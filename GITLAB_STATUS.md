@@ -75,7 +75,8 @@ harness architecture.
   branch-ref pipelines expose `CI_COMMIT_BRANCH`.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a
   manual job changes it to `pending` and requeues it through the persisted
-  runner coordinator.
+  runner coordinator. Play-time variables are merged into the job variables
+  delivered to the runner payload.
 - Pipeline-level variables, top-level YAML variables, and job-level YAML
   variables are merged into persisted runner job payloads with GitLab-style
   metadata for raw, masked/public, and file variables. Local tests validate the
