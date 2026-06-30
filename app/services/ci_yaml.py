@@ -686,6 +686,14 @@ def _cache_key(
     return "default"
 
 
+def _cache_fallback_keys(value: Any, variables: dict[str, str]) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("cache fallback_keys must be an array")
+    return [_expand_ci_variables(str(item), variables) for item in value]
+
+
 def _cache_entries(
     value: Any,
     variables: dict[str, str] | None = None,
@@ -735,7 +743,7 @@ def _cache_entries(
                 "policy": policy,
                 "paths": paths,
                 "when": when,
-                "fallback_keys": _expand_string_list(
+                "fallback_keys": _cache_fallback_keys(
                     raw_entry.get("fallback_keys"),
                     variables,
                 ),

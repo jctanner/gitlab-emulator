@@ -92,7 +92,8 @@ Already working:
   variables before reaching the runner payload, including false-like boolean
   strings and per-job `parallel:matrix` variables; unsupported cache entry
   options, unsupported nested `cache:key` options, more than four cache entries,
-  and invalid cache policy/when values fail clearly during pipeline creation;
+  scalar `cache:fallback_keys`, and invalid cache policy/when values fail
+  clearly during pipeline creation;
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve

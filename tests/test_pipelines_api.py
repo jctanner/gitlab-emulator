@@ -3676,6 +3676,19 @@ cache_probe:
             """
 cache_probe:
   cache:
+    paths:
+      - .cache/
+    fallback_keys: fallback-cache
+  script:
+    - echo cache
+""",
+            "cache fallback_keys must be an array",
+            "array",
+        ),
+        (
+            """
+cache_probe:
+  cache:
     - key: one
       paths: [one/]
     - key: two

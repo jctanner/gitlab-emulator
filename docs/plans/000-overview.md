@@ -258,7 +258,8 @@ Target areas:
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, repository-derived prefix/files/files_commits keys, fallback keys,
   policy, `when`, `untracked`, `unprotect`, four-entry limit validation,
-  nested key option validation, and MinIO-backed runner validation
+  nested key option validation, fallback-key array validation, and
+  MinIO-backed runner validation
 
 Done when:
 
