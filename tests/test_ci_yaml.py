@@ -1867,6 +1867,39 @@ manual_job:
     assert jobs[0].allow_failure is False
 
 
+def test_parse_gitlab_ci_pipeline_variables_override_job_defaults_for_rules():
+    content = """
+manual_strategy:
+  variables:
+    RFE_KEY: ""
+  script:
+    - echo "$RFE_KEY"
+  rules:
+    - if: $RFE_KEY != ""
+      when: manual
+bridge:
+  trigger:
+    project: group/downstream
+  rules:
+    - if: $RFE_KEY != ""
+"""
+    try:
+        parse_gitlab_ci(content, variables={"CI_PIPELINE_SOURCE": "web"})
+    except ValueError as exc:
+        assert "does not define any runnable jobs" in str(exc)
+    else:
+        raise AssertionError("expected rules to skip jobs for an unset pipeline variable")
+
+    jobs = parse_gitlab_ci(
+        content,
+        variables={"CI_PIPELINE_SOURCE": "web", "RFE_KEY": "RHEL-123"},
+    )
+
+    by_name = {job.name: job for job in jobs}
+    assert sorted(by_name) == ["bridge", "manual_strategy"]
+    assert by_name["manual_strategy"].when == "manual"
+
+
 def test_parse_gitlab_ci_marks_job_level_manual_as_allowed_failure_by_default():
     jobs = parse_gitlab_ci(
         """

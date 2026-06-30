@@ -8,12 +8,46 @@ a running server; these tests validate the HTTP-level behavior.
 import base64
 
 import pytest
+from starlette.routing import Match
 
+from app.git.smart_http import router as git_http_router
 from tests.conftest import auth_headers
 from tests.test_projects_api import _create_user_and_token
 
 API = "/api/v4"
 RUNNER_TOKEN = "glrt-emulator-runner-token"
+
+
+def test_git_http_routes_capture_nested_namespace_paths():
+    """Route matching preserves the full nested project path before Git endpoints."""
+    checks = [
+        (
+            "/redhat/rhel-ai/agentic-ci/strat-dashboard.git/info/refs",
+            "GET",
+            "/{repo_path:path}/info/refs",
+        ),
+        (
+            "/redhat/rhel-ai/agentic-ci/strat-dashboard.git/git-upload-pack",
+            "POST",
+            "/{repo_path:path}/git-upload-pack",
+        ),
+        (
+            "/redhat/rhel-ai/agentic-ci/strat-dashboard.git/git-receive-pack",
+            "POST",
+            "/{repo_path:path}/git-receive-pack",
+        ),
+    ]
+    for path, method, route_path in checks:
+        scope = {"type": "http", "path": path, "method": method, "root_path": ""}
+        matches = [
+            child_scope.get("path_params", {})
+            for route in git_http_router.routes
+            for match, child_scope in [route.matches(scope)]
+            if match is Match.FULL and route.path == route_path
+        ]
+        assert matches == [
+            {"repo_path": "redhat/rhel-ai/agentic-ci/strat-dashboard.git"}
+        ]
 
 
 @pytest.fixture
@@ -77,6 +111,50 @@ async def test_info_refs_without_git_suffix(client, test_user, test_token, git_r
         "/testuser/git-test/info/refs?service=git-upload-pack"
     )
     assert resp.status_code == 200
+    assert b"# service=git-upload-pack" in resp.content
+
+
+@pytest.mark.asyncio
+async def test_info_refs_nested_group_project_full_path(client, test_token):
+    """Git Smart HTTP resolves projects under nested GitLab group namespaces."""
+    parent = await client.post(
+        f"{API}/groups",
+        json={"path": "transport-parent", "name": "Transport Parent"},
+        headers=auth_headers(test_token),
+    )
+    assert parent.status_code == 201
+    child = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "transport-child",
+            "name": "Transport Child",
+            "parent_id": parent.json()["id"],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert child.status_code == 201
+
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "nested-git-http",
+            "namespace_path": "transport-parent%2Ftransport-child",
+            "initialize_with_readme": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    assert (
+        project.json()["path_with_namespace"]
+        == "transport-parent/transport-child/nested-git-http"
+    )
+
+    resp = await client.get(
+        "/transport-parent/transport-child/nested-git-http.git/info/refs"
+        "?service=git-upload-pack"
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/x-git-upload-pack-advertisement"
     assert b"# service=git-upload-pack" in resp.content
 
 

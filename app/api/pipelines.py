@@ -2192,7 +2192,6 @@ async def _create_pipeline(
         )
         variables = {
             **project_variable_metadata,
-            **pipeline_variable_entries,
             **(
                 parsed_job.variable_metadata
                 if parsed_job.variable_metadata
@@ -2201,6 +2200,7 @@ async def _create_pipeline(
                     for key, value in parsed_job.variables.items()
                 }
             ),
+            **pipeline_variable_entries,
         }
         try:
             secret_entries, resolved_secrets = await project_secret_entries(

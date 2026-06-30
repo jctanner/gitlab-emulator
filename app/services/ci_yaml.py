@@ -1316,7 +1316,7 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
             matches = left_key not in variables
             return matches if operator == "==" else not matches
         if _is_empty_string_literal(right):
-            matches = left_key in variables and left_value == ""
+            matches = left_value == ""
             return matches if operator == "==" else not matches
         right_value = _expression_value(right, variables)
         if operator == "==":
@@ -1951,8 +1951,8 @@ def parse_gitlab_ci(
             "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
             "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
             "CI_COMMIT_REF_NAME": ref,
-            **pipeline_variables,
             **_variable_values(merged_variable_entries),
+            **pipeline_variables,
         }
         decision = _job_rule_decision(
             config,
@@ -2000,8 +2000,8 @@ def parse_gitlab_ci(
                 "CI_COMMIT_BRANCH": ref if ref_kind == "branch" else "",
                 "CI_COMMIT_TAG": ref if ref_kind == "tag" else "",
                 "CI_COMMIT_REF_NAME": ref,
-                **pipeline_variables,
                 **expanded_variables,
+                **pipeline_variables,
             }
             job_script = (
                 _run_script(raw_run, runtime_variables)

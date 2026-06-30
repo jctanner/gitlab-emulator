@@ -48,6 +48,11 @@ No task files are currently checked into `docs/tasks/current/`.
 
 No bug files are currently checked into `docs/bugs/open/`.
 
+## Fixed Bugs
+
+- [Bridge target pipeline creation 500 and MissingGreenlet](bugs/fixed/bridge-target-500-and-missing-greenlet.md)
+- [Nested project Git HTTP clone not found](bugs/fixed/nested-project-git-http-clone-not-found.md)
+
 ## Decisions
 
 - [ADR-0001: Preserve the GitHub emulator architecture](decisions/ADR-0001-preserve-github-emulator-architecture.md)
@@ -55,3 +60,4 @@ No bug files are currently checked into `docs/bugs/open/`.
 - [ADR-0003: Keep full GitLab parity deferred](decisions/ADR-0003-defer-full-gitlab-parity.md)
 - [ADR-0004: Model GitLab groups as namespace paths](decisions/ADR-0004-model-gitlab-groups-as-namespaces.md)
 - [ADR-0005: Use full project paths for web UI routes](decisions/ADR-0005-use-full-project-paths-for-web-ui-routes.md)
+- [ADR-0006: Surface runner scheduling diagnostics in web UI](decisions/ADR-0006-surface-runner-scheduling-diagnostics-in-web-ui.md)

@@ -26,6 +26,7 @@
     </div>
     {% if jobs %}
     {% for job in jobs %}
+    {% set diagnostic = job_diagnostics.get(job.id) if job_diagnostics is defined else none %}
     <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
         <div>
             <a class="text-bold" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}">#{{ job.id }} {{ job.name }}</a>
@@ -38,6 +39,11 @@
                 <span class="ml-1">{{ job.pipeline.sha[:8] }}</span>
                 {% if job.runner_name %}<span class="ml-1">· {{ job.runner_name }}</span>{% endif %}
             </div>
+            {% if diagnostic and diagnostic.blocked and diagnostic.reasons %}
+            <div class="color-fg-attention f6 mt-1">
+                Pending: {{ diagnostic.reasons|join("; ") }}.
+            </div>
+            {% endif %}
         </div>
         <div class="color-fg-muted f6">
             {{ job.created_at }}

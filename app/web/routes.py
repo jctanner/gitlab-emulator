@@ -23,6 +23,7 @@ from app.api.pipelines import (
     _derive_pipeline_status,
     _reset_job_for_retry,
 )
+from app.api.runner import explain_job_scheduling, registered_runner_diagnostics
 from app.api.releases import _ensure_release_tag
 from app.config import settings
 from app.database import get_db
@@ -424,6 +425,71 @@ async def _repo_ref_choices(repo: Repository) -> tuple[list[dict], list[dict]]:
     branches.sort(key=lambda b: (0 if b.get("name") == default_branch else 1, b.get("name") or ""))
     tags.sort(key=lambda t: t.get("name") or "")
     return branches, tags
+
+
+async def _job_scheduling_diagnostics(
+    db: AsyncSession, jobs: list[PipelineJob]
+) -> dict[int, dict]:
+    if not jobs:
+        return {}
+    runner_diagnostics = await registered_runner_diagnostics(db)
+    jobs_by_pipeline: dict[int | None, list[PipelineJob]] = {}
+    for job in jobs:
+        jobs_by_pipeline.setdefault(job.pipeline_id, []).append(job)
+
+    diagnostics: dict[int, dict] = {}
+    for pipeline_jobs in jobs_by_pipeline.values():
+        diagnostics.update(explain_job_scheduling(pipeline_jobs, runner_diagnostics))
+    return diagnostics
+
+
+async def _downstream_pipeline_context(
+    db: AsyncSession, jobs: list[PipelineJob]
+) -> dict[int, dict]:
+    downstream_ids = [
+        job.downstream_pipeline_id
+        for job in jobs
+        if job.downstream_pipeline_id is not None
+    ]
+    if not downstream_ids:
+        return {}
+    downstream_pipelines = list(
+        (
+            await db.execute(
+                select(Pipeline)
+                .options(
+                    selectinload(Pipeline.project),
+                    selectinload(Pipeline.jobs),
+                )
+                .where(Pipeline.id.in_(downstream_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    downstream_by_id = {pipeline.id: pipeline for pipeline in downstream_pipelines}
+    context: dict[int, dict] = {}
+    for job in jobs:
+        if job.downstream_pipeline_id is None:
+            continue
+        downstream = downstream_by_id.get(job.downstream_pipeline_id)
+        if downstream is None:
+            continue
+        downstream_jobs = sorted(
+            downstream.jobs, key=lambda item: (item.stage_index, item.id)
+        )
+        diagnostics = await _job_scheduling_diagnostics(db, downstream_jobs)
+        blocked_reasons = []
+        for diagnostic in diagnostics.values():
+            if diagnostic.get("blocked"):
+                blocked_reasons.extend(diagnostic.get("reasons") or [])
+        context[job.id] = {
+            "pipeline": downstream,
+            "jobs": downstream_jobs,
+            "diagnostics": diagnostics,
+            "blocked_reasons": list(dict.fromkeys(blocked_reasons)),
+        }
+    return context
 
 
 def _pipeline_variables_from_form(
@@ -2845,6 +2911,9 @@ async def _repo_ci_template(
             selected_pipeline = selected_job.pipeline
             jobs = sorted(selected_pipeline.jobs, key=lambda job: (job.stage_index, job.id))
 
+    job_diagnostics = await _job_scheduling_diagnostics(db, jobs)
+    downstream_by_job = await _downstream_pipeline_context(db, jobs)
+
     return templates.TemplateResponse(
         request=request,
         name="repo_pipeline_detail.html",
@@ -2858,6 +2927,8 @@ async def _repo_ci_template(
             selected_pipeline=selected_pipeline,
             jobs=jobs,
             selected_job=selected_job,
+            job_diagnostics=job_diagnostics,
+            downstream_by_job=downstream_by_job,
             trace_text=trace_text,
             default_branch=repo.default_branch or "main",
             flash_message=flash_message,
@@ -3117,6 +3188,7 @@ async def repo_jobs_page(
             repo_name=repo.name,
             current_user=current_user,
             jobs=jobs,
+            job_diagnostics=await _job_scheduling_diagnostics(db, jobs),
         ),
     )
 
@@ -3217,6 +3289,10 @@ async def repo_create_pipeline(
     if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
+    repo_id = repo.id
+    repo_name_value = repo.name
+    repo_full_name = repo.full_name
+    default_branch = repo.default_branch or "main"
     try:
         variables = _pipeline_variables_from_form(
             variable_key,
@@ -3224,9 +3300,9 @@ async def repo_create_pipeline(
             variable_type,
         )
         pipeline = await _create_pipeline(
-            repo.id,
+            repo_id,
             CreatePipelineRequest(
-                ref=ref.strip() or repo.default_branch or "main",
+                ref=ref.strip() or default_branch,
                 variables=variables,
             ),
             db,
@@ -3237,21 +3313,21 @@ async def repo_create_pipeline(
         await db.rollback()
         detail = exc.detail if hasattr(exc, "detail") else str(exc)
         if request.url.path.endswith("/pipelines"):
-            redirect_url = f"/ui/{owner}/{repo.name}/-/pipelines/new"
+            redirect_url = f"/ui/{repo_full_name}/-/pipelines/new"
             return RedirectResponse(
                 url=f"{redirect_url}?{urlencode({'error': detail})}",
                 status_code=302,
             )
         return _repo_ci_redirect(
             owner,
-            repo.name,
+            repo_name_value,
             flash_message=f"Could not create pipeline: {detail}",
             flash_type="error",
         )
 
     return _repo_ci_redirect(
         owner,
-        repo.name,
+        repo_name_value,
         pipeline_id=pipeline.id,
         flash_message=f"Pipeline #{pipeline.id} created.",
         flash_type="success",
@@ -4248,6 +4324,10 @@ async def nested_repo_page(
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
     owner = repo.full_name.rsplit("/", 1)[0]
+    repo_id = repo.id
+    repo_name = repo.name
+    repo_full_name = repo.full_name
+    default_branch = repo.default_branch or "main"
     current_user = await _get_current_user(request, db)
     await _can_manage_repo(current_user, repo, db)
 
@@ -4467,7 +4547,7 @@ async def nested_repo_page(
                     return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
                 if len(action_parts) == 2:
                     form = await request.form()
-                    ref = str(form.get("ref") or "main").strip() or repo.default_branch or "main"
+                    ref = str(form.get("ref") or default_branch).strip() or default_branch
                     try:
                         variables = _pipeline_variables_from_form(
                             str(form.get("variable_key") or ""),
@@ -4475,7 +4555,7 @@ async def nested_repo_page(
                             str(form.get("variable_type") or "env_var"),
                         )
                         pipeline = await _create_pipeline(
-                            repo.id,
+                            repo_id,
                             CreatePipelineRequest(ref=ref, variables=variables),
                             db,
                             source="web",
@@ -4485,12 +4565,12 @@ async def nested_repo_page(
                         await db.rollback()
                         detail = exc.detail if hasattr(exc, "detail") else str(exc)
                         return RedirectResponse(
-                            url=f"/ui/{owner}/{repo.name}/-/pipelines/new?{urlencode({'error': detail})}",
+                            url=f"/ui/{repo_full_name}/-/pipelines/new?{urlencode({'error': detail})}",
                             status_code=302,
                         )
                     return _repo_ci_redirect(
                         owner,
-                        repo.name,
+                        repo_name,
                         pipeline_id=pipeline.id,
                         flash_message=f"Pipeline #{pipeline.id} created.",
                         flash_type="success",
@@ -4541,7 +4621,7 @@ async def nested_repo_page(
                     if not await _can_manage_repo(current_user, repo, db):
                         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
                     form = await request.form()
-                    selected_ref = str(form.get("ref") or repo.default_branch or "main").strip()
+                    selected_ref = str(form.get("ref") or default_branch).strip()
                     content = str(form.get("content") or "")
                     commit_message = str(form.get("commit_message") or "Update .gitlab-ci.yml")
                     try:
@@ -4556,11 +4636,11 @@ async def nested_repo_page(
                         )
                     except Exception as exc:
                         return RedirectResponse(
-                            url=f"/ui/{owner}/{repo.name}/-/ci/editor?{urlencode({'ref': selected_ref, 'error': str(exc)})}",
+                            url=f"/ui/{repo_full_name}/-/ci/editor?{urlencode({'ref': selected_ref, 'error': str(exc)})}",
                             status_code=302,
                         )
                     return RedirectResponse(
-                        url=f"/ui/{owner}/{repo.name}/-/ci/editor?{urlencode({'ref': selected_ref, 'saved': 'true'})}",
+                        url=f"/ui/{repo_full_name}/-/ci/editor?{urlencode({'ref': selected_ref, 'saved': 'true'})}",
                         status_code=302,
                     )
 
@@ -4585,6 +4665,7 @@ async def nested_repo_page(
                             repo_name=repo.name,
                             current_user=current_user,
                             jobs=jobs,
+                            job_diagnostics=await _job_scheduling_diagnostics(db, jobs),
                         ),
                     )
                 if len(action_parts) == 3 and action_parts[2].isdigit():

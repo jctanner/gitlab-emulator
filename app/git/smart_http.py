@@ -1,9 +1,9 @@
 """Git Smart HTTP protocol handler.
 
 Implements the three endpoints needed for git clone/push/pull over HTTP:
-- GET /{owner}/{repo}.git/info/refs?service=git-upload-pack|git-receive-pack
-- POST /{owner}/{repo}.git/git-upload-pack
-- POST /{owner}/{repo}.git/git-receive-pack
+- GET /{full/project/path}.git/info/refs?service=git-upload-pack|git-receive-pack
+- POST /{full/project/path}.git/git-upload-pack
+- POST /{full/project/path}.git/git-receive-pack
 
 Also supports URLs without .git suffix.
 
@@ -62,14 +62,15 @@ def pkt_flush() -> bytes:
     return b"0000"
 
 
-async def _resolve_repo(
-    db: AsyncSession, owner: str, repo: str
-) -> Repository:
-    """Resolve owner/repo to a Repository, stripping .git suffix if present."""
+async def _resolve_repo(db: AsyncSession, repo_path: str) -> Repository:
+    """Resolve a Git Smart HTTP project path to a Repository."""
+    repo = repo_path.strip("/")
     if repo.endswith(".git"):
         repo = repo[:-4]
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
     result = await db.execute(
-        select(Repository).where(Repository.full_name == f"{owner}/{repo}")
+        select(Repository).where(Repository.full_name == repo)
     )
     repository = result.scalar_one_or_none()
     if repository is None:
@@ -514,11 +515,9 @@ async def _stream_git_command(
     await proc.wait()
 
 
-@router.get("/{owner}/{repo_name}/info/refs")
-@router.get("/{owner}/{repo_name}.git/info/refs")
+@router.get("/{repo_path:path}/info/refs")
 async def info_refs(
-    owner: str,
-    repo_name: str,
+    repo_path: str,
     service: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -531,7 +530,7 @@ async def info_refs(
     if service not in ("git-upload-pack", "git-receive-pack"):
         raise HTTPException(status_code=403, detail="Invalid service")
 
-    repository = await _resolve_repo(db, owner, repo_name)
+    repository = await _resolve_repo(db, repo_path)
 
     # Check access
     if service == "git-receive-pack":
@@ -563,11 +562,9 @@ async def info_refs(
     )
 
 
-@router.post("/{owner}/{repo_name}/git-upload-pack")
-@router.post("/{owner}/{repo_name}.git/git-upload-pack")
+@router.post("/{repo_path:path}/git-upload-pack")
 async def git_upload_pack(
-    owner: str,
-    repo_name: str,
+    repo_path: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_current_user),
@@ -576,7 +573,7 @@ async def git_upload_pack(
 
     Pipes request body to git-upload-pack and streams the response.
     """
-    repository = await _resolve_repo(db, owner, repo_name)
+    repository = await _resolve_repo(db, repo_path)
     await _check_read_access(db, repository, user, request)
 
     repo_path = repository.disk_path
@@ -600,11 +597,9 @@ async def git_upload_pack(
     )
 
 
-@router.post("/{owner}/{repo_name}/git-receive-pack")
-@router.post("/{owner}/{repo_name}.git/git-receive-pack")
+@router.post("/{repo_path:path}/git-receive-pack")
 async def git_receive_pack(
-    owner: str,
-    repo_name: str,
+    repo_path: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_current_user),
@@ -614,7 +609,7 @@ async def git_receive_pack(
     Pipes request body to git-receive-pack and streams the response.
     Requires authentication with write access.
     """
-    repository = await _resolve_repo(db, owner, repo_name)
+    repository = await _resolve_repo(db, repo_path)
     await _check_write_access(db, repository, user)
 
     repo_path = repository.disk_path

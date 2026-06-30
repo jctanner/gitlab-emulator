@@ -1,8 +1,10 @@
 """Tests for the browser-oriented repository and source UI."""
 
+import asyncio
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import select
@@ -181,6 +183,22 @@ def test_gitlab_project_shell_sidebar_css_contract():
     css = (REPO_ROOT / "app/web/static/css/web.css").read_text()
     base_template = (REPO_ROOT / "app/web/templates/base.html").read_text()
     repo_nav = (REPO_ROOT / "app/web/templates/_repo_nav.html").read_text()
+    pipeline_detail = (
+        REPO_ROOT / "app/web/templates/repo_pipeline_detail.html"
+    ).read_text()
+    jobs_template = (REPO_ROOT / "app/web/templates/repo_jobs.html").read_text()
+    pipelines_template = (
+        REPO_ROOT / "app/web/templates/repo_pipelines.html"
+    ).read_text()
+    pipeline_editor_template = (
+        REPO_ROOT / "app/web/templates/repo_pipeline_editor.html"
+    ).read_text()
+    pipeline_schedules_template = (
+        REPO_ROOT / "app/web/templates/repo_pipeline_schedules.html"
+    ).read_text()
+    pipeline_schedule_new_template = (
+        REPO_ROOT / "app/web/templates/repo_pipeline_schedule_new.html"
+    ).read_text()
 
     assert "--gl-shell-bg: #eceaf4;" in css
     assert "--gl-topbar-height: 44px;" in css
@@ -206,6 +224,121 @@ def test_gitlab_project_shell_sidebar_css_contract():
 
     assert 'href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines"' in repo_nav
     assert 'href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches"' in repo_nav
+    assert "job_diagnostics.get(job.id)" in pipeline_detail
+    assert "This job is pending because" in pipeline_detail
+    assert "downstream_by_job.get(job.id)" in pipeline_detail
+    assert "Downstream pipeline" in pipeline_detail
+    assert "Downstream pending:" in pipeline_detail
+    assert "job_diagnostics.get(job.id)" in jobs_template
+    assert "Pending: {{ diagnostic.reasons|join" in jobs_template
+
+    for template in (
+        pipelines_template,
+        pipeline_editor_template,
+        pipeline_schedules_template,
+        pipeline_schedule_new_template,
+    ):
+        assert (
+            '<a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.full_name }}</a>'
+            in template
+        )
+        assert (
+            '<a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ owner }}</a>'
+            not in template
+        )
+
+
+def test_web_job_scheduling_diagnostics_are_scoped_per_pipeline(monkeypatch):
+    """Project jobs pages must not explain blockers using jobs from old pipelines."""
+    from app.web import routes as web_routes
+
+    calls = []
+
+    async def fake_runner_diagnostics(_db):
+        return {"run_untagged": True}
+
+    def fake_explain(jobs, runner):
+        calls.append([job.id for job in jobs])
+        return {job.id: {"job_id": job.id, "runner": runner} for job in jobs}
+
+    monkeypatch.setattr(web_routes, "registered_runner_diagnostics", fake_runner_diagnostics)
+    monkeypatch.setattr(web_routes, "explain_job_scheduling", fake_explain)
+
+    jobs = [
+        SimpleNamespace(id=1, pipeline_id=10),
+        SimpleNamespace(id=2, pipeline_id=10),
+        SimpleNamespace(id=3, pipeline_id=11),
+    ]
+
+    diagnostics = asyncio.run(web_routes._job_scheduling_diagnostics(None, jobs))
+
+    assert calls == [[1, 2], [3]]
+    assert sorted(diagnostics) == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_ui_nested_bridge_pipeline_missing_target_redirects_error(
+    client, test_user, db_session
+):
+    """Missing bridge targets render as form errors instead of 500s."""
+    parent = Organization(login="redhat", name="Red Hat")
+    child = Organization(login="redhat/rhel-ai", name="RHEL AI")
+    grandchild = Organization(login="redhat/rhel-ai/agentic-ci", name="Agentic CI")
+    db_session.add_all([parent, child, grandchild])
+    await db_session.flush()
+    db_session.add(
+        OrgMembership(
+            org_id=grandchild.id,
+            user_id=test_user.id,
+            role="admin",
+            state="active",
+        )
+    )
+    await db_session.commit()
+
+    _ui_session(client, test_user.login)
+    create_repo = await client.post(
+        "/ui/new",
+        data={
+            "namespace_path": "redhat/rhel-ai/agentic-ci",
+            "name": "bridge-source",
+            "auto_init": "true",
+        },
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    ci_yaml = """
+build-dashboard:
+  stage: deploy
+  trigger:
+    project: redhat/rhel-ai/agentic-ci/strat-dashboard
+    branch: main
+"""
+    save_yaml = await client.post(
+        "/ui/redhat/rhel-ai/agentic-ci/bridge-source/new/main",
+        data={
+            "filename": ".gitlab-ci.yml",
+            "content": ci_yaml,
+            "commit_message": "Create bridge CI config",
+        },
+        follow_redirects=False,
+    )
+    assert save_yaml.status_code in (302, 303)
+
+    create_pipeline = await client.post(
+        "/ui/redhat/rhel-ai/agentic-ci/bridge-source/-/pipelines",
+        data={"ref": "main"},
+        follow_redirects=False,
+    )
+    assert create_pipeline.status_code in (302, 303)
+    redirect = urlsplit(create_pipeline.headers["location"])
+    assert redirect.path == "/ui/redhat/rhel-ai/agentic-ci/bridge-source/-/pipelines/new"
+    error = parse_qs(redirect.query)["error"][0]
+    assert (
+        error
+        == "Bridge job build-dashboard target project not found: redhat/rhel-ai/agentic-ci/strat-dashboard"
+    )
 
 
 @pytest.mark.asyncio
