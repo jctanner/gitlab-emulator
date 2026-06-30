@@ -100,6 +100,7 @@ SUPPORTED_RULE_KEYS = {
     "variables",
     "when",
 }
+SUPPORTED_LEGACY_FILTER_KEYS = {"refs", "variables", "changes", "kubernetes"}
 SUPPORTED_HOOKS = {
     "pre_get_sources_script",
     "post_get_sources_script",
@@ -1462,6 +1463,12 @@ def _legacy_filter_matches(
         refs = _ref_values(value)
         return bool(refs) and any(
             _ref_matches(pattern, ref, ref_kind, source) for pattern in refs
+        )
+
+    unsupported = sorted(set(value) - SUPPORTED_LEGACY_FILTER_KEYS)
+    if unsupported:
+        raise ValueError(
+            f"legacy filter option(s) not supported: {', '.join(unsupported)}"
         )
 
     has_condition = False

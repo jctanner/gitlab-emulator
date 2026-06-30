@@ -209,6 +209,42 @@ invalid_job:
     assert "rules option(s) not supported: unknown_key" in payload["errors"][0]
 
 
+async def test_create_pipeline_rejects_unsupported_legacy_filter_keys(
+    client,
+    test_token,
+):
+    project = await _create_project(client, test_token)
+    ci_yaml = _api_only_ci_yaml(
+        """
+bad_legacy_filter:
+  script: echo bad
+  only:
+    refs:
+      - main
+    unknown_filter:
+      - value
+"""
+    )
+    write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add invalid legacy filter ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write.status_code == 201
+
+    pipeline = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline.status_code == 400
+    assert "legacy filter option(s) not supported: unknown_filter" in pipeline.text
+
+
 async def test_pipeline_security_warnings_are_stored_and_diagnosed(client, test_token):
     project = await _create_project(client, test_token)
     settings = await client.put(

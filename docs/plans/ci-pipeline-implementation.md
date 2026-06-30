@@ -489,8 +489,8 @@ Implemented:
   `manual`, `when: always`, `when: on_failure`, boolean `allow_failure`,
   no-push-diff `rules:changes` behavior for non-push sources,
   rule-level `needs`, rule-level `interruptible`, clear delayed-job and unknown-`when` rejection,
-  clear unsupported rule-key rejection, branch/tag, and pipeline-source legacy
-  filter behavior
+  clear unsupported rule-key rejection, clear unsupported legacy filter-key
+  rejection, branch/tag, and pipeline-source legacy filter behavior
 - support local `extends`, multi-parent template merge, `default:` inheritance,
   `inherit: default`, and `inherit: variables`
 - resolve local, nested local, project, controlled remote, and built-in

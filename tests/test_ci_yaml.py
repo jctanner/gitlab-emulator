@@ -1322,6 +1322,23 @@ bad_kubernetes:
     else:
         raise AssertionError("expected unsupported kubernetes value to fail")
 
+    try:
+        parse_gitlab_ci(
+            """
+bad_legacy_filter:
+  script: echo bad
+  only:
+    refs:
+      - main
+    unknown_filter:
+      - value
+"""
+        )
+    except ValueError as exc:
+        assert "legacy filter option(s) not supported: unknown_filter" in str(exc)
+    else:
+        raise AssertionError("expected unsupported legacy filter value to fail")
+
 
 def test_parse_gitlab_ci_applies_richer_rules_if_expressions():
     jobs = parse_gitlab_ci(

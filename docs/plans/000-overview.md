@@ -249,7 +249,7 @@ Target areas:
   path-object rules, variable-expanded rule paths, no-push-diff
   `rules:changes` behavior for non-push sources, mapping-form legacy filters,
   rule variables, rule-level `needs`/`interruptible`, unsupported rule-key
-  rejection, and delayed/manual scheduling
+  and legacy filter-key rejection, and delayed/manual scheduling
 - remaining execution semantics for parsed job metadata beyond the current
   variable-expanded retry, timeout, resource-group, coverage, interruptible,
   image/service executor option support, script-only `run` step translation,
