@@ -101,7 +101,9 @@ harness architecture.
   the bridge job. Project bridge jobs accept validated `trigger:forward`
   metadata.
   Project pipeline schedules can be created, listed, updated, deleted, and
-  played manually to create `source=schedule` pipelines.
+  played manually to create `source=schedule` pipelines. Schedule variable
+  subresources are implemented for the `glab schedule --variable` and
+  `--update-variable` workflows.
 - GitLab-style pipeline/job cancel and retry endpoints exist. Pipeline cancel
   marks runnable jobs canceled, job retry clears prior runner state and trace
   content, `retry:exit_codes` filters automatic retries by runner-reported exit
@@ -341,10 +343,10 @@ harness architecture.
   `glab repo archive`, high-level `glab repo members`, high-level
   `glab issue`, high-level `glab label`, high-level `glab milestone`,
   high-level `glab variable`, high-level `glab mr`, high-level
-  `glab ci`/`glab pipeline`, high-level `glab ci trigger`, high-level
-  `glab ci cancel`, high-level `glab ci retry`, high-level
-  `glab job artifact`, and high-level `glab release` verification against
-  `glemu.local`.
+  `glab ci`/`glab pipeline`, high-level `glab schedule`, high-level
+  `glab ci trigger`, high-level `glab ci cancel`, high-level `glab ci retry`,
+  high-level `glab job artifact`, and high-level `glab release` verification
+  against `glemu.local`.
 - Current validation has passed locally and in VMs: `make test-affected` passed
   190 tests, and `make vm-validate` passed after deploying the server VM. The
   VM path included 119 client `glab`/Git checks plus official runner variable,

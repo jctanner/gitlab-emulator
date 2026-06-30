@@ -21,7 +21,7 @@ from urllib.request import urlopen
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 import yaml
@@ -144,18 +144,32 @@ class CreatePipelineScheduleRequest(BaseModel):
     description: str = ""
     ref: str = "main"
     cron: str = "0 0 * * *"
-    cron_timezone: str = "UTC"
+    cron_timezone: str = Field("UTC", alias="cronTimeZone")
     active: bool = True
     variables: list[PipelineVariable] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UpdatePipelineScheduleRequest(BaseModel):
     description: str | None = None
     ref: str | None = None
     cron: str | None = None
-    cron_timezone: str | None = None
+    cron_timezone: str | None = Field(None, alias="cronTimeZone")
     active: bool | None = None
     variables: list[PipelineVariable] | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ScheduleVariableRequest(BaseModel):
+    key: str | None = None
+    value: str = ""
+    variable_type: str = "env_var"
+    file: bool = False
+    masked: bool = False
+    raw: bool = False
+    public: bool | None = None
 
 
 def _variable_entry(
@@ -1402,6 +1416,18 @@ def _schedule_json(schedule: PipelineSchedule) -> dict:
     }
 
 
+def _schedule_variable_json(variable: dict) -> dict:
+    return {
+        "key": variable.get("key", ""),
+        "value": variable.get("value", ""),
+        "variable_type": variable.get("variable_type", "env_var"),
+        "file": bool(variable.get("file", False)),
+        "masked": bool(variable.get("masked", False)),
+        "raw": bool(variable.get("raw", False)),
+        "public": variable.get("public", not bool(variable.get("masked", False))),
+    }
+
+
 def _need_items(needs: list | None) -> list[dict]:
     if needs is None:
         return []
@@ -2416,6 +2442,10 @@ async def list_pipeline_schedules(
 ):
     project = await _get_project(project_id, db)
     await require_project_access(project, current_user, db, DEVELOPER)
+    return await _list_pipeline_schedules_for_project(project.id, db)
+
+
+async def _list_pipeline_schedules_for_project(project_id: int, db: DbSession):
     result = await db.execute(
         select(PipelineSchedule)
         .where(PipelineSchedule.project_id == project_id)
@@ -2433,6 +2463,14 @@ async def create_pipeline_schedule(
 ):
     project = await _get_project(project_id, db)
     await require_project_access(project, current_user, db, DEVELOPER)
+    return await _create_pipeline_schedule_for_project(project, body, db)
+
+
+async def _create_pipeline_schedule_for_project(
+    project: Project,
+    body: CreatePipelineScheduleRequest,
+    db: DbSession,
+):
     schedule = PipelineSchedule(
         project_id=project.id,
         description=body.description,
@@ -2476,6 +2514,15 @@ async def update_pipeline_schedule(
 ):
     project = await _get_project(project_id, db)
     await require_project_access(project, current_user, db, DEVELOPER)
+    return await _update_pipeline_schedule_for_project(project.id, schedule_id, body, db)
+
+
+async def _update_pipeline_schedule_for_project(
+    project_id: int,
+    schedule_id: int,
+    body: UpdatePipelineScheduleRequest,
+    db: DbSession,
+):
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     updates = body.model_dump(exclude_unset=True)
     if "variables" in updates and updates["variables"] is not None:
@@ -2505,10 +2552,97 @@ async def delete_pipeline_schedule(
 ):
     project = await _get_project(project_id, db)
     await require_project_access(project, current_user, db, DEVELOPER)
+    await _delete_pipeline_schedule_for_project(project.id, schedule_id, db)
+    return Response(status_code=204)
+
+
+async def _delete_pipeline_schedule_for_project(
+    project_id: int,
+    schedule_id: int,
+    db: DbSession,
+) -> None:
     schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
     await db.delete(schedule)
     await db.commit()
-    return Response(status_code=204)
+
+
+async def _schedule_variable_request(request: Request) -> ScheduleVariableRequest:
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        payload = await request.json()
+    else:
+        form = await request.form()
+        payload = dict(form)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid schedule variable payload")
+    try:
+        return ScheduleVariableRequest.model_validate(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _schedule_variables(schedule: PipelineSchedule) -> list[dict]:
+    return [dict(variable) for variable in schedule.variables or []]
+
+
+async def _list_pipeline_schedule_variables(
+    project_id: int,
+    schedule_id: int,
+    db: DbSession,
+) -> list[dict]:
+    schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
+    return [_schedule_variable_json(variable) for variable in _schedule_variables(schedule)]
+
+
+async def _get_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    key: str,
+    db: DbSession,
+) -> dict:
+    schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
+    for variable in _schedule_variables(schedule):
+        if variable.get("key") == key:
+            return _schedule_variable_json(variable)
+    raise HTTPException(status_code=404, detail="Pipeline Schedule Variable Not Found")
+
+
+async def _upsert_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    body: ScheduleVariableRequest,
+    db: DbSession,
+) -> dict:
+    if not body.key:
+        raise HTTPException(status_code=400, detail="Schedule variable key is required")
+    schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
+    variables = _schedule_variables(schedule)
+    entry = body.model_dump()
+    for index, variable in enumerate(variables):
+        if variable.get("key") == body.key:
+            variables[index] = entry
+            break
+    else:
+        variables.append(entry)
+    schedule.variables = variables
+    await db.commit()
+    await db.refresh(schedule)
+    return _schedule_variable_json(entry)
+
+
+async def _delete_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    key: str,
+    db: DbSession,
+) -> None:
+    schedule = await _get_pipeline_schedule(project_id, schedule_id, db)
+    variables = _schedule_variables(schedule)
+    remaining = [variable for variable in variables if variable.get("key") != key]
+    if len(remaining) == len(variables):
+        raise HTTPException(status_code=404, detail="Pipeline Schedule Variable Not Found")
+    schedule.variables = remaining
+    await db.commit()
 
 
 async def _get_pipeline_schedule(
@@ -2527,6 +2661,256 @@ async def _get_pipeline_schedule(
     if schedule is None:
         raise HTTPException(status_code=404, detail="Pipeline Schedule Not Found")
     return schedule
+
+
+@router.get("/projects/{project_id}/pipeline_schedules/{schedule_id}/variables")
+async def list_pipeline_schedule_variables(
+    project_id: int,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _list_pipeline_schedule_variables(project.id, schedule_id, db)
+
+
+@router.post(
+    "/projects/{project_id}/pipeline_schedules/{schedule_id}/variables",
+    status_code=201,
+)
+async def create_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    body = await _schedule_variable_request(request)
+    return await _upsert_pipeline_schedule_variable(project.id, schedule_id, body, db)
+
+
+@router.get("/projects/{project_id}/pipeline_schedules/{schedule_id}/variables/{key}")
+async def get_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    key: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _get_pipeline_schedule_variable(project.id, schedule_id, key, db)
+
+
+@router.put("/projects/{project_id}/pipeline_schedules/{schedule_id}/variables/{key}")
+async def update_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    key: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    body = await _schedule_variable_request(request)
+    body.key = key
+    return await _upsert_pipeline_schedule_variable(project.id, schedule_id, body, db)
+
+
+@router.delete(
+    "/projects/{project_id}/pipeline_schedules/{schedule_id}/variables/{key}",
+    status_code=204,
+)
+async def delete_pipeline_schedule_variable(
+    project_id: int,
+    schedule_id: int,
+    key: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project(project_id, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    await _delete_pipeline_schedule_variable(project.id, schedule_id, key, db)
+    return Response(status_code=204)
+
+
+@router.get("/projects/{project_ref:path}/pipeline_schedules")
+async def list_pipeline_schedules_by_ref(
+    project_ref: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(
+        project_ref,
+        db,
+        current_user,
+        enforce_read_access=True,
+    )
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _list_pipeline_schedules_for_project(project.id, db)
+
+
+@router.post("/projects/{project_ref:path}/pipeline_schedules", status_code=201)
+async def create_pipeline_schedule_by_ref(
+    project_ref: str,
+    body: CreatePipelineScheduleRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _create_pipeline_schedule_for_project(project, body, db)
+
+
+@router.get("/projects/{project_ref:path}/pipeline_schedules/{schedule_id}")
+async def get_pipeline_schedule_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(
+        project_ref,
+        db,
+        current_user,
+        enforce_read_access=True,
+    )
+    await require_project_access(project, current_user, db, DEVELOPER)
+    schedule = await _get_pipeline_schedule(project.id, schedule_id, db)
+    return _schedule_json(schedule)
+
+
+@router.put("/projects/{project_ref:path}/pipeline_schedules/{schedule_id}")
+async def update_pipeline_schedule_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    body: UpdatePipelineScheduleRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _update_pipeline_schedule_for_project(project.id, schedule_id, body, db)
+
+
+@router.delete(
+    "/projects/{project_ref:path}/pipeline_schedules/{schedule_id}", status_code=204
+)
+async def delete_pipeline_schedule_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    await _delete_pipeline_schedule_for_project(project.id, schedule_id, db)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/projects/{project_ref:path}/pipeline_schedules/{schedule_id}/play",
+    status_code=201,
+)
+async def play_pipeline_schedule_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    schedule = await _get_pipeline_schedule(project.id, schedule_id, db)
+    pipeline = await materialize_pipeline_schedule(
+        schedule,
+        project.id,
+        db,
+        actor=current_user,
+    )
+    return _pipeline_json(pipeline)
+
+
+@router.get("/projects/{project_ref:path}/pipeline_schedules/{schedule_id}/variables")
+async def list_pipeline_schedule_variables_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _list_pipeline_schedule_variables(project.id, schedule_id, db)
+
+
+@router.post(
+    "/projects/{project_ref:path}/pipeline_schedules/{schedule_id}/variables",
+    status_code=201,
+)
+async def create_pipeline_schedule_variable_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    body = await _schedule_variable_request(request)
+    return await _upsert_pipeline_schedule_variable(project.id, schedule_id, body, db)
+
+
+@router.get(
+    "/projects/{project_ref:path}/pipeline_schedules/{schedule_id}/variables/{key}"
+)
+async def get_pipeline_schedule_variable_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    key: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    return await _get_pipeline_schedule_variable(project.id, schedule_id, key, db)
+
+
+@router.put(
+    "/projects/{project_ref:path}/pipeline_schedules/{schedule_id}/variables/{key}"
+)
+async def update_pipeline_schedule_variable_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    key: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    body = await _schedule_variable_request(request)
+    body.key = key
+    return await _upsert_pipeline_schedule_variable(project.id, schedule_id, body, db)
+
+
+@router.delete(
+    "/projects/{project_ref:path}/pipeline_schedules/{schedule_id}/variables/{key}",
+    status_code=204,
+)
+async def delete_pipeline_schedule_variable_by_ref(
+    project_ref: str,
+    schedule_id: int,
+    key: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    project = await _get_project_ref(project_ref, db)
+    await require_project_access(project, current_user, db, DEVELOPER)
+    await _delete_pipeline_schedule_variable(project.id, schedule_id, key, db)
+    return Response(status_code=204)
 
 
 @router.post(

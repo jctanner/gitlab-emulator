@@ -1123,6 +1123,79 @@ assert_json_field "glab api pipelines list" "$pipelines_json" "map(.id) | index(
 jobs_json=$(glab_api "projects/$PROJECT_ID/pipelines/$PIPELINE_ID/jobs")
 assert_json_field "glab api pipeline jobs include smoke" "$jobs_json" 'map(.name) | index("smoke")'
 
+section "Schedule CLI via glab"
+
+schedule_create=$("$GLAB" schedule create \
+    --repo "admin/$PROJECT_PATH" \
+    --description "glab schedule smoke" \
+    --ref main \
+    --cron "0 2 * * *" \
+    --cronTimeZone "UTC" \
+    --variable "SCHEDULE_VAR:from-glab" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab schedule create"
+else
+    fail "glab schedule create: $schedule_create"
+fi
+
+schedule_list=$("$GLAB" schedule list \
+    --repo "admin/$PROJECT_PATH" \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab schedule list json" "$schedule_list" \
+    'map(.description) | index("glab schedule smoke")'
+SCHEDULE_ID=$(echo "$schedule_list" | jq -r '.[] | select(.description == "glab schedule smoke") | .id' 2>/dev/null | head -n1)
+
+if [ -n "$SCHEDULE_ID" ]; then
+    schedule_update=$("$GLAB" schedule update "$SCHEDULE_ID" \
+        --repo "admin/$PROJECT_PATH" \
+        --description "glab schedule updated" \
+        --cron "30 4 * * 1" \
+        --active=false \
+        --update-variable "SCHEDULE_VAR:rotated" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab schedule update"
+    else
+        fail "glab schedule update: $schedule_update"
+    fi
+
+    schedule_after_update=$("$GLAB" schedule list \
+        --repo "admin/$PROJECT_PATH" \
+        --output json \
+        --per-page 100 2>&1)
+    assert_json_field "glab schedule update visible" "$schedule_after_update" \
+        "map(select(.id == ($SCHEDULE_ID | tonumber) and .description == \"glab schedule updated\" and .active == false)) | length == 1"
+
+    schedule_run=$("$GLAB" schedule run "$SCHEDULE_ID" \
+        --repo "admin/$PROJECT_PATH" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab schedule run"
+    else
+        fail "glab schedule run: $schedule_run"
+    fi
+
+    schedule_pipelines=$(glab_api "projects/$PROJECT_ID/pipelines?source=schedule&per_page=5")
+    assert_json_field "glab schedule run visible" "$schedule_pipelines" \
+        'map(.source) | index("schedule")'
+
+    schedule_delete=$("$GLAB" schedule delete "$SCHEDULE_ID" \
+        --repo "admin/$PROJECT_PATH" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab schedule delete"
+    else
+        fail "glab schedule delete: $schedule_delete"
+    fi
+
+    schedule_after_delete=$("$GLAB" schedule list \
+        --repo "admin/$PROJECT_PATH" \
+        --output json \
+        --per-page 100 2>&1)
+    assert_json_field "glab schedule delete visible" "$schedule_after_delete" \
+        "map(.id) | index($SCHEDULE_ID) | not"
+else
+    fail "glab schedule list did not return an id for glab schedule smoke: $schedule_list"
+fi
+
 JOB_ID=$(echo "$ci_get" | jq -r '.jobs[] | select(.name == "smoke") | .id' | head -1)
 MANUAL_JOB_ID=$(echo "$ci_get" | jq -r '.jobs[] | select(.name == "manual_trigger") | .id' | head -1)
 runner_payload=$(jq -n \
