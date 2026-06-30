@@ -32,6 +32,7 @@ No task files are currently checked into `docs/tasks/current/`.
 ## Runbooks
 
 - [Operations runbook](runbooks/operations.md)
+- [k3s stack deployment guide](runbooks/k3s-stack-deployment.md)
 - [Runner deployment guide](runbooks/runner-deployment.md)
 - [Runner testing runbook](runbooks/runner-testing.md)
 

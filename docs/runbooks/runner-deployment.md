@@ -5,6 +5,10 @@ the GitLab emulator into a larger k3s stack. It is intended for agents or
 operators wiring this project into an environment beyond the local Vagrant
 validation stack.
 
+For an end-to-end k3s deployment reference covering the emulator service,
+ingress/TLS, persistence, runner manager, and validation job, see
+`docs/runbooks/k3s-stack-deployment.md`.
+
 ## Coordinator Model
 
 The emulator acts as a minimal GitLab Runner coordinator. Runners execute jobs;
