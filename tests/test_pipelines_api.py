@@ -2368,12 +2368,14 @@ async def test_job_runtime_metadata_reaches_api_and_runner_payload(client, test_
     ci_yaml = """
 metadata_job:
   image: alpine:3.20
+  variables:
+    RESOURCE_SUFFIX: production
   retry:
     max: 2
     when: runner_system_failure
   timeout: 45 minutes
   interruptible: true
-  resource_group: production
+  resource_group: deploy-$RESOURCE_SUFFIX
   coverage: '/Coverage: \\d+\\.\\d+%/'
   script:
     - echo metadata
@@ -2411,7 +2413,7 @@ metadata_job:
     assert job["retry_attempt"] == 0
     assert job["timeout"] == 2700
     assert job["interruptible"] is True
-    assert job["resource_group"] == "production"
+    assert job["resource_group"] == "deploy-production"
     assert job["coverage"] is None
     assert job["coverage_regex"] == "/Coverage: \\d+\\.\\d+%/"
 

@@ -1628,13 +1628,15 @@ def test_parse_gitlab_ci_preserves_job_runtime_metadata():
     jobs = parse_gitlab_ci(
         """
 metadata_job:
+  variables:
+    RESOURCE_SUFFIX: production
   retry:
     max: 2
     when:
       - runner_system_failure
   timeout: 45 minutes
   interruptible: true
-  resource_group: production
+  resource_group: deploy-$RESOURCE_SUFFIX
   coverage: '/Coverage: \\d+\\.\\d+%/'
   environment:
     name: review/$CI_COMMIT_REF_NAME
@@ -1652,7 +1654,7 @@ metadata_job:
     }
     assert jobs[0].timeout_seconds == 2700
     assert jobs[0].interruptible is True
-    assert jobs[0].resource_group == "production"
+    assert jobs[0].resource_group == "deploy-production"
     assert jobs[0].coverage == "/Coverage: \\d+\\.\\d+%/"
     assert jobs[0].environment == "review/main"
     assert jobs[0].environment_url == "https://example.test/main"

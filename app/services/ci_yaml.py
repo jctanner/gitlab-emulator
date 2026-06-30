@@ -1849,7 +1849,10 @@ def parse_gitlab_ci(
                     interruptible=decision.interruptible
                     if decision.interruptible is not None
                     else bool(config.get("interruptible", False)),
-                    resource_group=str(config["resource_group"])
+                    resource_group=_expand_ci_variables(
+                        str(config["resource_group"]),
+                        artifact_variables,
+                    )
                     if config.get("resource_group") is not None
                     else None,
                     coverage=str(config["coverage"])
