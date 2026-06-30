@@ -28,7 +28,9 @@ harness architecture.
   parsed job, and orders jobs by stage for the runner coordinator.
 - Minimal CI lint endpoints exist at global and project scope. They validate
   YAML through the same parser and dependency checks used by pipeline creation
-  and can return discovered job metadata.
+  and can return discovered job metadata. Project-scoped lint also resolves
+  repository-backed includes, including `spec:inputs` defaults and include-level
+  `inputs` overrides.
 - The official runner VM has executed a two-job YAML-defined pipeline through
   the Docker executor. The project pipeline reached `success` and both stored
   traces included the expected scripts.

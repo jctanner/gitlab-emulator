@@ -59,7 +59,9 @@ and cache APIs for controlled integration testing.
   including runtime defaults for `retry`, `timeout`, and `interruptible`,
   `inherit: default`, `inherit: variables`, and depth/error guards
 - global and project CI lint endpoints validate YAML through the same parser and
-  dependency checks used by pipeline creation
+  dependency checks used by pipeline creation; project-scoped lint resolves
+  repository-backed includes, including `spec:inputs` defaults and
+  include-level `inputs` overrides
 - pipeline-level variables, top-level YAML variables, and job-level YAML
   variables merged into official runner job payloads with documented precedence
   and metadata for raw, masked/public, and file variables

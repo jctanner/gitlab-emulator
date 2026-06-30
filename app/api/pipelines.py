@@ -1655,7 +1655,10 @@ def _ci_lint_response(
     body: CiLintRequest,
     *,
     default_branch: str = "main",
+    content: str | None = None,
+    merged_yaml: str | None = None,
 ) -> dict:
+    content = body.content if content is None else content
     variables = _pipeline_context_variable_entries(
         body.variables,
         source="api",
@@ -1664,7 +1667,7 @@ def _ci_lint_response(
     )
     try:
         parsed_jobs = parse_gitlab_ci(
-            body.content,
+            content,
             ref=body.ref,
             variables=_simple_variable_values(variables),
         )
@@ -1704,7 +1707,7 @@ def _ci_lint_response(
             for job in parsed_jobs
         ]
     if body.include_merged_yaml:
-        payload["merged_yaml"] = body.content
+        payload["merged_yaml"] = merged_yaml if merged_yaml is not None else content
     return payload
 
 
@@ -1723,9 +1726,46 @@ async def lint_project_ci_yaml(
     project = await _get_project_ref(
         project_ref, db, current_user, enforce_read_access=True
     )
+    lint_variables = _pipeline_context_variable_entries(
+        body.variables,
+        source="api",
+        ref=body.ref,
+        default_branch=getattr(project, "default_branch", None) or "main",
+    )
+    try:
+        existing_paths = await _repo_paths_at_ref(project, body.ref)
+        merged_config = await _read_ci_config_content_with_includes(
+            body.content,
+            ".gitlab-ci.yml",
+            project,
+            body.ref,
+            db,
+            _simple_variable_values(lint_variables),
+            existing_paths,
+            set(),
+            0,
+            set(),
+        )
+        merged_yaml = yaml.safe_dump(merged_config, sort_keys=False)
+    except HTTPException as exc:
+        return {
+            "status": "invalid",
+            "valid": False,
+            "errors": [str(exc.detail)],
+            "warnings": [],
+        }
+    except (ValueError, yaml.YAMLError) as exc:
+        return {
+            "status": "invalid",
+            "valid": False,
+            "errors": [str(exc)],
+            "warnings": [],
+        }
     return _ci_lint_response(
         body,
         default_branch=getattr(project, "default_branch", None) or "main",
+        content=merged_yaml,
+        merged_yaml=merged_yaml,
     )
 
 

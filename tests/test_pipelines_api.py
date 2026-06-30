@@ -133,6 +133,63 @@ test:
     assert "build:" in payload["merged_yaml"]
 
 
+async def test_project_ci_lint_resolves_local_include_inputs(client, test_token):
+    project = await _create_project(client, test_token)
+    include_yaml = """
+spec:
+  inputs:
+    IMAGE:
+      default: alpine:3.20
+      type: string
+---
+linted_job:
+  image: "$[[ inputs.IMAGE ]]"
+  script:
+    - echo lint
+"""
+    include_write = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/lint-component.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add lint component",
+            "content": base64.b64encode(include_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert include_write.status_code == 201
+
+    lint = await client.post(
+        f"{API}/projects/{project['id']}/ci/lint",
+        headers=auth_headers(test_token),
+        json={
+            "content": """
+include:
+  - local: lint-component.yml
+    inputs:
+      IMAGE: python:3.12-alpine
+""",
+            "include_jobs": True,
+            "include_merged_yaml": True,
+        },
+    )
+    assert lint.status_code == 200
+    payload = lint.json()
+    assert payload["status"] == "valid"
+    assert payload["valid"] is True
+    assert payload["errors"] == []
+    assert payload["jobs"] == [
+        {
+            "name": "linted_job",
+            "stage": "test",
+            "stage_index": 0,
+            "when": "on_success",
+            "allow_failure": False,
+        }
+    ]
+    assert "python:3.12-alpine" in payload["merged_yaml"]
+    assert "$[[ inputs.IMAGE ]]" not in payload["merged_yaml"]
+
+
 async def test_ci_lint_reports_parser_errors(client):
     lint = await client.post(
         f"{API}/ci/lint",
