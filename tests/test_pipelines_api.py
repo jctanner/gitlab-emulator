@@ -4688,6 +4688,37 @@ api_only:
     assert yaml_error_pipelines.status_code == 200
     assert yaml_error_pipelines.json() == []
 
+    window_start = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    window_end = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    created_window = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={
+            "created_after": window_start,
+            "created_before": window_end,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert created_window.status_code == 200
+    assert pipeline["id"] in [item["id"] for item in created_window.json()]
+
+    updated_window = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={
+            "updated_after": window_start,
+            "updated_before": window_end,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert updated_window.status_code == 200
+    assert pipeline["id"] in [item["id"] for item in updated_window.json()]
+
+    invalid_datetime = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"created_after": "not-a-date"},
+        headers=auth_headers(test_token),
+    )
+    assert invalid_datetime.status_code == 400
+
     request = await client.post(
         f"{API}/jobs/request",
         headers={"RUNNER-TOKEN": RUNNER_TOKEN},

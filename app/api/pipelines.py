@@ -1095,6 +1095,18 @@ def _pipeline_variable_json(variable: dict) -> dict:
     }
 
 
+def _parse_filter_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid datetime filter") from exc
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
 def _environment_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug[:63] or "environment"
@@ -2457,6 +2469,10 @@ async def list_pipelines(
     ref: str | None = None,
     sha: str | None = None,
     yaml_errors: bool | None = None,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    updated_after: str | None = None,
+    updated_before: str | None = None,
     order_by: str = Query("id", pattern="^(id|status|ref|updated_at|created_at)$"),
     sort: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
@@ -2481,6 +2497,18 @@ async def list_pipelines(
         query = query.where(Pipeline.sha == sha)
     if yaml_errors:
         query = query.where(False)
+    created_after_dt = _parse_filter_datetime(created_after)
+    if created_after_dt is not None:
+        query = query.where(Pipeline.created_at >= created_after_dt)
+    created_before_dt = _parse_filter_datetime(created_before)
+    if created_before_dt is not None:
+        query = query.where(Pipeline.created_at <= created_before_dt)
+    updated_after_dt = _parse_filter_datetime(updated_after)
+    if updated_after_dt is not None:
+        query = query.where(Pipeline.updated_at >= updated_after_dt)
+    updated_before_dt = _parse_filter_datetime(updated_before)
+    if updated_before_dt is not None:
+        query = query.where(Pipeline.updated_at <= updated_before_dt)
 
     order_columns = {
         "id": Pipeline.id,

@@ -155,7 +155,8 @@ harness architecture.
   and `scope[]` status filters.
 - Project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
   `status`, `source`, `ref`, `sha`, `yaml_errors`, `order_by`, and `sort`
-  filters.
+  filters, plus `created_after`, `created_before`, `updated_after`, and
+  `updated_before` time-window filters.
 - Project pipeline delete APIs remove persisted pipelines and their associated
   jobs, traces, and artifact rows.
 - Dotenv report artifacts from successful upstream dependency jobs are parsed
