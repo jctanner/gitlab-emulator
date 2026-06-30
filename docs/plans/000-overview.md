@@ -255,8 +255,8 @@ Target areas:
   executor option support, and per-matrix runner metadata expansion
 - remaining richer cache edge cases beyond current variable-expanded paths,
   list keys, repository-derived prefix/files/files_commits keys, fallback keys,
-  policy, `when`, `untracked`, `unprotect`, clear unsupported option rejection,
-  and MinIO-backed runner validation
+  policy, `when`, `untracked`, `unprotect`, four-entry limit validation,
+  nested key option validation, and MinIO-backed runner validation
 
 Done when:
 

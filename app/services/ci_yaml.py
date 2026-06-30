@@ -73,6 +73,8 @@ SUPPORTED_CACHE_ENTRY_KEYS = {
     "fallback_keys",
     "unprotect",
 }
+SUPPORTED_CACHE_KEY_KEYS = {"files", "files_commits", "key", "prefix"}
+MAX_CACHE_ENTRIES = 4
 SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
 SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
 SUPPORTED_ARTIFACT_WHEN = {"on_success", "on_failure", "always"}
@@ -656,6 +658,11 @@ def _cache_key(
         files = _expand_string_list(value, variables)
         return "-".join(files) if files else "default"
     if isinstance(value, dict):
+        unsupported = sorted(set(value) - SUPPORTED_CACHE_KEY_KEYS)
+        if unsupported:
+            raise ValueError(
+                f"cache key option(s) not supported: {', '.join(unsupported)}"
+            )
         prefix = _expand_ci_variables(str(value.get("prefix") or "").strip(), variables)
         if value.get("key"):
             key = _expand_ci_variables(str(value["key"]), variables)
@@ -684,6 +691,8 @@ def _cache_entries(
         return []
     variables = variables or {}
     raw_entries = value if isinstance(value, list) else [value]
+    if len(raw_entries) > MAX_CACHE_ENTRIES:
+        raise ValueError(f"cache supports at most {MAX_CACHE_ENTRIES} entries")
     entries: list[dict] = []
     for raw_entry in raw_entries:
         if not isinstance(raw_entry, dict):

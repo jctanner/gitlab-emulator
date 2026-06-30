@@ -2568,6 +2568,42 @@ cache_probe:
             "cache when is not supported",
             "delayed",
         ),
+        (
+            """
+cache_probe:
+  cache:
+    key:
+      files:
+        - uv.lock
+      unsupported: true
+    paths:
+      - .cache/
+  script:
+    - echo cache
+""",
+            "cache key option(s) not supported",
+            "unsupported",
+        ),
+        (
+            """
+cache_probe:
+  cache:
+    - key: one
+      paths: [one/]
+    - key: two
+      paths: [two/]
+    - key: three
+      paths: [three/]
+    - key: four
+      paths: [four/]
+    - key: five
+      paths: [five/]
+  script:
+    - echo cache
+""",
+            "cache supports at most 4 entries",
+            "4",
+        ),
     ]
 
     for content, message, detail in cases:

@@ -146,8 +146,10 @@ harness architecture.
   archives can be uploaded, inspected, and downloaded through emulator API
   endpoints. Cache archive keys are normalized with GitLab Runner-style
   separator, traversal, and trailing-whitespace sanitization before storage or
-  fallback lookup. The VM compose stack now includes MinIO for GitLab Runner's
-  S3 distributed cache adapter, and runner registration defaults to that cache
+  fallback lookup. YAML cache parsing enforces GitLab's four-cache-per-job
+  limit and rejects unsupported nested `cache:key` options before runner
+  assignment. The VM compose stack now includes MinIO for GitLab Runner's S3
+  distributed cache adapter, and runner registration defaults to that cache
   backend. Official GitLab Runner 19.0.1 has validated cache upload and restore
   through MinIO across a two-stage pipeline, and dependency artifact download
   through `needs:artifacts` across a two-stage pipeline.
