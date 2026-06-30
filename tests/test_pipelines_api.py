@@ -1610,6 +1610,7 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
             "artifact_type": "archive",
             "artifact_format": "zip",
             "expire_in": "",
+            "access_level": "all",
         }
     ]
 
@@ -1770,6 +1771,7 @@ variables:
   EXCLUDE_DIR: tmp
   ARTIFACT_WHEN: always
   ARTIFACT_UNTRACKED: "true"
+  ARTIFACT_ACCESS: maintainer
 
 workflow:
   rules:
@@ -1789,6 +1791,7 @@ artifact_metadata:
     untracked: "$ARTIFACT_UNTRACKED"
     when: "$ARTIFACT_WHEN"
     expire_in: "$ARTIFACT_TTL"
+    access: "$ARTIFACT_ACCESS"
 """
     write = await client.put(
         f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
@@ -1824,6 +1827,7 @@ artifact_metadata:
     assert artifact["exclude"] == ["out/tmp/"]
     assert artifact["when"] == "always"
     assert artifact["expire_in"] == "1 week"
+    assert artifact["access_level"] == "maintainer"
 
 
 async def test_artifact_reports_reach_runner_payload(client, test_token):
@@ -1887,6 +1891,7 @@ report_metadata:
             "artifact_type": "archive",
             "artifact_format": "zip",
             "expire_in": "3 days",
+            "access_level": "all",
         },
         {
             "name": "report-bundle",
@@ -1897,6 +1902,7 @@ report_metadata:
             "artifact_type": "junit",
             "artifact_format": "gzip",
             "expire_in": "3 days",
+            "access_level": "all",
         },
         {
             "name": "report-bundle",
@@ -1907,6 +1913,7 @@ report_metadata:
             "artifact_type": "dotenv",
             "artifact_format": "gzip",
             "expire_in": "3 days",
+            "access_level": "all",
         },
         {
             "name": "report-bundle",
@@ -1917,6 +1924,7 @@ report_metadata:
             "artifact_type": "coverage_report",
             "artifact_format": "gzip",
             "expire_in": "3 days",
+            "access_level": "all",
         },
     ]
 
@@ -3470,6 +3478,7 @@ matrix_test:
             "artifact_type": "archive",
             "artifact_format": "zip",
             "expire_in": "",
+            "access_level": "all",
         }
     ]
 

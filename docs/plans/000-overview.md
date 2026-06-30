@@ -87,7 +87,7 @@ coordinator, CI semantics, and CLI behavior differ from GitHub.
   parsed job runtime metadata for `retry`, `timeout`, `interruptible`,
   `resource_group`, `coverage`, and structured `environment` name/URL/action,
   per-job `parallel:matrix` variable expansion for runner-facing image,
-  service, tag, artifact, environment, hook, ID token, and cache metadata,
+  service, tag, artifact access/metadata, environment, hook, ID token, and cache metadata,
   runner-facing job hooks for `pre_get_sources_script` and
   `post_get_sources_script`,
   YAML `id_tokens` emitted as masked JWT-style runner variables,

@@ -96,8 +96,8 @@ Already working:
   official runner validation remains on GitLab Runner's S3 cache adapter backed
   by MinIO
 - artifact metadata and expiry are implemented: runner payloads preserve
-  artifact name, paths, exclude, untracked, when, and expire_in values;
-  artifact name/path/exclude/untracked/when/expire_in metadata expands merged
+  artifact name, paths, exclude, untracked, when, expire_in, and access values;
+  artifact name/path/exclude/untracked/when/expire_in/access metadata expands merged
   CI variables, and unsupported artifact `when` values fail clearly;
   `artifacts:reports` entries expand into separate official-runner upload
   entries for report artifact types such as `junit`, `dotenv`, and

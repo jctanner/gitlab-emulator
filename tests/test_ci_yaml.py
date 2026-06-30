@@ -86,6 +86,7 @@ compile:
         "exclude": [],
         "when": "on_success",
         "expire_in": "",
+        "access_level": "all",
         "artifact_type": "archive",
         "artifact_format": "zip",
     }
@@ -197,6 +198,7 @@ variables:
   ARTIFACT_NAME: "$CI_COMMIT_REF_NAME-package"
   ARTIFACT_WHEN: always
   ARTIFACT_UNTRACKED: "true"
+  ARTIFACT_ACCESS: maintainer
 
 artifact_probe:
   variables:
@@ -212,6 +214,7 @@ artifact_probe:
     untracked: "$ARTIFACT_UNTRACKED"
     when: "$ARTIFACT_WHEN"
     expire_in: "$EXPIRY"
+    access: "$ARTIFACT_ACCESS"
 """,
         ref="release-1",
         variables={"EXPIRY": "2 weeks"},
@@ -225,6 +228,7 @@ artifact_probe:
         "exclude": ["tmp/**"],
         "when": "always",
         "expire_in": "2 weeks",
+        "access_level": "maintainer",
         "artifact_type": "archive",
         "artifact_format": "zip",
     }
@@ -247,6 +251,60 @@ artifact_probe:
         assert "artifacts when is not supported: sometimes" in str(exc)
     else:
         raise AssertionError("unsupported artifacts:when should fail")
+
+
+def test_parse_gitlab_ci_supports_legacy_artifact_public_flag():
+    jobs = parse_gitlab_ci(
+        """
+artifact_probe:
+  script:
+    - echo artifacts
+  artifacts:
+    paths:
+      - out/
+    public: "false"
+"""
+    )
+
+    assert jobs[0].artifacts["access_level"] == "developer"
+
+
+def test_parse_gitlab_ci_rejects_unsupported_artifact_access():
+    cases = [
+        (
+            """
+artifact_probe:
+  script:
+    - echo artifacts
+  artifacts:
+    paths:
+      - out/
+    access: guest
+""",
+            "artifacts access is not supported: guest",
+        ),
+        (
+            """
+artifact_probe:
+  script:
+    - echo artifacts
+  artifacts:
+    paths:
+      - out/
+    public: false
+    access: developer
+""",
+            "artifacts public and access cannot be used together",
+        ),
+    ]
+
+    for content, message in cases:
+        try:
+            parse_gitlab_ci(content)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError("unsupported artifacts access should fail")
 
 
 def test_parse_gitlab_ci_preserves_artifact_reports_without_archive_paths():
@@ -278,6 +336,7 @@ report_job:
         "exclude": [],
         "when": "always",
         "expire_in": "2 weeks",
+        "access_level": "all",
         "artifact_type": "archive",
         "artifact_format": "zip",
         "reports": [

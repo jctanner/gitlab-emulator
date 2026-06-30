@@ -78,6 +78,7 @@ MAX_CACHE_ENTRIES = 4
 SUPPORTED_CACHE_POLICIES = {"pull", "push", "pull-push"}
 SUPPORTED_CACHE_WHEN = {"on_success", "on_failure", "always"}
 SUPPORTED_ARTIFACT_WHEN = {"on_success", "on_failure", "always"}
+SUPPORTED_ARTIFACT_ACCESS = {"all", "developer", "maintainer", "none"}
 SUPPORTED_JOB_WHEN = {
     "on_success",
     "on_failure",
@@ -752,6 +753,17 @@ def _artifact_config(value: Any, variables: dict[str, str] | None = None) -> dic
     when = _expand_ci_variables(str(value.get("when") or "on_success"), variables)
     if when not in SUPPORTED_ARTIFACT_WHEN:
         raise ValueError(f"artifacts when is not supported: {when}")
+    public = value.get("public")
+    access = value.get("access")
+    if public is not None and access is not None:
+        raise ValueError("artifacts public and access cannot be used together")
+    access_level = "all"
+    if access is not None:
+        access_level = _expand_ci_variables(str(access), variables)
+        if access_level not in SUPPORTED_ARTIFACT_ACCESS:
+            raise ValueError(f"artifacts access is not supported: {access_level}")
+    elif public is not None and not _bool_value(public, variables):
+        access_level = "developer"
     config = {
         "name": name,
         "untracked": untracked,
@@ -759,6 +771,7 @@ def _artifact_config(value: Any, variables: dict[str, str] | None = None) -> dic
         "exclude": _expand_string_list(value.get("exclude"), variables),
         "when": when,
         "expire_in": expire_in,
+        "access_level": access_level,
         "artifact_type": "archive",
         "artifact_format": "zip",
     }

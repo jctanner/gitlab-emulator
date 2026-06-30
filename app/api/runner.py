@@ -827,6 +827,7 @@ def _artifact_payload(job: PipelineJob) -> list[dict]:
                 "artifact_type": str(config.get("artifact_type") or "archive"),
                 "artifact_format": str(config.get("artifact_format") or "zip"),
                 "expire_in": str(config.get("expire_in") or ""),
+                "access_level": str(config.get("access_level") or "all"),
             }
         )
     for report in config.get("reports") or []:
@@ -845,6 +846,7 @@ def _artifact_payload(job: PipelineJob) -> list[dict]:
                 "artifact_type": str(report.get("artifact_type") or "archive"),
                 "artifact_format": str(report.get("artifact_format") or "gzip"),
                 "expire_in": str(config.get("expire_in") or ""),
+                "access_level": str(config.get("access_level") or "all"),
             }
         )
     return artifacts
