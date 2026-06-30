@@ -51,6 +51,14 @@ def _fmt_datetime(value: datetime | None) -> str | None:
     return value.isoformat().replace("+00:00", "Z")
 
 
+def _normalize_project_milestone_state(value: str | None) -> str:
+    if value in ("active", "activate"):
+        return "open"
+    if value == "close":
+        return "closed"
+    return value or "open"
+
+
 def _gitlab_milestone_json(
     milestone: Milestone,
     project,
@@ -177,8 +185,8 @@ async def create_project_milestone(
         number=next_number,
         title=body.title,
         description=body.description,
-        state="open" if body.state == "active" else body.state,
-        due_on=_parse_due_on(body.due_on),
+        state=_normalize_project_milestone_state(body.state),
+        due_on=_parse_due_on(body.due_on or body.due_date),
     )
     db.add(milestone)
     await db.commit()
@@ -218,15 +226,17 @@ async def update_project_milestone(
         milestone.title = body.title
     if body.description is not None:
         milestone.description = body.description
-    if body.state is not None:
+    state_value = body.state_event if body.state_event is not None else body.state
+    if state_value is not None:
         old_state = milestone.state
-        milestone.state = "open" if body.state == "active" else body.state
+        milestone.state = _normalize_project_milestone_state(state_value)
         if milestone.state == "closed" and old_state != "closed":
             milestone.closed_at = datetime.now(timezone.utc)
         elif milestone.state == "open":
             milestone.closed_at = None
-    if body.due_on is not None:
-        milestone.due_on = _parse_due_on(body.due_on)
+    due_value = body.due_on if body.due_on is not None else body.due_date
+    if due_value is not None:
+        milestone.due_on = _parse_due_on(due_value)
 
     await db.commit()
     await db.refresh(milestone)

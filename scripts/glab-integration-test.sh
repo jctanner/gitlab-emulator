@@ -595,47 +595,73 @@ labels_after_delete=$("$GLAB" label list \
 assert_json_field "glab label delete visible" "$labels_after_delete" \
     'map(.name) | index("glab-label-updated") | not'
 
-milestone_create=$(curl -sk -X POST \
-    -H "PRIVATE-TOKEN: $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"title":"glab milestone","description":"glab milestone smoke","due_on":"2026-07-01"}' \
-    "$API/projects/$PROJECT_ID/milestones")
-assert_json_field \
-    "project milestone created" \
-    "$milestone_create" \
-    '.title == "glab milestone" and .project_id != null and .iid == 1'
-MILESTONE_ID=$(echo "$milestone_create" | jq -r '.id // empty' 2>/dev/null)
+milestone_create=$("$GLAB" milestone create \
+    --project "admin/$PROJECT_PATH" \
+    --title "glab milestone" \
+    --description "glab milestone smoke" \
+    --due-date "2026-07-01" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab milestone create"
+else
+    fail "glab milestone create: $milestone_create"
+fi
 
-milestones_json=$(glab_api "projects/$PROJECT_ID/milestones?state=active&search=glab")
+milestones_json=$("$GLAB" milestone list \
+    --project "admin/$PROJECT_PATH" \
+    --state active \
+    --search glab \
+    --output json 2>&1)
 assert_json_field \
-    "glab api project milestones list" \
+    "glab milestone list json" \
     "$milestones_json" \
     'map(.title) | index("glab milestone")'
+MILESTONE_ID=$(echo "$milestones_json" | jq -r '.[] | select(.title == "glab milestone") | .id' 2>/dev/null | head -n1)
 
-milestone_json=$(glab_api "projects/$PROJECT_REF/milestones/$MILESTONE_ID")
-assert_json_field \
-    "glab api project milestone get by path" \
-    "$milestone_json" \
-    '.title == "glab milestone" and .due_date == "2026-07-01"'
+if [ -n "$MILESTONE_ID" ]; then
+    milestone_json=$("$GLAB" milestone get "$MILESTONE_ID" \
+        --project "admin/$PROJECT_PATH" \
+        --output json 2>&1)
+    assert_json_field \
+        "glab milestone get json" \
+        "$milestone_json" \
+        '.title == "glab milestone" and .due_date == "2026-07-01"'
+else
+    fail "glab milestone list did not return an id for glab milestone: $milestones_json"
+fi
 
-milestone_update=$(curl -sk -X PUT \
-    -H "PRIVATE-TOKEN: $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"title":"glab milestone closed","state":"closed","due_on":"2026-07-15"}' \
-    "$API/projects/$PROJECT_ID/milestones/$MILESTONE_ID")
+milestone_update=$("$GLAB" milestone edit "$MILESTONE_ID" \
+    --project "admin/$PROJECT_PATH" \
+    --title "glab milestone closed" \
+    --state close \
+    --due-date "2026-07-15" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab milestone edit"
+else
+    fail "glab milestone edit: $milestone_update"
+fi
+
+milestone_updated=$("$GLAB" milestone get "$MILESTONE_ID" \
+    --project "admin/$PROJECT_PATH" \
+    --output json 2>&1)
 assert_json_field \
-    "project milestone updated" \
-    "$milestone_update" \
+    "glab milestone edit visible" \
+    "$milestone_updated" \
     '.title == "glab milestone closed" and .state == "closed" and .due_date == "2026-07-15"'
 
-milestone_delete=$(curl -sk -X DELETE \
-    -H "PRIVATE-TOKEN: $TOKEN" \
-    "$API/projects/$PROJECT_ID/milestones/$MILESTONE_ID")
-if [ -z "$milestone_delete" ]; then
-    pass "project milestone deleted"
+milestone_delete=$("$GLAB" milestone delete "$MILESTONE_ID" \
+    --project "admin/$PROJECT_PATH" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab milestone delete"
 else
-    fail "project milestone delete: $milestone_delete"
+    fail "glab milestone delete: $milestone_delete"
 fi
+
+milestones_after_delete=$("$GLAB" milestone list \
+    --project "admin/$PROJECT_PATH" \
+    --state all \
+    --output json 2>&1)
+assert_json_field "glab milestone delete visible" "$milestones_after_delete" \
+    "map(.id) | index($MILESTONE_ID) | not"
 
 section "Branches API via glab"
 

@@ -16,6 +16,8 @@ class MilestoneCreate(BaseModel):
     state: str = "open"
     description: Optional[str] = None
     due_on: Optional[str] = None
+    due_date: Optional[str] = None
+    start_date: Optional[str] = None
 
 
 class MilestoneUpdate(BaseModel):
@@ -23,8 +25,11 @@ class MilestoneUpdate(BaseModel):
 
     title: Optional[str] = None
     state: Optional[str] = None
+    state_event: Optional[str] = None
     description: Optional[str] = None
     due_on: Optional[str] = None
+    due_date: Optional[str] = None
+    start_date: Optional[str] = None
 
 
 class MilestoneResponse(BaseModel):

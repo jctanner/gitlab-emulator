@@ -28,7 +28,8 @@ async def test_gitlab_project_milestones_crud_and_pagination(
         json={
             "title": "v1.0",
             "description": "First GitLab milestone",
-            "due_on": "2026-07-01",
+            "due_date": "2026-07-01",
+            "start_date": "2026-06-01",
         },
         headers=auth_headers(test_token),
     )
@@ -69,8 +70,8 @@ async def test_gitlab_project_milestones_crud_and_pagination(
         f"{API}/projects/{project_id}/milestones/{first_data['id']}",
         json={
             "title": "v1.0 closed",
-            "state": "closed",
-            "due_on": "2026-07-15",
+            "state_event": "close",
+            "due_date": "2026-07-15",
         },
         headers=auth_headers(test_token),
     )
