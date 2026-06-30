@@ -584,7 +584,7 @@ if [ -n "$DEPLOY_KEY_ID" ] && [ "$DEPLOY_KEY_ID" != "null" ]; then
         fail "glab deploy-key delete: $deploy_key_delete"
     fi
 
-    deploy_keys_after_delete=$("$GLAB" deploy-key list \
+deploy_keys_after_delete=$("$GLAB" deploy-key list \
         --repo "admin/$PROJECT_PATH" \
         --output json \
         --per-page 100 2>&1)
@@ -592,6 +592,50 @@ if [ -n "$DEPLOY_KEY_ID" ] && [ "$DEPLOY_KEY_ID" != "null" ]; then
         "map(.id) | index($DEPLOY_KEY_ID | tonumber) | not"
 else
     fail "glab deploy-key list did not return the created key: $deploy_key_list"
+fi
+
+section "SSH Key CLI via glab"
+
+SSH_KEY_FILE="$TEST_HOME/ssh-key.pub"
+cat > "$SSH_KEY_FILE" <<'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeUserSshKeyForGitLabEmulatorSmokeOnly ssh-key-smoke@example.com
+EOF
+
+ssh_key_add=$("$GLAB" ssh-key add "$SSH_KEY_FILE" \
+    --title "glab ssh key smoke" \
+    --usage-type auth 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab ssh-key add"
+else
+    fail "glab ssh-key add: $ssh_key_add"
+fi
+
+ssh_key_list=$("$GLAB" ssh-key list \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab ssh-key list json" "$ssh_key_list" \
+    'map(.title) | index("glab ssh key smoke")'
+
+SSH_KEY_ID=$(echo "$ssh_key_list" | jq -r '.[] | select(.title == "glab ssh key smoke") | .id' | head -1)
+if [ -n "$SSH_KEY_ID" ] && [ "$SSH_KEY_ID" != "null" ]; then
+    ssh_key_get=$("$GLAB" ssh-key get "$SSH_KEY_ID" --output json 2>&1)
+    assert_json_field "glab ssh-key get json" "$ssh_key_get" \
+        '.title == "glab ssh key smoke" and (.key | contains("ssh-key-smoke@example.com"))'
+
+    ssh_key_delete=$(printf 'y\n' | "$GLAB" ssh-key delete "$SSH_KEY_ID" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab ssh-key delete"
+    else
+        fail "glab ssh-key delete: $ssh_key_delete"
+    fi
+
+    ssh_keys_after_delete=$("$GLAB" ssh-key list \
+        --output json \
+        --per-page 100 2>&1)
+    assert_json_field "glab ssh-key delete visible" "$ssh_keys_after_delete" \
+        "map(.id) | index($SSH_KEY_ID | tonumber) | not"
+else
+    fail "glab ssh-key list did not return the created key: $ssh_key_list"
 fi
 
 section "Issue CLI via glab"

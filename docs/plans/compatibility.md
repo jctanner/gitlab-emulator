@@ -47,7 +47,7 @@ Vagrant architecture.
 
 Replace or add GitLab-shaped resources for:
 
-- users
+- users: MVP authenticated SSH key list/create/get/delete implemented
 - groups/namespaces: MVP group create/list/get/list-projects, namespace
   list/get, and nested namespace paths implemented
 - projects: MVP create/list/get/delete/list-branches/list-tags/
@@ -180,14 +180,14 @@ Validated:
 - nested group/subgroup namespace behavior used by the current client workflow
 
 Latest evidence: `make vm-test` passed from the client VM on June 30, 2026
-with 156 `glab` smoke checks covering auth, users, projects, nested groups,
+with 161 `glab` smoke checks covering auth, users, projects, nested groups,
 repo create/view/list/search/update/contributors/archive/clone/fork/delete/
 member add/remove, Git Smart HTTP push/fetch, repository files, direct CI
-pipeline/job/trace APIs, issues, high-level deploy-key workflows, high-level
-label CLI workflows, high-level milestone CLI workflows, branches, protected
-branches, tags, releases, project CI/CD variable CLI workflows, commit APIs,
-repository compare, commit statuses, merge request APIs, merge request CLI
-workflows, pipeline APIs, high-level
+pipeline/job/trace APIs, issues, high-level deploy-key and ssh-key workflows,
+high-level label CLI workflows, high-level milestone CLI workflows, branches,
+protected branches, tags, releases, project CI/CD variable CLI workflows,
+commit APIs, repository compare, commit statuses, merge request APIs, merge
+request CLI workflows, pipeline APIs, high-level
 schedule create/list/update/run/delete workflows, CI trace/artifacts, manual
 jobs, cancel, and retry.
 

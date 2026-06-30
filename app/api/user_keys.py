@@ -40,6 +40,10 @@ def _ssh_key_json(key: SSHKey, base_url: str) -> dict:
         "title": key.title,
         "verified": key.verified,
         "created_at": _fmt_dt(key.created_at),
+        "expires_at": None,
+        "fingerprint": key.fingerprint or "",
+        "fingerprint_sha256": "",
+        "usage_type": "auth_and_signing",
         "read_only": key.read_only,
     }
 
