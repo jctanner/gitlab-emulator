@@ -63,6 +63,7 @@ async def test_gitlab_project_labels_crud_and_pagination(client, test_user, test
     assert first.json()["name"] == "bug"
     assert first.json()["color"] == "#d73a4a"
     assert first.json()["is_project_label"] is True
+    first_label_id = first.json()["id"]
 
     duplicate = await client.post(
         f"{API}/projects/{project_id}/labels",
@@ -105,8 +106,17 @@ async def test_gitlab_project_labels_crud_and_pagination(client, test_user, test
     assert fetched.status_code == 200
     assert fetched.json()["open_issues_count"] == 1
 
+    fetched_by_id = await client.get(
+        f"{API}/projects/{project_id}/labels/{first_label_id}",
+        params={"with_counts": "true"},
+        headers=auth_headers(test_token),
+    )
+    assert fetched_by_id.status_code == 200
+    assert fetched_by_id.json()["name"] == "bug"
+    assert fetched_by_id.json()["open_issues_count"] == 1
+
     updated = await client.put(
-        f"{API}/projects/{project_id}/labels/bug",
+        f"{API}/projects/{project_id}/labels/{first_label_id}",
         json={"new_name": "defect", "color": "#ff0000", "description": "Defect"},
         headers=auth_headers(test_token),
     )
@@ -115,14 +125,22 @@ async def test_gitlab_project_labels_crud_and_pagination(client, test_user, test
     assert updated.json()["color"] == "#ff0000"
     assert updated.json()["description"] == "Defect"
 
+    updated_by_name_field = await client.put(
+        f"{API}/projects/{project_id}/labels/{first_label_id}",
+        json={"name": "defect-renamed"},
+        headers=auth_headers(test_token),
+    )
+    assert updated_by_name_field.status_code == 200
+    assert updated_by_name_field.json()["name"] == "defect-renamed"
+
     deleted = await client.delete(
-        f"{API}/projects/{project_id}/labels/defect",
+        f"{API}/projects/{project_id}/labels/{first_label_id}",
         headers=auth_headers(test_token),
     )
     assert deleted.status_code == 204
 
     missing = await client.get(
-        f"{API}/projects/{project_id}/labels/defect",
+        f"{API}/projects/{project_id}/labels/defect-renamed",
         headers=auth_headers(test_token),
     )
     assert missing.status_code == 404

@@ -525,43 +525,75 @@ fi
 
 section "Labels and Milestones API via glab"
 
-label_create=$(curl -sk -X POST \
-    -H "PRIVATE-TOKEN: $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"name":"glab-label","color":"#0052cc","description":"glab label smoke"}' \
-    "$API/projects/$PROJECT_ID/labels")
-assert_json_field \
-    "project label created" \
-    "$label_create" \
-    '.name == "glab-label" and .color == "#0052cc"'
+label_create=$("$GLAB" label create \
+    --repo "admin/$PROJECT_PATH" \
+    --name "glab-label" \
+    --color "#0052cc" \
+    --description "glab label smoke" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab label create"
+else
+    fail "glab label create: $label_create"
+fi
 
-labels_json=$(glab_api "projects/$PROJECT_ID/labels?search=glab&with_counts=true")
-assert_json_field "glab api project labels list" "$labels_json" 'map(.name) | index("glab-label")'
+labels_json=$("$GLAB" label list \
+    --repo "admin/$PROJECT_PATH" \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab label list json" "$labels_json" \
+    'map(.name) | index("glab-label")'
 
 label_json=$(glab_api "projects/$PROJECT_REF/labels/glab-label?with_counts=true")
 assert_json_field \
     "glab api project label get by path" \
     "$label_json" \
     '.name == "glab-label" and .is_project_label == true and .open_issues_count >= 0'
+LABEL_ID=$(echo "$label_json" | jq -r '.id // empty' 2>/dev/null)
 
-label_update=$(curl -sk -X PUT \
-    -H "PRIVATE-TOKEN: $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"new_name":"glab-label-updated","color":"#ff0000","description":"updated glab label smoke"}' \
-    "$API/projects/$PROJECT_ID/labels/glab-label")
+if [ -n "$LABEL_ID" ]; then
+    label_get=$("$GLAB" label get "$LABEL_ID" \
+        --repo "admin/$PROJECT_PATH" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab label get"
+    else
+        fail "glab label get: $label_get"
+    fi
+else
+    fail "glab api project label get did not return an id: $label_json"
+fi
+
+label_update=$("$GLAB" label edit \
+    --repo "admin/$PROJECT_PATH" \
+    --label-id "$LABEL_ID" \
+    --new-name "glab-label-updated" \
+    --color "#ff0000" \
+    --description "updated glab label smoke" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab label edit"
+else
+    fail "glab label edit: $label_update"
+fi
+
+label_updated=$(glab_api "projects/$PROJECT_REF/labels/glab-label-updated?with_counts=true")
 assert_json_field \
-    "project label updated" \
-    "$label_update" \
+    "glab label edit visible" \
+    "$label_updated" \
     '.name == "glab-label-updated" and .color == "#ff0000"'
 
-label_delete=$(curl -sk -X DELETE \
-    -H "PRIVATE-TOKEN: $TOKEN" \
-    "$API/projects/$PROJECT_ID/labels/glab-label-updated")
-if [ -z "$label_delete" ]; then
-    pass "project label deleted"
+label_delete=$(printf 'y\n' | "$GLAB" label delete "glab-label-updated" \
+    --repo "admin/$PROJECT_PATH" 2>&1)
+if [ $? -eq 0 ]; then
+    pass "glab label delete"
 else
-    fail "project label delete: $label_delete"
+    fail "glab label delete: $label_delete"
 fi
+
+labels_after_delete=$("$GLAB" label list \
+    --repo "admin/$PROJECT_PATH" \
+    --output json \
+    --per-page 100 2>&1)
+assert_json_field "glab label delete visible" "$labels_after_delete" \
+    'map(.name) | index("glab-label-updated") | not'
 
 milestone_create=$(curl -sk -X POST \
     -H "PRIVATE-TOKEN: $TOKEN" \

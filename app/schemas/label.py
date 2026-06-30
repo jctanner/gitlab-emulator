@@ -24,6 +24,7 @@ class LabelUpdate(BaseModel):
     """Schema for updating a label."""
 
     new_name: Optional[str] = None
+    name: Optional[str] = None
     color: Optional[str] = None
     description: Optional[str] = None
 

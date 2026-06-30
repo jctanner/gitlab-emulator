@@ -74,6 +74,23 @@ async def _get_project_label_or_404(project, name: str, db: DbSession) -> Label:
     return label
 
 
+async def _get_project_label_by_identifier_or_404(
+    project, identifier: str, db: DbSession
+) -> Label:
+    """Resolve GitLab label routes that accept a label name or numeric label id."""
+    if identifier.isdigit():
+        result = await db.execute(
+            select(Label).where(
+                Label.repo_id == project.id,
+                Label.id == int(identifier),
+            )
+        )
+        label = result.scalar_one_or_none()
+        if label is not None:
+            return label
+    return await _get_project_label_or_404(project, identifier, db)
+
+
 @router.get("/projects/{project_ref:path}/labels")
 async def list_project_labels(
     project_ref: str,
@@ -153,9 +170,9 @@ async def get_project_label(
     current_user: CurrentUser,
     with_counts: bool = Query(False),
 ):
-    """Get a GitLab-shaped project label by name."""
+    """Get a GitLab-shaped project label by name or numeric label id."""
     project = await _get_project_or_404(project_ref, db, current_user)
-    label = await _get_project_label_or_404(project, name, db)
+    label = await _get_project_label_by_identifier_or_404(project, name, db)
     open_count = closed_count = 0
     if with_counts:
         open_count, closed_count = await _label_issue_counts(db, label.id)
@@ -170,13 +187,14 @@ async def update_project_label(
     user: AuthUser,
     db: DbSession,
 ):
-    """Update a GitLab-shaped project label."""
+    """Update a GitLab-shaped project label by name or numeric label id."""
     project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, MAINTAINER)
-    label = await _get_project_label_or_404(project, name, db)
+    label = await _get_project_label_by_identifier_or_404(project, name, db)
 
-    if body.new_name is not None:
-        label.name = body.new_name
+    new_name = body.new_name if body.new_name is not None else body.name
+    if new_name is not None:
+        label.name = new_name
     if body.color is not None:
         label.color = _label_color(body.color)
     if body.description is not None:
@@ -194,10 +212,10 @@ async def delete_project_label(
     user: AuthUser,
     db: DbSession,
 ):
-    """Delete a GitLab-shaped project label."""
+    """Delete a GitLab-shaped project label by name or numeric label id."""
     project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, MAINTAINER)
-    label = await _get_project_label_or_404(project, name, db)
+    label = await _get_project_label_by_identifier_or_404(project, name, db)
     await db.delete(label)
     await db.commit()
 
@@ -291,8 +309,9 @@ async def update_label(
     if label is None:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    if body.new_name is not None:
-        label.name = body.new_name
+    new_name = body.new_name if body.new_name is not None else body.name
+    if new_name is not None:
+        label.name = new_name
     if body.color is not None:
         label.color = body.color.lstrip("#")
     if body.description is not None:
