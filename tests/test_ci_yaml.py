@@ -1551,6 +1551,7 @@ variable_miss:
         - "$MISSING_GLOB"
 """,
         variables={
+            "CI_PIPELINE_SOURCE": "push",
             "SRC_GLOB": "src/*.py",
             "DOCS_GLOB": "docs/**",
             "MISSING_GLOB": "missing/**",
@@ -1578,6 +1579,58 @@ changes_compare_to:
     )
 
     assert [job.name for job in jobs] == ["changes_compare_to"]
+
+
+def test_parse_gitlab_ci_rules_changes_matches_sources_without_push_diff():
+    content = """
+changes_rule:
+  script: echo changes
+  rules:
+    - changes:
+        - docs/**
+
+changes_compare_to:
+  script: echo compare
+  rules:
+    - changes:
+        compare_to: refs/heads/main
+        paths:
+          - src/**
+
+legacy_only_changes:
+  script: echo legacy only
+  only:
+    changes:
+      - docs/**
+
+legacy_except_changes:
+  script: echo legacy except
+  except:
+    changes:
+      - docs/**
+"""
+    api_jobs = parse_gitlab_ci(
+        content,
+        variables={"CI_PIPELINE_SOURCE": "api"},
+        changed_paths={".gitlab-ci.yml"},
+        changed_path_sets={"refs/heads/main": {"src/app.py"}},
+    )
+    assert [job.name for job in api_jobs] == [
+        "changes_compare_to",
+        "changes_rule",
+        "legacy_only_changes",
+    ]
+
+    push_jobs = parse_gitlab_ci(
+        content,
+        variables={"CI_PIPELINE_SOURCE": "push"},
+        changed_paths=set(),
+        changed_path_sets={"refs/heads/main": {"src/app.py"}},
+    )
+    assert [job.name for job in push_jobs] == [
+        "changes_compare_to",
+        "legacy_except_changes",
+    ]
 
 
 def test_parse_gitlab_ci_supports_rules_exists_project_ref_options():

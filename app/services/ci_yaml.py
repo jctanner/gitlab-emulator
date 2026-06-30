@@ -100,6 +100,7 @@ SUPPORTED_HOOKS = {
     "pre_get_sources_script",
     "post_get_sources_script",
 }
+PUSH_DIFF_SOURCES = {"push", "merge_request_event", "external_pull_request_event"}
 DURATION_SECONDS_BY_UNIT = {
     "second": 1,
     "seconds": 1,
@@ -1343,6 +1344,7 @@ def _rule_paths_match(
     rule_name: str,
     *,
     current_ref: str,
+    source: str = "api",
     existing_path_sets: dict[tuple[str, str], set[str]] | None = None,
     changed_path_sets: dict[str, set[str]] | None = None,
 ) -> bool:
@@ -1356,12 +1358,17 @@ def _rule_paths_match(
             )
             ref_name = _expand_ci_variables(str(ref), variables) if ref else current_ref
             paths = path_sets.get((project_name, ref_name), set())
+    changes_without_push_diff = False
     if rule_name == "changes" and isinstance(value, dict) and value.get("compare_to"):
         compare_ref = _expand_ci_variables(str(value["compare_to"]), variables)
         paths = (changed_path_sets or {}).get(compare_ref, paths)
+    elif rule_name == "changes" and source not in PUSH_DIFF_SOURCES:
+        changes_without_push_diff = True
     patterns = _rule_path_patterns(value, variables, rule_name)
     if not patterns:
         return False
+    if changes_without_push_diff:
+        return True
     return any(_path_matches(pattern, paths) for pattern in patterns)
 
 
@@ -1412,6 +1419,7 @@ def _legacy_filter_matches(
             variables,
             "changes",
             current_ref=ref,
+            source=source,
         ):
             return False
 
@@ -1460,6 +1468,7 @@ def _job_rule_decision(
                 variables,
                 "changes",
                 current_ref=ref,
+                source=source,
                 changed_path_sets=changed_path_sets,
             ):
                 continue

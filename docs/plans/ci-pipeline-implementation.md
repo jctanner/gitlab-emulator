@@ -480,6 +480,7 @@ Implemented:
 - apply common `rules`, `only`, and `except` filters during pipeline creation,
   including MVP `if` with unary negation, `exists`, `changes`, `never`,
   `manual`, `when: always`, `when: on_failure`, boolean `allow_failure`,
+  no-push-diff `rules:changes` behavior for non-push sources,
   rule-level `needs`, rule-level `interruptible`, clear delayed-job and unknown-`when` rejection,
   clear unsupported rule-key rejection, branch/tag, and pipeline-source legacy
   filter behavior

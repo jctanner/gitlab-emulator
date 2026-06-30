@@ -8486,6 +8486,55 @@ never_job:
     assert by_name["rules_if"]["status"] == "pending"
 
 
+async def test_api_pipeline_rules_changes_matches_without_push_diff(client, test_token):
+    project = await _create_project(client, test_token)
+    ci_yaml = """
+rules_changes:
+  script:
+    - echo changes
+  rules:
+    - changes:
+        - docs/**
+
+rules_changes_compare_to:
+  script:
+    - echo compare
+  rules:
+    - changes:
+        compare_to: refs/heads/main
+        paths:
+          - docs/**
+
+always_job:
+  script:
+    - echo always
+"""
+    write_ci = await client.put(
+        f"{API}/repos/testuser/ci-repo/contents/.gitlab-ci.yml",
+        headers=auth_headers(test_token),
+        json={
+            "message": "add api rules changes ci",
+            "content": base64.b64encode(ci_yaml.encode()).decode(),
+            "branch": "main",
+        },
+    )
+    assert write_ci.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+    pipeline = pipeline_resp.json()
+
+    jobs = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"
+    )
+    assert jobs.status_code == 200
+    assert [job["name"] for job in jobs.json()] == ["always_job", "rules_changes"]
+
+
 async def test_manual_job_play_requeues_job_for_runner(client, test_token):
     project = await _create_project(client, test_token)
     ci_yaml = """

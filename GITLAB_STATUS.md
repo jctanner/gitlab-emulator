@@ -179,6 +179,9 @@ harness architecture.
   jobs, traces, and artifact rows.
 - Dotenv report artifacts from successful upstream dependency jobs are parsed
   and injected into downstream runner job variables.
+- `rules:changes` and legacy `only/except:changes` now follow GitLab's
+  no-push-diff behavior for non-push pipeline sources, while
+  `rules:changes:compare_to` continues to use the requested compare ref.
 - Pipeline API payloads expose aggregate coverage from completed jobs that
   matched their configured coverage regex.
 - Project environment list/detail/stop APIs derive GitLab-shaped environments
