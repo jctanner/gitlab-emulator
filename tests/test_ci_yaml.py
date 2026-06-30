@@ -1868,6 +1868,12 @@ default:
   retry: 1
   timeout: 1 hour
   interruptible: true
+  hooks:
+    pre_get_sources_script:
+      - echo default pre $CI_COMMIT_REF_NAME
+  id_tokens:
+    DEFAULT_ID_TOKEN:
+      aud: https://default.example.test
 
 defaulted:
   script:
@@ -1879,6 +1885,12 @@ override:
     when: script_failure
   timeout: 30 minutes
   interruptible: false
+  hooks:
+    post_get_sources_script:
+      - echo override post
+  id_tokens:
+    OVERRIDE_ID_TOKEN:
+      aud: https://override.example.test
   script:
     - echo override
 """
@@ -1888,6 +1900,15 @@ override:
     assert by_name["defaulted"].retry == {"max": 1, "when": [], "exit_codes": []}
     assert by_name["defaulted"].timeout_seconds == 3600
     assert by_name["defaulted"].interruptible is True
+    assert by_name["defaulted"].hooks == [
+        {
+            "name": "pre_get_sources_script",
+            "script": ["echo default pre main"],
+        }
+    ]
+    assert by_name["defaulted"].id_tokens == {
+        "DEFAULT_ID_TOKEN": {"aud": ["https://default.example.test"]}
+    }
     assert by_name["override"].retry == {
         "max": 2,
         "when": ["script_failure"],
@@ -1895,6 +1916,12 @@ override:
     }
     assert by_name["override"].timeout_seconds == 1800
     assert by_name["override"].interruptible is False
+    assert by_name["override"].hooks == [
+        {"name": "post_get_sources_script", "script": ["echo override post"]}
+    ]
+    assert by_name["override"].id_tokens == {
+        "OVERRIDE_ID_TOKEN": {"aud": ["https://override.example.test"]}
+    }
 
 
 def test_parse_gitlab_ci_rejects_unsupported_retry_and_timeout_values():

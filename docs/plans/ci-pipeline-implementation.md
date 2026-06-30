@@ -123,7 +123,7 @@ Already working:
   per-job `parallel:matrix` variables are expanded into runner-facing image,
   service, tag, artifact, environment, hook, ID token, and cache metadata;
   `default:` inheritance
-  applies to `retry`, `timeout`, and `interruptible`; job hooks for
+  applies to `retry`, `timeout`, `interruptible`, hooks, and ID tokens; job hooks for
   `pre_get_sources_script` and `post_get_sources_script` are parsed,
   variable-expanded, persisted, and exposed in official-runner `hooks`
   payloads; YAML `id_tokens` are parsed and emitted as masked JWT-style runner

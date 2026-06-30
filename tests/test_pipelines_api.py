@@ -2614,6 +2614,12 @@ default:
   retry: 1
   timeout: 1 hour
   interruptible: true
+  hooks:
+    pre_get_sources_script:
+      - echo default pre $CI_COMMIT_REF_NAME
+  id_tokens:
+    DEFAULT_ID_TOKEN:
+      aud: https://default.example.test
 
 defaulted:
   image: alpine:3.20
@@ -2658,6 +2664,17 @@ defaulted:
     payload = request.json()
     assert payload["runner_info"]["timeout"] == 3600
     assert payload["steps"][0]["timeout"] == 3600
+    assert payload["hooks"] == [
+        {
+            "name": "pre_get_sources_script",
+            "script": ["echo default pre main"],
+        }
+    ]
+    variables = {item["key"]: item for item in payload["variables"]}
+    default_token = variables["DEFAULT_ID_TOKEN"]
+    assert default_token["masked"] is True
+    assert default_token["public"] is False
+    assert default_token["value"].count(".") == 2
 
     update = await client.put(
         f"{API}/jobs/{payload['id']}",

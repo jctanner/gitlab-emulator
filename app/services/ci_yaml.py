@@ -35,6 +35,8 @@ DEFAULT_INHERITABLE_KEYS = {
     "artifacts",
     "before_script",
     "cache",
+    "hooks",
+    "id_tokens",
     "image",
     "interruptible",
     "retry",

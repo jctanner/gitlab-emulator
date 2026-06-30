@@ -189,10 +189,12 @@ harness architecture.
   metadata.
 - YAML job hooks for `pre_get_sources_script` and `post_get_sources_script`
   are parsed, variable-expanded, persisted, and exposed in official-runner
-  `hooks` payloads.
+  `hooks` payloads. Job hooks also inherit from `default:` when a job does not
+  define its own `hooks`.
 - YAML `id_tokens` entries are parsed and emitted to runner payloads as masked
   JWT-style CI variables with emulator issuer, audience, project, pipeline, job,
-  and ref claims.
+  and ref claims. ID token definitions also inherit from `default:` when a job
+  does not define its own `id_tokens`.
 - Cache key parsing supports list-form keys, common `key: { prefix, files }`,
   and `files_commits` forms. Pipeline creation derives `files` keys from the
   referenced files' repository blob state and `files_commits` keys from the
