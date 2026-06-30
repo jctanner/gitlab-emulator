@@ -811,6 +811,29 @@ async def _validate_tag_name(project: Project, tag_name: str) -> None:
         raise HTTPException(status_code=400, detail="Invalid tag name") from exc
 
 
+def _parse_contributor_line(line: str) -> dict | None:
+    count_text, _, identity = line.strip().partition("\t")
+    if not count_text or not identity:
+        return None
+    try:
+        commits = int(count_text.strip())
+    except ValueError:
+        return None
+    name = identity.strip()
+    email = ""
+    if name.endswith(">") and "<" in name:
+        name_part, email_part = name.rsplit("<", 1)
+        name = name_part.strip()
+        email = email_part[:-1].strip()
+    return {
+        "name": name,
+        "email": email,
+        "commits": commits,
+        "additions": 0,
+        "deletions": 0,
+    }
+
+
 @router.post("/projects", status_code=201)
 async def create_project(body: dict, user: AuthUser, db: DbSession):
     """Create a GitLab-shaped project backed by a bare git repository."""
@@ -865,6 +888,47 @@ async def create_project(body: dict, user: AuthUser, db: DbSession):
             await db.refresh(project)
 
     return await _project_json(project, settings.BASE_URL, db)
+
+
+@router.get("/projects/{project_ref:path}/repository/contributors")
+async def list_project_contributors(
+    project_ref: str,
+    request: Request,
+    db: DbSession,
+    current_user: CurrentUser,
+    order_by: str = Query("commits"),
+    sort: str = Query("desc"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+):
+    """List GitLab-shaped repository contributors for a project."""
+    project = await _get_project_or_404(project_ref, db, current_user)
+    if not project.disk_path or not os.path.isdir(project.disk_path):
+        raise HTTPException(status_code=404, detail="404 Project Not Found")
+
+    lines = await _git_lines(project.disk_path, "shortlog", "-sne", "--all")
+    contributors = [
+        contributor
+        for line in lines
+        if (contributor := _parse_contributor_line(line)) is not None
+    ]
+    reverse = sort != "asc"
+    if order_by == "name":
+        contributors.sort(key=lambda item: item["name"].lower(), reverse=reverse)
+    elif order_by == "email":
+        contributors.sort(key=lambda item: item["email"].lower(), reverse=reverse)
+    else:
+        contributors.sort(key=lambda item: item["commits"], reverse=reverse)
+
+    total = len(contributors)
+    start = (page - 1) * per_page
+    return paginated_json(
+        contributors[start : start + per_page],
+        request,
+        page,
+        per_page,
+        total,
+    )
 
 
 @router.get("/projects/{project_ref:path}/repository/branches")

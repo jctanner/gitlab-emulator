@@ -336,6 +336,12 @@ if [ -n "$CLI_PROJECT_ID" ]; then
         "$API/projects/$CLI_PROJECT_ID/repository/files/README.md")
     assert_json_field "repo cli seed README" "$cli_readme" '.file_path == "README.md"'
 
+    repo_contributors=$("$GLAB" repo contributors \
+        --repo "admin/$CLI_PROJECT_PATH" \
+        --output json 2>&1)
+    assert_json_field "glab repo contributors json" "$repo_contributors" \
+        'map(.commits) | add >= 1'
+
     repo_clone=$(cd "$REPO_CLI_WORK" && "$GLAB" repo clone "admin/$CLI_PROJECT_PATH" cli-clone 2>&1)
     if [ -f "$REPO_CLI_WORK/cli-clone/README.md" ]; then
         pass "glab repo clone"
