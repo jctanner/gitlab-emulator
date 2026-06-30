@@ -68,9 +68,10 @@ Already working:
   `interruptible` override job-level metadata. Current
   `only`/`except` support covers scalar/list branch, tag, and pipeline-source
   refs including common source aliases, glob-style ref patterns, plus
-  mapping-form `refs`, `variables`, and `changes`. Rules can evaluate common
-  predefined ref variables including `CI_DEFAULT_BRANCH`, and runner payloads
-  include the same default branch value.
+  mapping-form `refs`, `variables`, `changes`, and `kubernetes: active` via
+  `CI_KUBERNETES_ACTIVE`. Rules can evaluate common predefined ref variables
+  including `CI_DEFAULT_BRANCH`, and runner payloads include the same default
+  branch value.
 - runner tag matching is implemented: jobs can carry `tags`, tagged jobs require
   matching runner tags, and untagged jobs honor the runner's `run_untagged`
   setting

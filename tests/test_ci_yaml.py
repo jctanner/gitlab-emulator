@@ -1089,13 +1089,61 @@ except_miss:
       - release
     variables:
       - '$SKIP_DEPLOY'
+
+kubernetes_active:
+  script: echo kubernetes active
+  only:
+    kubernetes: active
+
+not_kubernetes_active:
+  script: echo not kubernetes active
+  except:
+    kubernetes: active
 """,
         ref="main",
-        variables={"RUN_DEPLOY": "1", "SKIP_DEPLOY": "1"},
+        variables={
+            "RUN_DEPLOY": "1",
+            "SKIP_DEPLOY": "1",
+            "CI_KUBERNETES_ACTIVE": "true",
+        },
         changed_paths={"src/app.py"},
     )
 
-    assert [job.name for job in jobs] == ["except_miss", "only_mapping"]
+    assert [job.name for job in jobs] == [
+        "except_miss",
+        "kubernetes_active",
+        "only_mapping",
+    ]
+
+    inactive_jobs = parse_gitlab_ci(
+        """
+kubernetes_active:
+  script: echo kubernetes active
+  only:
+    kubernetes: active
+
+not_kubernetes_active:
+  script: echo not kubernetes active
+  except:
+    kubernetes: active
+""",
+        variables={"CI_KUBERNETES_ACTIVE": "false"},
+    )
+    assert [job.name for job in inactive_jobs] == ["not_kubernetes_active"]
+
+    try:
+        parse_gitlab_ci(
+            """
+bad_kubernetes:
+  script: echo bad
+  only:
+    kubernetes: inactive
+"""
+        )
+    except ValueError as exc:
+        assert "kubernetes value is not supported: inactive" in str(exc)
+    else:
+        raise AssertionError("expected unsupported kubernetes value to fail")
 
 
 def test_parse_gitlab_ci_applies_richer_rules_if_expressions():

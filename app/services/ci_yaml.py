@@ -1269,6 +1269,12 @@ def _variable_filters_match(value: Any, ref: str, variables: dict[str, str]) -> 
     return any(_if_matches(expression, ref, variables) for expression in expressions)
 
 
+def _legacy_kubernetes_matches(value: Any, variables: dict[str, str]) -> bool:
+    if value != "active":
+        raise ValueError(f"kubernetes value is not supported: {value}")
+    return _bool_value(variables.get("CI_KUBERNETES_ACTIVE", "false"), variables)
+
+
 def _legacy_filter_matches(
     value: Any,
     ref: str,
@@ -1304,6 +1310,11 @@ def _legacy_filter_matches(
             "changes",
             current_ref=ref,
         ):
+            return False
+
+    if "kubernetes" in value:
+        has_condition = True
+        if not _legacy_kubernetes_matches(value.get("kubernetes"), variables):
             return False
 
     return has_condition

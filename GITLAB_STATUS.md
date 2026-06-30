@@ -72,8 +72,9 @@ harness architecture.
   matching rule-level `needs` and `interruptible` overrides, and matched
   workflow-level variables. Unsupported delayed jobs are rejected
   clearly instead of running
-  immediately. Legacy `only`/`except` filters are
-  branch/tag/source-aware, and tag-ref pipelines expose `CI_COMMIT_TAG` while
+  immediately. Legacy `only`/`except` filters are branch/tag/source-aware and
+  support mapping-form `kubernetes: active` through `CI_KUBERNETES_ACTIVE`, and
+  tag-ref pipelines expose `CI_COMMIT_TAG` while
   branch-ref pipelines expose `CI_COMMIT_BRANCH`.
 - Manual jobs can be played through the GitLab job play endpoint. Playing a
   manual job changes it to `pending` and requeues it through the persisted
