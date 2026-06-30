@@ -312,6 +312,18 @@ if [ -n "$CLI_PROJECT_ID" ]; then
     repo_search=$("$GLAB" repo search --search "$CLI_PROJECT_PATH" --output json --per-page 100 2>&1)
     assert_json_field "glab repo search json" "$repo_search" "map(.path_with_namespace) | index(\"admin/$CLI_PROJECT_PATH\")"
 
+    repo_update=$("$GLAB" repo update "admin/$CLI_PROJECT_PATH" \
+        --description "repo cli smoke updated" 2>&1)
+    if [ $? -eq 0 ]; then
+        pass "glab repo update"
+    else
+        fail "glab repo update: $repo_update"
+    fi
+
+    repo_updated=$("$GLAB" repo view "admin/$CLI_PROJECT_PATH" --output json 2>&1)
+    assert_json_field "glab repo update visible" "$repo_updated" \
+        '.description == "repo cli smoke updated"'
+
     cli_readme_payload=$(jq -n \
         --arg branch "main" \
         --arg message "seed cli repo" \

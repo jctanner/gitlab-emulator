@@ -1659,6 +1659,30 @@ async def delete_project(project_ref: str, user: AuthUser, db: DbSession):
     return {"message": "202 Accepted"}
 
 
+@router.put("/projects/{project_ref:path}")
+async def update_project(project_ref: str, body: dict, user: AuthUser, db: DbSession):
+    """Update GitLab project metadata."""
+    project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, MAINTAINER)
+
+    if "description" in body:
+        project.description = body.get("description")
+    default_branch = body.get("default_branch", body.get("defaultBranch"))
+    if default_branch:
+        project.default_branch = str(default_branch)
+    visibility = body.get("visibility")
+    if visibility in {"private", "internal", "public"}:
+        project.visibility = visibility
+        project.private = visibility == "private"
+    archived = body.get("archived", body.get("archive"))
+    if archived is not None:
+        project.archived = bool(archived)
+
+    await db.commit()
+    await db.refresh(project)
+    return await _project_json(project, settings.BASE_URL, db)
+
+
 @router.get("/projects/{project_ref:path}")
 async def get_project(project_ref: str, db: DbSession, current_user: CurrentUser):
     """Get a GitLab project by numeric ID or URL-encoded path_with_namespace."""

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import secrets
+from urllib.parse import quote
 
 import pytest
 
@@ -266,6 +267,47 @@ async def test_create_project_normalizes_blank_default_branch(
         headers=auth_headers(test_token),
     )
     assert branches.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_project_metadata_by_id_and_path(client, test_user, test_token):
+    """PUT /projects/{id_or_path} updates GitLab project metadata."""
+    project = await client.post(
+        f"{API}/user/repos",
+        json={
+            "name": "project-update",
+            "visibility": "public",
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    updated = await client.put(
+        f"{API}/projects/{project_id}",
+        json={
+            "description": "updated through GitLab API",
+            "default_branch": "main",
+            "visibility": "private",
+            "archived": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["description"] == "updated through GitLab API"
+    assert updated.json()["default_branch"] == "main"
+    assert updated.json()["visibility"] == "private"
+    assert updated.json()["archived"] is True
+
+    encoded = quote("testuser/project-update", safe="")
+    unarchived = await client.put(
+        f"{API}/projects/{encoded}",
+        json={"archive": False, "visibility": "public"},
+        headers=auth_headers(test_token),
+    )
+    assert unarchived.status_code == 200
+    assert unarchived.json()["archived"] is False
+    assert unarchived.json()["visibility"] == "public"
 
 
 @pytest.mark.asyncio
