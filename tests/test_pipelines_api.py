@@ -2420,6 +2420,8 @@ metadata_job:
     assert completed_job_resp.status_code == 200
     completed_job = completed_job_resp.json()
     assert completed_job["coverage"] == "87.5"
+    assert completed_job["detailed_status"]["text"] == "passed"
+    assert completed_job["detailed_status"]["group"] == "success"
     assert isinstance(completed_job["duration"], int)
     assert completed_job["duration"] >= 0
     assert isinstance(completed_job["queued_duration"], int)
@@ -2432,6 +2434,8 @@ metadata_job:
     assert completed_pipeline_resp.status_code == 200
     completed_pipeline = completed_pipeline_resp.json()
     assert completed_pipeline["coverage"] == "87.5"
+    assert completed_pipeline["detailed_status"]["text"] == "passed"
+    assert completed_pipeline["detailed_status"]["group"] == "success"
     assert completed_pipeline["started_at"] is not None
     assert completed_pipeline["finished_at"] is not None
     assert isinstance(completed_pipeline["duration"], int)
@@ -2930,6 +2934,11 @@ compile:
     assert pipeline["sha"] == commit_sha
     assert pipeline["name"] == "api pipeline for main"
     assert pipeline["user"]["username"] == "testuser"
+    assert pipeline["detailed_status"]["group"] == "pending"
+    assert pipeline["detailed_status"]["has_details"] is True
+    assert pipeline["detailed_status"]["details_path"].endswith(
+        f"/testuser/ci-repo/-/pipelines/{pipeline['id']}"
+    )
 
     listed_by_name = await client.get(
         f"{API}/projects/{project['id']}/pipelines",
@@ -2974,6 +2983,10 @@ compile:
     data = jobs.json()
     assert [job["name"] for job in data] == ["compile", "unit"]
     assert [job["stage"] for job in data] == ["build", "test"]
+    assert data[0]["detailed_status"]["group"] == "pending"
+    assert data[0]["detailed_status"]["details_path"].endswith(
+        f"/testuser/ci-repo/-/jobs/{data[0]['id']}"
+    )
 
     request = await client.post(
         f"{API}/jobs/request",

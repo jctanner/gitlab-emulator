@@ -1076,6 +1076,11 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         if user is not None
         else None
     )
+    web_url = (
+        f"{settings.BASE_URL}/{pipeline.project.full_name}/-/pipelines/{pipeline.id}"
+        if pipeline.project
+        else None
+    )
     return {
         "id": pipeline.id,
         "iid": pipeline.iid,
@@ -1087,6 +1092,7 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "ref": pipeline.ref,
         "name": pipeline.name,
         "status": pipeline.status,
+        "detailed_status": _detailed_status(pipeline.status, web_url),
         "source": pipeline.source,
         "coverage": coverage,
         "security_warnings": pipeline.security_warnings or [],
@@ -1096,9 +1102,7 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         "finished_at": _fmt_dt(pipeline.finished_at),
         "duration": _elapsed_seconds(pipeline.started_at, pipeline.finished_at),
         "queued_duration": _elapsed_seconds(pipeline.created_at, pipeline.started_at),
-        "web_url": f"{settings.BASE_URL}/{pipeline.project.full_name}/-/pipelines/{pipeline.id}"
-        if pipeline.project
-        else None,
+        "web_url": web_url,
     }
 
 
@@ -1448,6 +1452,34 @@ def _elapsed_seconds(start: datetime | None, end: datetime | None) -> int | None
     return max(0, int((finished - started).total_seconds()))
 
 
+def _detailed_status(status: str, details_path: str | None = None) -> dict:
+    labels = {
+        "created": ("created", "created", "status_created"),
+        "pending": ("pending", "pending", "status_pending"),
+        "preparing": ("preparing", "preparing", "status_preparing"),
+        "scheduled": ("scheduled", "scheduled", "status_scheduled"),
+        "running": ("running", "running", "status_running"),
+        "success": ("passed", "success", "status_success"),
+        "failed": ("failed", "failed", "status_failed"),
+        "canceled": ("canceled", "canceled", "status_canceled"),
+        "canceling": ("canceling", "canceling", "status_canceling"),
+        "skipped": ("skipped", "skipped", "status_skipped"),
+        "manual": ("manual", "manual", "status_manual"),
+    }
+    text, group, icon = labels.get(status, (status, status, f"status_{status}"))
+    return {
+        "icon": icon,
+        "text": text,
+        "label": text,
+        "group": group,
+        "tooltip": text,
+        "has_details": details_path is not None,
+        "details_path": details_path,
+        "illustration": None,
+        "favicon": None,
+    }
+
+
 def _failed_job_is_allowed(job: PipelineJob) -> bool:
     if job.status != "failed":
         return False
@@ -1690,9 +1722,15 @@ def _job_json(job: PipelineJob) -> dict:
         }
         for artifact in job.artifacts
     ]
+    web_url = (
+        f"{settings.BASE_URL}/{job.project.full_name}/-/jobs/{job.id}"
+        if job.project
+        else None
+    )
     return {
         "id": job.id,
         "status": job.status,
+        "detailed_status": _detailed_status(job.status, web_url),
         "failure_reason": job.failure_reason,
         "stage": job.stage,
         "stage_index": job.stage_index,
@@ -1752,9 +1790,7 @@ def _job_json(job: PipelineJob) -> dict:
         }
         if job.pipeline
         else None,
-        "web_url": f"{settings.BASE_URL}/{job.project.full_name}/-/jobs/{job.id}"
-        if job.project
-        else None,
+        "web_url": web_url,
         "artifacts": artifacts,
         "secret_metadata": job.secret_metadata or [],
         "runner": {"description": job.runner_name} if job.runner_name else None,

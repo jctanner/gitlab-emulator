@@ -145,6 +145,8 @@ and cache APIs for controlled integration testing.
   `updated_after`, and `updated_before` time-window filters; pipeline payloads
   include the creating `user` when available, plus start/finish timestamps and
   derived duration fields
+- project pipeline and job payloads include GitLab-shaped `detailed_status`
+  data alongside the existing raw `status`
 - project pipeline delete APIs remove persisted pipelines and their associated
   jobs, traces, and artifact rows
 - pipeline test report and test report summary APIs aggregate stored JUnit
