@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Run new pipeline - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "pipelines" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb-nav mb-3 f6">
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Pipelines</a>
+    <span class="separator">/</span>
+    <strong>New pipeline</strong>
+</div>
+
+<h1 class="f1 mb-3">Run new pipeline</h1>
+
+{% if error %}
+<div class="flash flash-error mb-3">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines" class="pipeline-run-form">
+    <div class="form-group mb-4">
+        <div class="form-group-header">
+            <label for="ref">Run for branch name or tag</label>
+        </div>
+        <div class="form-group-body">
+            <select id="ref" name="ref" class="form-select">
+                {% for branch in branches %}
+                <option value="{{ branch.name }}" {% if branch.name == default_branch %}selected{% endif %}>{{ branch.name }}</option>
+                {% endfor %}
+                {% for tag in tags %}
+                <option value="{{ tag.name }}">{{ tag.name }}</option>
+                {% endfor %}
+                {% if not branches and not tags %}
+                <option value="{{ default_branch }}">{{ default_branch }}</option>
+                {% endif %}
+            </select>
+        </div>
+    </div>
+
+    <div class="Box mb-4 pipeline-inputs-box">
+        <div class="Box-header">
+            <h2 class="Box-title">Inputs</h2>
+            <p class="color-fg-muted mb-0">Specify the input values to use in this pipeline. Any inputs left unselected will use their default values.</p>
+        </div>
+        <div class="Box-row color-fg-muted text-center">There are no inputs for this configuration.</div>
+    </div>
+
+    <h2 class="f4 mb-2">Variables</h2>
+    <div class="pipeline-variable-row mb-2">
+        <div class="form-group">
+            <div class="form-group-header"><label for="variable_type">Variable type</label></div>
+            <select id="variable_type" name="variable_type" class="form-select">
+                <option value="env_var">Variable</option>
+                <option value="file">File</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <div class="form-group-header"><label for="variable_key">Variable key</label></div>
+            <input id="variable_key" name="variable_key" class="form-control input-block" type="text">
+        </div>
+        <div class="form-group">
+            <div class="form-group-header"><label for="variable_value">Variable value</label></div>
+            <input id="variable_value" name="variable_value" class="form-control input-block" type="text">
+        </div>
+    </div>
+    <p class="color-fg-muted">Variables specified here are expanded and not masked.</p>
+
+    <div class="mt-4">
+        <button class="btn btn-primary" type="submit">New pipeline</button>
+        <a class="btn ml-2" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}CI/CD - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+{% block title %}Pipelines - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
 
 {% block subnav %}
 <div class="color-bg-default border-bottom">
@@ -10,178 +10,118 @@
 </div>
 {% endblock %}
 
-{% block content %}
-<div class="d-flex flex-items-center flex-justify-between flex-wrap mb-3" style="gap:12px;">
-    <div>
-        <h2 class="f2 mb-1">Pipelines</h2>
-        <p class="color-fg-muted mb-0">Create runs from this repository's committed <code>.gitlab-ci.yml</code> and inspect jobs.</p>
-    </div>
-    {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
-    <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines" class="d-flex flex-items-center" style="gap:8px;">
-        <input type="text" name="ref" class="form-control input-sm" value="{{ default_branch }}" aria-label="Ref">
-        <button type="submit" class="btn btn-primary">Run pipeline</button>
-    </form>
+{% macro status_label(status) -%}
+<span class="status-{{ status }}">{{ status|capitalize }}</span>
+{%- endmacro %}
+
+{% macro stage_dots(jobs) -%}
+{% set stages = [] %}
+{% for job in jobs %}
+    {% if job.stage not in stages %}
+        {% set _ = stages.append(job.stage) %}
     {% endif %}
+{% endfor %}
+{% for stage in stages %}
+    {% set stage_jobs = jobs|selectattr("stage", "equalto", stage)|list %}
+    {% set failed = stage_jobs|selectattr("status", "equalto", "failed")|list %}
+    {% set canceled = stage_jobs|selectattr("status", "equalto", "canceled")|list %}
+    {% set running = stage_jobs|selectattr("status", "equalto", "running")|list %}
+    {% set pending = stage_jobs|selectattr("status", "equalto", "pending")|list %}
+    {% if failed %}
+    <span class="pipeline-stage-dot failed" title="{{ stage }}">×</span>
+    {% elif canceled %}
+    <span class="pipeline-stage-dot canceled" title="{{ stage }}">–</span>
+    {% elif running or pending %}
+    <span class="pipeline-stage-dot running" title="{{ stage }}">…</span>
+    {% else %}
+    <span class="pipeline-stage-dot passed" title="{{ stage }}">✓</span>
+    {% endif %}
+    {% if not loop.last %}<span class="pipeline-stage-arrow">→</span>{% endif %}
+{% endfor %}
+{%- endmacro %}
+
+{% block content %}
+<div class="breadcrumb-nav mb-3 f6">
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ owner }}</a>
+    <span class="separator">/</span>
+    <strong>Pipelines</strong>
+</div>
+
+<div class="d-flex flex-items-center flex-justify-between flex-wrap mb-3" style="gap:12px;">
+    <nav class="UnderlineNav" aria-label="Pipeline scope">
+        <div class="UnderlineNav-body">
+            <a class="UnderlineNav-item{% if active_scope == 'all' %} selected{% endif %}" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">All</a>
+            <a class="UnderlineNav-item{% if active_scope == 'finished' %} selected{% endif %}" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines?scope=finished">Finished</a>
+            <a class="UnderlineNav-item{% if active_scope == 'branches' %} selected{% endif %}" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines?scope=branches">Branches</a>
+            <a class="UnderlineNav-item{% if active_scope == 'tags' %} selected{% endif %}" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines?scope=tags">Tags</a>
+        </div>
+    </nav>
+    <div class="d-flex flex-items-center" style="gap:8px;">
+        <a class="Link--secondary" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/ci/editor">Pipeline editor</a>
+        {% if can_manage_repo|default(false) %}
+        <a class="btn btn-primary" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/new">New pipeline</a>
+        {% endif %}
+    </div>
 </div>
 
 {% if flash_message %}
 <div class="flash {% if flash_type == 'error' %}flash-error{% else %}flash-success{% endif %} mb-3">{{ flash_message }}</div>
 {% endif %}
 
-{% if not selected_pipeline and not selected_job %}
-<div class="Box mb-4">
-    <div class="Box-header d-flex flex-items-center flex-justify-between">
-        <h3 class="Box-title">Recent pipelines</h3>
-        <a class="btn btn-sm" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/edit/{{ default_branch }}/.gitlab-ci.yml">Edit .gitlab-ci.yml</a>
+<div class="pipeline-filter-bar mb-3">
+    <input class="form-control input-block" type="search" placeholder="Filter pipelines" aria-label="Filter pipelines">
+    <button class="btn" type="button">Show Pipeline ID</button>
+</div>
+
+<div class="Box pipeline-list">
+    <div class="Box-header pipeline-list-header">
+        <div>Status</div>
+        <div>Pipeline</div>
+        <div>Created by</div>
+        <div>Stages</div>
+        <div class="text-right">Actions</div>
     </div>
     {% if pipelines %}
     {% for pipeline in pipelines %}
-    <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
+    {% set jobs = jobs_by_pipeline.get(pipeline.id, []) %}
+    <div class="Box-row pipeline-list-row">
+        <div>
+            {{ status_label(pipeline.status) }}
+            {% if pipeline.duration %}
+            <div class="color-fg-muted f6 mt-1">{{ pipeline.duration }}s</div>
+            {% endif %}
+            <div class="color-fg-muted f6 mt-1">{{ pipeline.created_at }}</div>
+        </div>
         <div>
             <a class="text-bold" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/{{ pipeline.id }}">#{{ pipeline.id }}</a>
-            <span class="Label Label--secondary ml-1">{{ pipeline.source }}</span>
-            <span class="branch-name ml-1">{{ pipeline.ref }}</span>
-            <span class="status-{{ pipeline.status }} ml-2">{{ pipeline.status }}</span>
-            <div class="color-fg-muted f6 mt-1">{{ pipeline.sha[:8] }} · {{ pipeline.created_at }}</div>
+            <div class="color-fg-muted f6 mt-1">
+                <span class="branch-name">{{ pipeline.ref }}</span>
+                {% if pipeline.sha %}<span class="ml-1">{{ pipeline.sha[:8] }}</span>{% endif %}
+            </div>
+            <div class="mt-1">
+                <span class="Label Label--secondary">{{ pipeline.source }}</span>
+                <span class="Label Label--secondary">branch</span>
+            </div>
         </div>
-        {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
-        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/{{ pipeline.id }}/cancel">
-            <button type="submit" class="btn btn-sm" {% if pipeline.status not in ["pending", "running"] %}disabled{% endif %}>Cancel</button>
-        </form>
-        {% endif %}
+        <div>
+            {% if pipeline.user %}
+            <span class="gl-topbar-avatar" title="{{ pipeline.user.login }}">{{ pipeline.user.login[0]|upper }}</span>
+            {% else %}
+            <span class="color-fg-muted">System</span>
+            {% endif %}
+        </div>
+        <div class="pipeline-stage-list">{{ stage_dots(jobs) }}</div>
+        <div class="text-right">
+            {% if can_manage_repo|default(false) %}
+            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines/{{ pipeline.id }}/cancel">
+                <button class="btn btn-sm" type="submit" {% if pipeline.status not in ["pending", "running"] %}disabled{% endif %}>Cancel</button>
+            </form>
+            {% endif %}
+        </div>
     </div>
     {% endfor %}
     {% else %}
     <div class="Box-row color-fg-muted">No pipelines yet.</div>
     {% endif %}
 </div>
-{% else %}
-<div class="mb-3">
-    <a class="Link--secondary" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Back to pipelines</a>
-</div>
-{% endif %}
-
-{% if selected_pipeline %}
-<div class="Box mb-4">
-    <div class="Box-header d-flex flex-items-center flex-justify-between">
-        <h3 class="Box-title">Pipeline #{{ selected_pipeline.id }}</h3>
-        <span class="status-{{ selected_pipeline.status }}">{{ selected_pipeline.status }}</span>
-    </div>
-    <div class="Box-row">
-        <span class="branch-name">{{ selected_pipeline.ref }}</span>
-        <span class="color-fg-muted ml-2">{{ selected_pipeline.sha[:8] }}</span>
-    </div>
-    {% if selected_pipeline.security_warnings %}
-    <div class="Box-row">
-        <div class="text-bold color-fg-attention mb-1">Security warnings</div>
-        <ul class="ml-3 mb-0">
-            {% for warning in selected_pipeline.security_warnings %}
-            <li>{{ warning.message }}</li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-    {% if jobs %}
-    {% for job in jobs %}
-    <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
-        <div>
-            <a class="text-bold" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}">#{{ job.id }} {{ job.name }}</a>
-            <span class="Label Label--secondary ml-1">{{ job.stage }}</span>
-            <span class="status-{{ job.status }} ml-2">{{ job.status }}</span>
-            <div class="color-fg-muted f6 mt-1">
-                Job #{{ job.id }}
-                {% if job.runner_name %} · {{ job.runner_name }}{% endif %}
-                {% if job.tags %} · {{ job.tags|join(", ") }}{% endif %}
-            </div>
-            {% if job.secret_metadata %}
-            <div class="color-fg-muted f6 mt-1">
-                Secrets:
-                {% for secret in job.secret_metadata %}
-                <code>{{ secret.key }}</code> from <code>{{ secret.name }}</code> ({{ secret.mode }}){% if not loop.last %}, {% endif %}
-                {% endfor %}
-            </div>
-            {% endif %}
-        </div>
-        {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
-        <div class="d-flex flex-items-center" style="gap:6px;">
-            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}/play">
-                <button type="submit" class="btn btn-sm" {% if job.status != "manual" %}disabled{% endif %}>Play</button>
-            </form>
-            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}/retry">
-                <button type="submit" class="btn btn-sm" {% if job.status not in ["failed", "canceled", "skipped", "success"] %}disabled{% endif %}>Retry</button>
-            </form>
-            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}/cancel">
-                <button type="submit" class="btn btn-sm" {% if job.status not in ["pending", "running", "manual"] %}disabled{% endif %}>Cancel</button>
-            </form>
-        </div>
-        {% endif %}
-    </div>
-    {% endfor %}
-    {% else %}
-    <div class="Box-row color-fg-muted">No jobs for this pipeline.</div>
-    {% endif %}
-</div>
-{% endif %}
-
-{% if selected_job %}
-<div class="Box mb-4" id="job-trace">
-    <div class="Box-header d-flex flex-items-center flex-justify-between">
-        <h3 class="Box-title">Job #{{ selected_job.id }} · {{ selected_job.name }}</h3>
-        <a class="btn btn-sm" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ selected_job.id }}">Refresh</a>
-    </div>
-    <div class="Box-row">
-        <div class="d-flex flex-wrap" style="gap:12px;">
-            <span>Status: <span class="status-{{ selected_job.status }}">{{ selected_job.status }}</span></span>
-            <span>Image: <code>{{ selected_job.image }}</code></span>
-            <span>Stage: {{ selected_job.stage }}</span>
-        </div>
-    </div>
-    {% if selected_job.secret_metadata %}
-    <div class="Box-row">
-        <div class="text-bold mb-2">Secrets</div>
-        <ul class="mb-0">
-            {% for secret in selected_job.secret_metadata %}
-            <li>
-                <code>{{ secret.key }}</code> uses <code>{{ secret.name }}</code>
-                as {{ secret.mode }} from {{ secret.scope_type }}
-                scope {{ secret.environment_scope }}/{{ secret.branch_scope }}
-                {% if secret.protected %}<span class="Label Label--secondary ml-1">protected</span>{% endif %}
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-    <div class="Box-row">
-        <div class="mb-2">
-            <a href="/api/v4/projects/{{ repo.id }}/jobs/{{ selected_job.id }}/trace">Trace API</a>
-            {% if selected_job.artifacts %}
-            <span class="mx-2">·</span>
-            <a href="/api/v4/projects/{{ repo.id }}/jobs/{{ selected_job.id }}/artifacts">Download artifacts</a>
-            {% endif %}
-        </div>
-        {% if selected_job.artifacts %}
-        <ul class="mb-3">
-            {% for artifact in selected_job.artifacts %}
-            <li>{{ artifact.filename }} · {{ artifact.size }} bytes · {{ artifact.file_type }}/{{ artifact.file_format }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        <pre class="ci-trace">{{ trace_text or "" }}</pre>
-    </div>
-</div>
-{% endif %}
-
-{% set active_statuses = ["created", "waiting_for_resource", "preparing", "pending", "running", "manual"] %}
-{% set should_auto_refresh = (
-    selected_job and selected_job.status in active_statuses
-) or (
-    selected_pipeline and selected_pipeline.status in active_statuses
-) %}
-{% if should_auto_refresh %}
-<script>
-window.setTimeout(function () {
-    window.location.reload();
-}, 3000);
-</script>
-{% endif %}
 {% endblock %}

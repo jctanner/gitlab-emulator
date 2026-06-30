@@ -23,15 +23,16 @@
         {% endif %}
     </div>
 
-    <nav class="gl-sidebar-nav">
-        <div class="gl-sidebar-group">
-            <div class="gl-sidebar-group-title">
-                <span class="gl-sidebar-icon">{{ git_pull_request(16) }}</span>
-                <span>Pinned</span>
-                <span class="gl-sidebar-caret">⌄</span>
+    <div class="gl-sidebar-scroll">
+        <nav class="gl-sidebar-nav">
+            <div class="gl-sidebar-group">
+                <div class="gl-sidebar-group-title">
+                    <span class="gl-sidebar-icon">{{ git_pull_request(16) }}</span>
+                    <span>Pinned</span>
+                    <span class="gl-sidebar-caret">⌄</span>
+                </div>
+                <div class="gl-sidebar-note">Your pinned items appear here.</div>
             </div>
-            <div class="gl-sidebar-note">Your pinned items appear here.</div>
-        </div>
         <div class="gl-sidebar-group">
             <div class="gl-sidebar-group-title">
                 <span class="gl-sidebar-icon">{{ repo_icon(16) }}</span>
@@ -115,8 +116,8 @@
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Pipelines</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/jobs' in current_path %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs">Jobs</a>
-            <a class="gl-sidebar-link gl-sidebar-subitem{% if '/edit/' in current_path and current_path.endswith('/.gitlab-ci.yml') %} selected{% endif %}"
-               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/edit/{{ repo.default_branch or 'main' }}/.gitlab-ci.yml">Pipeline editor</a>
+            <a class="gl-sidebar-link gl-sidebar-subitem{% if active_tab == 'pipeline_editor' or '/-/ci/editor' in current_path %} selected{% endif %}"
+               href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/ci/editor">Pipeline editor</a>
             <a class="gl-sidebar-link gl-sidebar-subitem{% if '/-/pipeline_schedules' in current_path %} selected{% endif %}"
                href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipeline_schedules">Pipeline schedules</a>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Test cases</span>
@@ -164,8 +165,13 @@
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Container registry</span>
             <span class="gl-sidebar-link gl-sidebar-subitem disabled">Model registry</span>
         </div>
-        <span class="gl-sidebar-link disabled">Operate <span class="gl-sidebar-caret">›</span></span>
-        <span class="gl-sidebar-link disabled">Monitor <span class="gl-sidebar-caret">›</span></span>
-        <span class="gl-sidebar-link disabled">Analyze <span class="gl-sidebar-caret">›</span></span>
-    </nav>
+            <span class="gl-sidebar-link disabled">Operate <span class="gl-sidebar-caret">›</span></span>
+            <span class="gl-sidebar-link disabled">Monitor <span class="gl-sidebar-caret">›</span></span>
+            <span class="gl-sidebar-link disabled">Analyze <span class="gl-sidebar-caret">›</span></span>
+        </nav>
+    </div>
+    <div class="gl-sidebar-footer">
+        <button class="gl-sidebar-link gl-sidebar-button" type="button" aria-label="Help">Help</button>
+        <button class="gl-sidebar-link gl-sidebar-button" type="button" aria-label="Collapse sidebar">Collapse sidebar</button>
+    </div>
 </aside>

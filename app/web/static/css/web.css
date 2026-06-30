@@ -290,6 +290,7 @@ td.blob-code {
     --gl-bg-default: #ffffff;
     --gl-bg-subtle: #f7f7f8;
     --gl-bg-section: #fbfafd;
+    --gl-shell-bg: #eceaf4;
     --gl-border: #dcdcde;
     --gl-border-strong: #bfbfc3;
     --gl-text: #333238;
@@ -305,6 +306,7 @@ td.blob-code {
     --gl-warning: #ab6100;
     --gl-danger: #dd2b0e;
     --gl-info: #1f75cb;
+    --gl-topbar-height: 44px;
 }
 
 body {
@@ -634,13 +636,18 @@ td.blob-code {
 /* ---- GitLab left navigation layout ---- */
 .gl-app-shell {
     display: flex;
-    min-height: calc(100vh - 38px);
+    min-height: calc(100vh - var(--gl-topbar-height));
 }
 .gl-topbar {
-    position: relative;
-    min-height: 38px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    min-height: var(--gl-topbar-height);
+    height: var(--gl-topbar-height);
     padding: 5px 8px !important;
-    background: #ffffff !important;
+    background: var(--gl-shell-bg) !important;
+    background-color: var(--gl-shell-bg) !important;
     border-top: 2px solid #2f2a3a;
     border-bottom: 1px solid #e1e1e5;
     box-shadow: none;
@@ -734,7 +741,7 @@ td.blob-code {
     display: none;
 }
 .gl-app-shell:has(.gl-project-sidebar) {
-    background: #eceaf4;
+    background: var(--gl-shell-bg);
 }
 .gl-content-shell {
     display: flex;
@@ -749,27 +756,66 @@ td.blob-code {
 .gl-app-shell:has(.gl-project-sidebar) .gl-main-column {
     min-height: calc(100vh - 38px);
     background: #ffffff;
-    border-top-left-radius: 8px;
+    border-top-left-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(31, 35, 40, .04);
 }
 .gl-app-shell:has(.gl-project-sidebar) main.container-xl {
     margin-top: 14px !important;
 }
 .gl-sidebar {
-    background: #eceaf4;
+    display: flex;
+    flex-direction: column;
+    background: var(--gl-shell-bg);
     border-right: 1px solid var(--gl-border);
 }
 .gl-global-sidebar {
     position: sticky;
-    top: 0;
+    top: var(--gl-topbar-height);
     width: 220px;
     min-width: 220px;
-    min-height: calc(100vh - 38px);
+    height: calc(100vh - var(--gl-topbar-height));
+    max-height: calc(100vh - var(--gl-topbar-height));
     padding: 16px 12px;
+    overflow: hidden;
+}
+.gl-sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+}
+.gl-sidebar-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+.gl-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: #b7b5c4;
+    border-radius: 8px;
+}
+.gl-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
 }
 .gl-sidebar-nav {
     display: flex;
     flex-direction: column;
     gap: 2px;
+}
+.gl-sidebar-footer {
+    flex: 0 0 auto;
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px solid rgba(115, 114, 120, .25);
+}
+.gl-sidebar-button {
+    width: 100%;
+    border: 0;
+    font: inherit;
+    text-align: left;
+    background: transparent;
+}
+.gl-sidebar-button:not(.disabled) {
+    cursor: pointer;
 }
 .gl-sidebar-section-title {
     margin: 16px 8px 6px;
@@ -814,26 +860,34 @@ td.blob-code {
 }
 .gl-content-shell > .color-bg-default.border-bottom {
     position: sticky;
-    top: 0;
+    top: var(--gl-topbar-height);
     z-index: 20;
     width: 192px;
     min-width: 192px;
-    min-height: calc(100vh - 49px);
+    height: calc(100vh - var(--gl-topbar-height));
+    max-height: calc(100vh - var(--gl-topbar-height));
     padding: 0;
-    background: #eceaf4 !important;
+    background: var(--gl-shell-bg) !important;
+    background-color: var(--gl-shell-bg) !important;
     border-right: 1px solid var(--gl-border) !important;
     border-bottom: 0 !important;
+    overflow: hidden;
 }
 .gl-content-shell > .color-bg-default.border-bottom > .container-xl {
     width: auto;
     max-width: none;
+    height: 100%;
+    min-height: 0;
     padding: 0 !important;
 }
 .gl-project-sidebar {
     width: 100%;
-    min-height: calc(100vh - 38px);
+    height: 100%;
+    max-height: calc(100vh - var(--gl-topbar-height));
+    min-height: 0;
     padding: 10px 6px 12px;
     border-right: 0;
+    overflow: hidden;
 }
 .gl-project-label {
     margin: 0 6px 10px;
@@ -932,6 +986,73 @@ td.blob-code {
 }
 .gl-project-sidebar .Counter {
     margin-left: auto;
+}
+
+/* ---- Pipeline pages ---- */
+.pipeline-filter-bar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: 8px;
+}
+.pipeline-list-header,
+.pipeline-list-row {
+    display: grid;
+    grid-template-columns: minmax(130px, .9fr) minmax(220px, 1.7fr) minmax(120px, .8fr) minmax(160px, 1fr) minmax(90px, auto);
+    gap: 16px;
+    align-items: center;
+}
+.pipeline-list-header {
+    font-weight: 600;
+    color: var(--gl-text);
+}
+.pipeline-stage-list {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+}
+.pipeline-stage-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+}
+.pipeline-stage-dot.passed {
+    background: var(--gl-green-500);
+}
+.pipeline-stage-dot.failed {
+    background: var(--gl-red-500);
+}
+.pipeline-stage-dot.canceled {
+    color: var(--gl-text-muted);
+    background: #dcdcde;
+}
+.pipeline-stage-dot.running {
+    color: var(--gl-text);
+    background: #abddff;
+}
+.pipeline-stage-arrow {
+    color: var(--gl-text-muted);
+}
+.pipeline-run-form {
+    max-width: 980px;
+}
+.pipeline-variable-row {
+    display: grid;
+    grid-template-columns: minmax(160px, .7fr) minmax(180px, 1fr) minmax(240px, 1.4fr);
+    gap: 12px;
+    align-items: end;
+}
+.pipeline-inputs-box .Box-header {
+    background: #ececef;
+}
+.pipeline-editor-status {
+    max-width: 980px;
 }
 
 /* ---- Pipeline schedules ---- */
@@ -1292,9 +1413,19 @@ td.blob-code {
     .gl-content-shell > .color-bg-default.border-bottom,
     .gl-project-sidebar {
         position: static;
+        height: auto;
         width: auto;
         min-width: 0;
         min-height: 0;
+    }
+    .gl-sidebar {
+        display: block;
+    }
+    .gl-sidebar-scroll {
+        overflow: visible;
+    }
+    .gl-sidebar-footer {
+        border-top: 0;
     }
     .gl-global-sidebar {
         border-right: 0;

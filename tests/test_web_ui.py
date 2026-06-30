@@ -1,6 +1,7 @@
 """Tests for the browser-oriented repository and source UI."""
 
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -9,6 +10,9 @@ from sqlalchemy import select
 from app.models.organization import OrgMembership, Organization
 from app.models.repository import Repository
 from tests.test_projects_api import _create_user_and_token
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _ui_session(client, username: str) -> None:
@@ -134,8 +138,9 @@ async def test_ui_create_repo_under_nested_group_namespace(
         "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/pipelines"
     )
     assert pipelines_page.status_code == 200
-    assert "Run pipeline" in pipelines_page.text
-    assert "Recent pipelines" in pipelines_page.text
+    assert "New pipeline" in pipelines_page.text
+    assert "Filter pipelines" in pipelines_page.text
+    assert "Show Pipeline ID" in pipelines_page.text
     assert (
         "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/pipelines"
         in pipelines_page.text
@@ -148,7 +153,7 @@ async def test_ui_create_repo_under_nested_group_namespace(
         "/branches",
         "/commits/main",
         "/tags",
-        "/edit/main/.gitlab-ci.yml",
+        "/-/ci/editor",
         "/-/members",
         "/-/labels",
         "/-/snippets",
@@ -160,6 +165,7 @@ async def test_ui_create_repo_under_nested_group_namespace(
         "/-/releases",
         "/-/pipeline_schedules",
         "/-/pipeline_schedules/new",
+        "/-/pipelines/new",
         "/-/jobs",
         "/-/artifacts",
     ]
@@ -168,6 +174,38 @@ async def test_ui_create_repo_under_nested_group_namespace(
             f"/ui/redhat/rhel-ai/agentic-ci/strat-pipeline{suffix}"
         )
         assert response.status_code == 200, suffix
+
+
+def test_gitlab_project_shell_sidebar_css_contract():
+    """Project shell templates and CSS keep sidebar behavior GitLab-like."""
+    css = (REPO_ROOT / "app/web/static/css/web.css").read_text()
+    base_template = (REPO_ROOT / "app/web/templates/base.html").read_text()
+    repo_nav = (REPO_ROOT / "app/web/templates/_repo_nav.html").read_text()
+
+    assert "--gl-shell-bg: #eceaf4;" in css
+    assert "--gl-topbar-height: 44px;" in css
+    assert ".gl-topbar" in css
+    assert "background: var(--gl-shell-bg) !important;" in css
+    assert "background-color: var(--gl-shell-bg) !important;" in css
+    assert ".gl-app-shell:has(.gl-project-sidebar) .gl-main-column" in css
+    assert "border-top-left-radius: 10px;" in css
+    assert ".gl-sidebar-scroll" in css
+    assert "overflow-y: auto;" in css
+    assert "scrollbar-gutter: stable;" in css
+    assert "max-height: calc(100vh - var(--gl-topbar-height));" in css
+    assert "overflow: hidden;" in css
+    assert ".gl-sidebar-footer" in css
+    assert "flex: 0 0 auto;" in css
+    assert "height: calc(100vh - var(--gl-topbar-height));" in css
+
+    for template in (base_template, repo_nav):
+        assert '<div class="gl-sidebar-scroll">' in template
+        assert '<div class="gl-sidebar-footer">' in template
+        assert 'aria-label="Help">Help</button>' in template
+        assert 'aria-label="Collapse sidebar">Collapse sidebar</button>' in template
+
+    assert 'href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines"' in repo_nav
+    assert 'href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches"' in repo_nav
 
 
 @pytest.mark.asyncio
@@ -951,13 +989,29 @@ ui_job:
 
     pipelines_page = await client.get("/ui/testuser/ui-ci-repo/-/pipelines")
     assert pipelines_page.status_code == 200
-    assert "Run pipeline" in pipelines_page.text
-    assert "Recent pipelines" in pipelines_page.text
-    assert "Edit .gitlab-ci.yml" in pipelines_page.text
-    assert "/ui/testuser/ui-ci-repo/edit/main/.gitlab-ci.yml" in pipelines_page.text
+    assert "New pipeline" in pipelines_page.text
+    assert "Filter pipelines" in pipelines_page.text
+    assert "Show Pipeline ID" in pipelines_page.text
+    assert "Pipeline editor" in pipelines_page.text
+    assert "/ui/testuser/ui-ci-repo/-/pipelines/new" in pipelines_page.text
+    assert "/ui/testuser/ui-ci-repo/-/ci/editor" in pipelines_page.text
+    assert "All" in pipelines_page.text
+    assert "Finished" in pipelines_page.text
+    assert "Branches" in pipelines_page.text
+    assert "Tags" in pipelines_page.text
 
-    edit_ci = await client.get("/ui/testuser/ui-ci-repo/edit/main/.gitlab-ci.yml")
+    run_pipeline_page = await client.get("/ui/testuser/ui-ci-repo/-/pipelines/new")
+    assert run_pipeline_page.status_code == 200
+    assert "Run new pipeline" in run_pipeline_page.text
+    assert 'name="variable_key"' in run_pipeline_page.text
+    assert "Run for branch name or tag" in run_pipeline_page.text
+
+    edit_ci = await client.get("/ui/testuser/ui-ci-repo/-/ci/editor")
     assert edit_ci.status_code == 200
+    assert "Pipeline editor" in edit_ci.text
+    assert "Configuration file loaded." in edit_ci.text
+    assert "Full configuration" in edit_ci.text
+    assert "Commit changes" in edit_ci.text
     assert 'data-code-editor="yaml"' in edit_ci.text
     assert "/ui/static/js/codemirror-yaml.js" in edit_ci.text
 
@@ -1112,7 +1166,7 @@ api_probe:
     assert new_schedule_page.status_code == 200
     assert 'href="/ui/testuser/ui-schedules/-/pipelines">Pipelines</a>' in new_schedule_page.text
     assert (
-        'href="/ui/testuser/ui-schedules/edit/main/.gitlab-ci.yml">Pipeline editor</a>'
+        'href="/ui/testuser/ui-schedules/-/ci/editor">Pipeline editor</a>'
         in new_schedule_page.text
     )
     assert ">Schedules</a>" in new_schedule_page.text

@@ -56,17 +56,23 @@
 
     <div class="gl-app-shell">
         <aside class="gl-sidebar gl-global-sidebar" aria-label="GitLab Emulator navigation">
-            <nav class="gl-sidebar-nav">
-                <div class="gl-sidebar-section-title">Main</div>
-                <a class="gl-sidebar-link{% if request.url.path == '/ui/' %} selected{% endif %}" href="{{ url_prefix }}/">Projects</a>
-                <a class="gl-sidebar-link{% if '/search' in request.url.path %} selected{% endif %}" href="{{ url_prefix }}/search">Explore</a>
-                {% if current_user %}
-                <a class="gl-sidebar-link{% if request.url.path == '/ui/new' %} selected{% endif %}" href="{{ url_prefix }}/new">New project</a>
-                <a class="gl-sidebar-link" href="{{ url_prefix }}/{{ current_user.login }}">Profile</a>
-                {% endif %}
-                <div class="gl-sidebar-section-title">Instance</div>
-                <a class="gl-sidebar-link" href="/admin/">Admin area</a>
-            </nav>
+            <div class="gl-sidebar-scroll">
+                <nav class="gl-sidebar-nav">
+                    <div class="gl-sidebar-section-title">Main</div>
+                    <a class="gl-sidebar-link{% if request.url.path == '/ui/' %} selected{% endif %}" href="{{ url_prefix }}/">Projects</a>
+                    <a class="gl-sidebar-link{% if '/search' in request.url.path %} selected{% endif %}" href="{{ url_prefix }}/search">Explore</a>
+                    {% if current_user %}
+                    <a class="gl-sidebar-link{% if request.url.path == '/ui/new' %} selected{% endif %}" href="{{ url_prefix }}/new">New project</a>
+                    <a class="gl-sidebar-link" href="{{ url_prefix }}/{{ current_user.login }}">Profile</a>
+                    {% endif %}
+                    <div class="gl-sidebar-section-title">Instance</div>
+                    <a class="gl-sidebar-link" href="/admin/">Admin area</a>
+                </nav>
+            </div>
+            <div class="gl-sidebar-footer">
+                <button class="gl-sidebar-link gl-sidebar-button" type="button" aria-label="Help">Help</button>
+                <button class="gl-sidebar-link gl-sidebar-button" type="button" aria-label="Collapse sidebar">Collapse sidebar</button>
+            </div>
         </aside>
         <div class="gl-content-shell">
             {# ---- Optional project sidebar ---- #}

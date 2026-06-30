@@ -39,7 +39,7 @@
         </div>
         <div class="d-flex flex-items-center" style="gap:6px;">
             <span class="color-fg-muted f6 mr-2">{{ lines|length }} lines</span>
-            {% if current_user and (current_user.site_admin or current_user.id == repo.owner_id) %}
+            {% if can_manage_repo|default(false) %}
             <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/edit/{{ ref }}/{{ path }}"
                class="btn btn-sm" title="Edit this file">{{ pencil(16) }}</a>
             <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/delete-file/{{ ref }}/{{ path }}"

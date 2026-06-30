@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Pipeline editor - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "pipelines" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb-nav mb-3 f6">
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ owner }}</a>
+    <span class="separator">/</span>
+    <strong>Pipeline editor</strong>
+</div>
+
+<form method="get" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/ci/editor" class="mb-3">
+    <select name="ref" class="form-select" onchange="this.form.submit()" aria-label="Branch or tag">
+        {% for branch in branches %}
+        <option value="{{ branch.name }}" {% if branch.name == ref %}selected{% endif %}>{{ branch.name }}</option>
+        {% endfor %}
+        {% for tag in tags %}
+        <option value="{{ tag.name }}" {% if tag.name == ref %}selected{% endif %}>{{ tag.name }}</option>
+        {% endfor %}
+        {% if not branches and not tags %}
+        <option value="{{ ref }}">{{ ref }}</option>
+        {% endif %}
+    </select>
+</form>
+
+{% if saved %}
+<div class="flash flash-success mb-3">Pipeline configuration saved.</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error mb-3">{{ error }}</div>
+{% endif %}
+
+<div class="Box mb-3 pipeline-editor-status">
+    <div class="Box-row d-flex flex-items-center flex-justify-between">
+        <div>
+            <strong>{{ config_status }}</strong>
+            <div class="color-fg-muted f6">Editing <code>.gitlab-ci.yml</code> on <span class="branch-name">{{ ref }}</span>.</div>
+        </div>
+        <a class="btn btn-sm" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">View pipelines</a>
+    </div>
+</div>
+
+<nav class="UnderlineNav mb-3" aria-label="Pipeline editor views">
+    <div class="UnderlineNav-body">
+        <span class="UnderlineNav-item selected">Edit</span>
+        <span class="UnderlineNav-item color-fg-muted">Visualize</span>
+        <span class="UnderlineNav-item color-fg-muted">Validate</span>
+        <span class="UnderlineNav-item color-fg-muted">Full configuration</span>
+    </div>
+</nav>
+
+<form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/ci/editor">
+    <input type="hidden" name="ref" value="{{ ref }}">
+    <div class="Box mb-4">
+        <div class="Box-header d-flex flex-items-center" style="gap:8px;">
+            <a class="btn btn-sm" href="https://docs.gitlab.com/ee/ci/yaml/" rel="noreferrer">CI/CD Catalog</a>
+            <span class="color-fg-muted">Editor accessibility guide</span>
+        </div>
+        <div class="Box-body p-0">
+            <textarea id="content" name="content" class="form-control input-block yaml-file-editor"
+                      data-code-editor="yaml"
+                      rows="28" style="font-family:monospace;font-size:13px;tab-size:4;border:0;border-radius:0;">{{ content }}</textarea>
+        </div>
+    </div>
+
+    <div class="form-group mb-3">
+        <div class="form-group-header"><label for="commit_message">Commit message</label></div>
+        <textarea id="commit_message" name="commit_message" class="form-control input-block" rows="3">Update .gitlab-ci.yml file</textarea>
+    </div>
+
+    <div class="form-group mb-3">
+        <div class="form-group-header"><label for="branch">Branch</label></div>
+        <input id="branch" class="form-control input-block" type="text" value="{{ ref }}" disabled>
+    </div>
+
+    <button class="btn btn-primary" type="submit">Commit changes</button>
+    <a class="btn ml-2" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Reset</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_prefix }}/static/js/codemirror-yaml.js"></script>
+{% endblock %}
