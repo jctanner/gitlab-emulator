@@ -248,6 +248,18 @@ def test_gitlab_project_shell_sidebar_css_contract():
         )
 
 
+def test_nested_project_pipeline_schedule_posts_are_routed():
+    """Nested namespace project schedule forms reach the direct schedule handlers."""
+    routes = (REPO_ROOT / "app/web/routes.py").read_text()
+
+    assert 'request.method == "POST" and section == "pipeline_schedules"' in routes
+    assert "return await repo_pipeline_schedule_create(" in routes
+    assert "return await repo_pipeline_schedule_update(" in routes
+    assert "return await repo_pipeline_schedule_play(" in routes
+    assert "return await repo_pipeline_schedule_delete(" in routes
+    assert 'variables_text=str(form.get("variables_text") or "")' in routes
+
+
 def test_web_job_scheduling_diagnostics_are_scoped_per_pipeline(monkeypatch):
     """Project jobs pages must not explain blockers using jobs from old pipelines."""
     from app.web import routes as web_routes

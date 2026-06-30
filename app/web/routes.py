@@ -4509,6 +4509,54 @@ async def nested_repo_page(
                             request, owner, repo.name, error=error, db=db
                         )
 
+            if request.method == "POST" and section == "pipeline_schedules":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_pipeline_schedule_create(
+                        request,
+                        owner,
+                        repo.name,
+                        description=str(form.get("description") or ""),
+                        ref=str(form.get("ref") or "main"),
+                        cron=str(form.get("cron") or "0 0 * * *"),
+                        cron_timezone=str(form.get("cron_timezone") or "UTC"),
+                        active=str(form.get("active") or ""),
+                        variables_text=str(form.get("variables_text") or ""),
+                        variable_type=str(form.get("variable_type") or "variable"),
+                        variable_key=str(form.get("variable_key") or ""),
+                        variable_value=str(form.get("variable_value") or ""),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    schedule_id = int(action_parts[2])
+                    schedule_action = action_parts[3]
+                    if schedule_action == "update":
+                        form = await request.form()
+                        return await repo_pipeline_schedule_update(
+                            request,
+                            owner,
+                            repo.name,
+                            schedule_id,
+                            description=str(form.get("description") or ""),
+                            ref=str(form.get("ref") or "main"),
+                            cron=str(form.get("cron") or "0 0 * * *"),
+                            cron_timezone=str(form.get("cron_timezone") or "UTC"),
+                            active=str(form.get("active") or ""),
+                            variables_text=str(form.get("variables_text") or ""),
+                            variable_type=str(form.get("variable_type") or "variable"),
+                            variable_key=str(form.get("variable_key") or ""),
+                            variable_value=str(form.get("variable_value") or ""),
+                            db=db,
+                        )
+                    if schedule_action == "play":
+                        return await repo_pipeline_schedule_play(
+                            request, owner, repo.name, schedule_id, db=db
+                        )
+                    if schedule_action == "delete":
+                        return await repo_pipeline_schedule_delete(
+                            request, owner, repo.name, schedule_id, db=db
+                        )
+
             if request.method == "GET" and section == "pipelines":
                 if len(action_parts) == 2:
                     return await repo_pipelines_page(
