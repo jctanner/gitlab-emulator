@@ -342,6 +342,15 @@ if [ -n "$CLI_PROJECT_ID" ]; then
     assert_json_field "glab repo contributors json" "$repo_contributors" \
         'map(.commits) | add >= 1'
 
+    archive_dir="$REPO_CLI_WORK/archive-download"
+    mkdir -p "$archive_dir"
+    repo_archive=$(cd "$archive_dir" && "$GLAB" repo archive "admin/$CLI_PROJECT_PATH" --format zip 2>&1)
+    if find "$archive_dir" -maxdepth 1 -type f -name '*.zip' | grep -q .; then
+        pass "glab repo archive zip"
+    else
+        fail "glab repo archive zip: $repo_archive"
+    fi
+
     repo_clone=$(cd "$REPO_CLI_WORK" && "$GLAB" repo clone "admin/$CLI_PROJECT_PATH" cli-clone 2>&1)
     if [ -f "$REPO_CLI_WORK/cli-clone/README.md" ]; then
         pass "glab repo clone"

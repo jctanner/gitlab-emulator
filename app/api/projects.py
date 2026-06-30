@@ -151,6 +151,21 @@ async def _git_text(repo_path: str, *args: str) -> str:
     return stdout.decode()
 
 
+async def _git_bytes(repo_path: str, *args: str) -> bytes:
+    env = {**os.environ, "GIT_DIR": repo_path}
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(stderr.decode())
+    return stdout
+
+
 async def _get_project_or_404(
     project_ref: str,
     db: DbSession,
@@ -928,6 +943,46 @@ async def list_project_contributors(
         page,
         per_page,
         total,
+    )
+
+
+@router.get("/projects/{project_ref:path}/repository/archive")
+@router.get("/projects/{project_ref:path}/repository/archive.{archive_format}")
+async def download_project_archive(
+    project_ref: str,
+    db: DbSession,
+    current_user: CurrentUser,
+    sha: str | None = Query(None),
+    archive_format: str = "zip",
+    format_query: str | None = Query(None, alias="format"),
+):
+    """Download a GitLab-shaped project source archive."""
+    project = await _get_project_or_404(project_ref, db, current_user)
+    if not project.disk_path or not os.path.isdir(project.disk_path):
+        raise HTTPException(status_code=404, detail="404 Project Not Found")
+
+    ref = sha or project.default_branch
+    selected_format = format_query or archive_format
+    normalized_format = selected_format.replace("tar.gz", "tar")
+    if normalized_format not in {"zip", "tar"}:
+        raise HTTPException(status_code=400, detail="Unsupported archive format")
+    try:
+        content = await _git_bytes(
+            project.disk_path,
+            "archive",
+            f"--format={normalized_format}",
+            ref,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail="404 Ref Not Found") from exc
+
+    extension = "zip" if selected_format == "zip" else selected_format
+    media_type = "application/zip" if selected_format == "zip" else "application/x-tar"
+    filename = f"{project.name}-{ref}.{extension}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
