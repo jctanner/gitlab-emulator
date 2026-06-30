@@ -2916,6 +2916,7 @@ compile:
     pipeline = resp.json()
     assert pipeline["sha"] == commit_sha
     assert pipeline["name"] == "api pipeline for main"
+    assert pipeline["user"]["username"] == "testuser"
 
     listed_by_name = await client.get(
         f"{API}/projects/{project['id']}/pipelines",
@@ -2934,6 +2935,24 @@ compile:
     )
     assert missing_name.status_code == 200
     assert missing_name.json() == []
+
+    listed_by_username = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"username": "testuser"},
+        headers=auth_headers(test_token),
+    )
+    assert listed_by_username.status_code == 200
+    user_pipelines = listed_by_username.json()
+    assert pipeline["id"] in {item["id"] for item in user_pipelines}
+    assert {item["user"]["username"] for item in user_pipelines} == {"testuser"}
+
+    missing_username = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        params={"username": "missing-user"},
+        headers=auth_headers(test_token),
+    )
+    assert missing_username.status_code == 200
+    assert missing_username.json() == []
 
     jobs = await client.get(
         f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/jobs"

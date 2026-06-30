@@ -40,6 +40,7 @@ from app.models.ci import (
     PipelineTrigger,
 )
 from app.models.project import Project
+from app.models.user import User
 from app.schemas.user import _fmt_dt
 from app.services.ci_security import (
     pipeline_variable_policy,
@@ -1062,10 +1063,24 @@ def _pipeline_json(pipeline: Pipeline) -> dict:
         if coverage_values
         else None
     )
+    user = getattr(pipeline, "__dict__", {}).get("user")
+    user_payload = (
+        {
+            "id": user.id,
+            "username": user.login,
+            "name": user.name or user.login,
+            "state": "active",
+            "avatar_url": user.avatar_url,
+            "web_url": f"{settings.BASE_URL}/{user.login}",
+        }
+        if user is not None
+        else None
+    )
     return {
         "id": pipeline.id,
         "iid": pipeline.iid,
         "project_id": pipeline.project_id,
+        "user": user_payload,
         "sha": pipeline.sha,
         "before_sha": pipeline.before_sha
         or "0000000000000000000000000000000000000000",
@@ -2021,6 +2036,8 @@ async def _create_pipeline(
 
     pipeline = Pipeline(
         project_id=project.id,
+        user_id=getattr(actor, "id", None),
+        user=actor if getattr(actor, "id", None) is not None else None,
         iid=(max_iid or 0) + 1,
         ref=body.ref,
         sha=sha,
@@ -2469,6 +2486,7 @@ async def list_pipelines(
     ref: str | None = None,
     sha: str | None = None,
     name: str | None = None,
+    username: str | None = None,
     yaml_errors: bool | None = None,
     created_after: str | None = None,
     created_before: str | None = None,
@@ -2482,8 +2500,10 @@ async def list_pipelines(
     project = await _get_project_ref(
         project_ref, db, current_user, enforce_read_access=True
     )
-    query = select(Pipeline).options(selectinload(Pipeline.jobs)).where(
-        Pipeline.project_id == project.id
+    query = (
+        select(Pipeline)
+        .options(selectinload(Pipeline.jobs), selectinload(Pipeline.user))
+        .where(Pipeline.project_id == project.id)
     )
     scopes = _scope_values(scope, scope_array)
     if scopes:
@@ -2498,6 +2518,10 @@ async def list_pipelines(
         query = query.where(Pipeline.sha == sha)
     if name:
         query = query.where(Pipeline.name == name)
+    if username:
+        query = query.join(User, Pipeline.user_id == User.id).where(
+            User.login == username
+        )
     if yaml_errors:
         query = query.where(False)
     created_after_dt = _parse_filter_datetime(created_after)
@@ -2744,7 +2768,7 @@ async def get_latest_pipeline(
     )
     query = (
         select(Pipeline)
-        .options(selectinload(Pipeline.jobs))
+        .options(selectinload(Pipeline.jobs), selectinload(Pipeline.user))
         .where(Pipeline.project_id == project.id)
     )
     if ref:
@@ -2828,6 +2852,7 @@ async def _get_pipeline_for_project_ref(
     result = await db.execute(
         select(Pipeline)
         .options(
+            selectinload(Pipeline.user),
             selectinload(Pipeline.jobs).selectinload(PipelineJob.trace),
             selectinload(Pipeline.jobs).selectinload(PipelineJob.artifacts),
         )

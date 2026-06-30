@@ -70,6 +70,11 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
     )
     await ensure_column(
         "pipelines",
+        "user_id",
+        "user_id INTEGER",
+    )
+    await ensure_column(
+        "pipelines",
         "variables",
         "variables JSON DEFAULT '[]'",
     )

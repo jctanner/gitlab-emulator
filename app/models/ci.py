@@ -26,6 +26,9 @@ class Pipeline(Base):
     project_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("repositories.id"), nullable=False
     )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
     iid: Mapped[int] = mapped_column(Integer, nullable=False)
     ref: Mapped[str] = mapped_column(String, nullable=False)
     sha: Mapped[str] = mapped_column(String, nullable=False)
@@ -44,6 +47,7 @@ class Pipeline(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     project = relationship("Repository", lazy="selectin")
+    user = relationship("User", lazy="selectin")
     jobs = relationship(
         "PipelineJob",
         back_populates="pipeline",

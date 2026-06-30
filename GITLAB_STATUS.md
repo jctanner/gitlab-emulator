@@ -154,9 +154,11 @@ harness architecture.
 - Project, pipeline, and bridge job listing APIs support GitLab-shaped `scope`
   and `scope[]` status filters.
 - Project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
-  `status`, `source`, `ref`, `sha`, `name`, `yaml_errors`, `order_by`, and
-  `sort` filters, plus `created_after`, `created_before`, `updated_after`, and
-  `updated_before` time-window filters.
+  `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
+  `order_by`, and `sort` filters, plus `created_after`, `created_before`,
+  `updated_after`, and `updated_before` time-window filters. Pipeline payloads
+  include the creating `user` when the pipeline was created by an authenticated
+  actor.
 - Project pipeline delete APIs remove persisted pipelines and their associated
   jobs, traces, and artifact rows.
 - Dotenv report artifacts from successful upstream dependency jobs are parsed

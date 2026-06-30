@@ -140,9 +140,10 @@ and cache APIs for controlled integration testing.
 - project, pipeline, and bridge job listing APIs support GitLab-shaped `scope`
   and `scope[]` status filters
 - project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
-  `status`, `source`, `ref`, `sha`, `name`, `yaml_errors`, `order_by`, and
-  `sort` filters, plus `created_after`, `created_before`, `updated_after`, and
-  `updated_before` time-window filters
+  `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
+  `order_by`, and `sort` filters, plus `created_after`, `created_before`,
+  `updated_after`, and `updated_before` time-window filters; pipeline payloads
+  include the creating `user` when available
 - project pipeline delete APIs remove persisted pipelines and their associated
   jobs, traces, and artifact rows
 - pipeline test report and test report summary APIs aggregate stored JUnit
