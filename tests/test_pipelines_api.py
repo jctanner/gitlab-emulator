@@ -2496,10 +2496,14 @@ metadata_job:
     INTERRUPTIBLE_FLAG: "true"
     OPTIONAL_EXIT_CODE: "137"
     RESOURCE_SUFFIX: production
+    RETRY_MAX: "2"
+    RETRY_REASON: runner_system_failure
     TIMEOUT_VALUE: 45 minutes
   retry:
-    max: 2
-    when: runner_system_failure
+    max: "$RETRY_MAX"
+    when: "$RETRY_REASON"
+    exit_codes:
+      - "$OPTIONAL_EXIT_CODE"
   timeout: "$TIMEOUT_VALUE"
   interruptible: "$INTERRUPTIBLE_FLAG"
   allow_failure:
@@ -2538,7 +2542,7 @@ metadata_job:
     assert job["retry"] == {
         "max": 2,
         "when": ["runner_system_failure"],
-        "exit_codes": [],
+        "exit_codes": [137],
     }
     assert job["retry_attempt"] == 0
     assert job["timeout"] == 2700

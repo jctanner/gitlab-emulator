@@ -171,6 +171,9 @@ harness architecture.
 - Script-only CI `run` steps are translated into runner script commands, with
   per-step `env` expansion. Predefined `run:step` entries and invalid `run`
   combinations fail clearly before runner assignment.
+- Retry metadata expands merged CI variables for `retry:max`, `retry:when`,
+  and `retry:exit_codes` before persistence, API responses, and auto-retry
+  runner behavior.
 - Project pipeline listing APIs support GitLab-shaped `scope`, `scope[]`,
   `status`, `source`, `ref`, `sha`, `name`, `username`, `yaml_errors`,
   `order_by`, and `sort` filters, plus `created_after`, `created_before`,

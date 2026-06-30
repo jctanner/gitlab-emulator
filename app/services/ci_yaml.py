@@ -1150,14 +1150,22 @@ def _parallel_job_names(parsed: dict) -> dict[str, list[str]]:
     return names
 
 
-def _exit_codes(value: Any, keyword: str) -> list[int]:
+def _exit_codes(
+    value: Any,
+    keyword: str,
+    variables: dict[str, str] | None = None,
+) -> list[int]:
     if value is None:
         return []
+    variables = variables or {}
     raw_codes = value if isinstance(value, list) else [value]
     parsed_codes: list[int] = []
     for code in raw_codes:
+        raw_code = (
+            _expand_ci_variables(code, variables) if isinstance(code, str) else code
+        )
         try:
-            parsed = int(code)
+            parsed = int(raw_code)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{keyword} exit code is not supported: {code}") from exc
         if parsed < 0 or parsed > 255:
@@ -1166,9 +1174,10 @@ def _exit_codes(value: Any, keyword: str) -> list[int]:
     return parsed_codes
 
 
-def _retry_config(value: Any) -> dict:
+def _retry_config(value: Any, variables: dict[str, str] | None = None) -> dict:
     if value is None:
         return {}
+    variables = variables or {}
     if isinstance(value, int):
         max_attempts = value
         when: list[str] = []
@@ -1179,12 +1188,14 @@ def _retry_config(value: Any) -> dict:
             names = ", ".join(sorted(str(item) for item in unsupported))
             raise ValueError(f"retry option(s) not supported: {names}")
         raw_max = value.get("max", 0)
+        if isinstance(raw_max, str):
+            raw_max = _expand_ci_variables(raw_max, variables)
         try:
             max_attempts = int(raw_max)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"retry max value is not supported: {raw_max}") from exc
-        when = _string_list(value.get("when"))
-        exit_codes = _exit_codes(value.get("exit_codes"), "retry")
+        when = _expand_string_list(value.get("when"), variables)
+        exit_codes = _exit_codes(value.get("exit_codes"), "retry", variables)
     else:
         raise ValueError("retry must be an integer or mapping")
     if max_attempts < 0 or max_attempts > 2:
@@ -2029,7 +2040,7 @@ def parse_gitlab_ci(
                         decision,
                         runtime_variables,
                     ),
-                    retry=_retry_config(config.get("retry")),
+                    retry=_retry_config(config.get("retry"), runtime_variables),
                     timeout_seconds=_timeout_seconds(
                         config.get("timeout"),
                         runtime_variables,

@@ -1949,6 +1949,8 @@ variables:
   OPTIONAL_EXIT_CODE: "137"
   OPTIONAL_JOB: "false"
   INTERRUPTIBLE_JOB: "true"
+  RETRY_MAX: "2"
+  RETRY_REASON: runner_system_failure
 
 optional_probe:
   script: echo optional
@@ -1959,6 +1961,15 @@ optional_probe:
 exit_code_probe:
   script: echo exit code
   allow_failure:
+    exit_codes:
+      - "$OPTIONAL_EXIT_CODE"
+
+retry_probe:
+  script: echo retry
+  retry:
+    max: "$RETRY_MAX"
+    when:
+      - "$RETRY_REASON"
     exit_codes:
       - "$OPTIONAL_EXIT_CODE"
 
@@ -1987,6 +1998,11 @@ matrix_probe:
     assert by_name["optional_probe"].interruptible is True
     assert by_name["exit_code_probe"].allow_failure is False
     assert by_name["exit_code_probe"].allow_failure_exit_codes == [137]
+    assert by_name["retry_probe"].retry == {
+        "max": 2,
+        "when": ["runner_system_failure"],
+        "exit_codes": [137],
+    }
     assert by_name["delayed_probe"].start_in_seconds == 600
     assert by_name["matrix_probe [one]"].resource_group == "deploy-one"
     assert by_name["matrix_probe [one]"].coverage == "/Coverage one: \\d+%/"
