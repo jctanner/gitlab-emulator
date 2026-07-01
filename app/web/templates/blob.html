@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_octicons.html" import file_icon, pencil %}
 {% block title %}{{ path }} - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+{% set is_yaml_file = path.lower().endswith(".yml") or path.lower().endswith(".yaml") %}
 
 {% block subnav %}
 <div class="color-bg-default border-bottom">
@@ -50,6 +51,9 @@
         </div>
     </div>
     <div class="Box-body p-0 overflow-auto">
+        {% if is_yaml_file %}
+        <pre class="blob-code-viewer yaml-viewer-source" data-code-viewer="yaml">{{ content }}</pre>
+        {% else %}
         <table class="blob-viewer">
             <tbody>
                 {% for line in lines %}
@@ -60,6 +64,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% endif %}
     </div>
 </div>
 {% else %}
@@ -67,5 +72,11 @@
     <h3 class="blankslate-heading">File not found</h3>
     <p>This file does not exist at this ref, or is a binary file.</p>
 </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if content is not none and is_yaml_file %}
+<script type="module" src="{{ url_prefix }}/static/js/codemirror-yaml.js"></script>
 {% endif %}
 {% endblock %}

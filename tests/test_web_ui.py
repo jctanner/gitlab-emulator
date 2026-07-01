@@ -1233,6 +1233,9 @@ ui_job:
     assert "Commit changes" in edit_ci.text
     assert 'data-code-editor="yaml"' in edit_ci.text
     assert "/ui/static/js/codemirror-yaml.js" in edit_ci.text
+    assert "data-code-viewer=\"yaml\"" in (
+        await client.get("/ui/testuser/ui-ci-repo/blob/main/.gitlab-ci.yml")
+    ).text
 
     save_plain = await client.post(
         "/ui/testuser/ui-ci-repo/new/main",
@@ -1328,6 +1331,21 @@ ui_job:
     assert canceled_page.status_code == 200
     assert "Job canceled." in canceled_page.text
     assert "canceled" in canceled_page.text
+
+
+def test_codemirror_yaml_loader_uses_single_dependency_graph():
+    loader = Path("app/web/static/js/codemirror-yaml.js").read_text()
+    blob_template = Path("app/web/templates/blob.html").read_text()
+
+    assert "const CODEMIRROR_DEPS" in loader
+    assert "codemirror@6.0.1" not in loader
+    assert "cm.basicSetup" not in loader
+    assert 'document.querySelectorAll(\'[data-code-viewer="yaml"]\')' in loader
+    assert "cm.EditorView.editable.of(false)" in loader
+    assert "cm.MatchDecorator" in loader
+    assert "cm-yaml-key" in loader
+    assert 'data-code-viewer="yaml"' in blob_template
+    assert "/static/js/codemirror-yaml.js" in blob_template
 
 
 @pytest.mark.asyncio

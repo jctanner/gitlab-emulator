@@ -246,22 +246,59 @@ td.blob-code {
 .yaml-editor-source {
     display: none !important;
 }
+.yaml-viewer-source {
+    display: none !important;
+}
 .yaml-editor-shell {
     border: 1px solid #d0d7de;
     border-radius: 6px;
     overflow: hidden;
     background: #ffffff;
 }
+.yaml-viewer-shell {
+    background: #ffffff;
+}
 .yaml-editor-shell .cm-editor {
     height: var(--yaml-editor-height, 520px);
+    font-size: 13px;
+}
+.yaml-viewer-shell .cm-editor {
+    min-height: 48px;
     font-size: 13px;
 }
 .yaml-editor-shell .cm-scroller {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
                  "Liberation Mono", monospace;
 }
+.yaml-viewer-shell .cm-scroller {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                 "Liberation Mono", monospace;
+}
 .yaml-editor-shell .cm-content {
     tab-size: 2;
+}
+.yaml-viewer-shell .cm-content {
+    tab-size: 2;
+}
+.yaml-editor-shell .cm-yaml-key,
+.yaml-viewer-shell .cm-yaml-key {
+    color: #953800;
+}
+.yaml-editor-shell .cm-yaml-string,
+.yaml-viewer-shell .cm-yaml-string {
+    color: #0a3069;
+}
+.yaml-editor-shell .cm-yaml-literal,
+.yaml-viewer-shell .cm-yaml-literal,
+.yaml-editor-shell .cm-yaml-number,
+.yaml-viewer-shell .cm-yaml-number {
+    color: #0550ae;
+    font-weight: 600;
+}
+.yaml-editor-shell .cm-yaml-comment,
+.yaml-viewer-shell .cm-yaml-comment {
+    color: #6e7781;
+    font-style: italic;
 }
 .yaml-editor-shell .cm-focused {
     outline: 2px solid #0969da;
@@ -604,7 +641,11 @@ td.blob-code {
     border-radius: 4px;
     box-shadow: 0 1px 2px rgba(31, 25, 79, .06);
 }
-.yaml-editor-shell .cm-editor {
+.yaml-viewer-shell {
+    border-color: var(--gl-border);
+}
+.yaml-editor-shell .cm-editor,
+.yaml-viewer-shell .cm-editor {
     background: var(--gl-bg-default);
 }
 .yaml-editor-shell .cm-focused {
