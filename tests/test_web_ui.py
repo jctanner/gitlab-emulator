@@ -260,6 +260,65 @@ def test_nested_project_pipeline_schedule_posts_are_routed():
     assert 'variables_text=str(form.get("variables_text") or "")' in routes
 
 
+def test_nested_project_variable_and_secret_posts_are_routed():
+    """Nested namespace project CI/CD settings forms reach the direct handlers."""
+    routes = (REPO_ROOT / "app/web/routes.py").read_text()
+
+    assert 'request.method == "POST" and section == "variables"' in routes
+    assert "return await repo_variable_create(" in routes
+    assert "return await repo_variable_update(" in routes
+    assert "return await repo_variable_delete(" in routes
+    assert 'key=str(form.get("key") or "")' in routes
+    assert 'variable_type=str(form.get("variable_type") or "env_var")' in routes
+
+    assert 'request.method == "POST" and section == "secrets"' in routes
+    assert "return await repo_secret_create(" in routes
+    assert "return await repo_secret_update(" in routes
+    assert "return await repo_secret_delete(" in routes
+    assert 'name=str(form.get("name") or "")' in routes
+    assert 'branch_scope=str(form.get("branch_scope") or "*")' in routes
+
+
+def test_nested_project_management_posts_are_routed():
+    """Nested namespace project management forms reach their direct handlers."""
+    routes = (REPO_ROOT / "app/web/routes.py").read_text()
+
+    expected_sections = {
+        "members": (
+            "repo_member_create",
+            "repo_member_update",
+            "repo_member_delete",
+        ),
+        "labels": ("repo_label_create", "repo_label_update", "repo_label_delete"),
+        "snippets": ("repo_snippet_create", "repo_snippet_delete"),
+        "milestones": (
+            "repo_milestone_create",
+            "repo_milestone_update",
+            "repo_milestone_delete",
+        ),
+        "releases": (
+            "repo_release_create",
+            "repo_release_update",
+            "repo_release_delete",
+        ),
+        "deploy_keys": ("repo_deploy_key_create", "repo_deploy_key_delete"),
+        "hooks": (
+            "repo_webhook_create",
+            "repo_webhook_update",
+            "repo_webhook_delete",
+        ),
+    }
+    for section, handlers in expected_sections.items():
+        assert f'request.method == "POST" and section == "{section}"' in routes
+        for handler in handlers:
+            assert f"return await {handler}(" in routes
+
+    assert 'request.method == "POST" and action_parts[0] == "settings"' in routes
+    assert "return await repo_settings_submit(" in routes
+    assert "return await repo_delete_submit(" in routes
+    assert 'events=form.getlist("events")' in routes
+
+
 def test_web_job_scheduling_diagnostics_are_scoped_per_pipeline(monkeypatch):
     """Project jobs pages must not explain blockers using jobs from old pipelines."""
     from app.web import routes as web_routes

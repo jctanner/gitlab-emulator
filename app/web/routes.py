@@ -4341,6 +4341,35 @@ async def nested_repo_page(
                 db=db,
             )
 
+        if request.method == "POST" and action_parts[0] == "settings":
+            form = await request.form()
+            if len(action_parts) == 1:
+                return await repo_settings_submit(
+                    request,
+                    owner,
+                    repo.name,
+                    name=str(form.get("name") or ""),
+                    description=str(form.get("description") or ""),
+                    default_branch=str(form.get("default_branch") or "main"),
+                    private=str(form.get("private") or ""),
+                    ci_pipeline_variables_minimum_override_role=str(
+                        form.get("ci_pipeline_variables_minimum_override_role")
+                        or "developer"
+                    ),
+                    ci_strict_security_mode=str(
+                        form.get("ci_strict_security_mode") or ""
+                    ),
+                    db=db,
+                )
+            if len(action_parts) == 2 and action_parts[1] == "delete":
+                return await repo_delete_submit(
+                    request,
+                    owner,
+                    repo.name,
+                    confirm_repository=str(form.get("confirm_repository") or ""),
+                    db=db,
+                )
+
         if request.method == "GET" and action_parts[0] == "issues":
             if len(action_parts) == 1:
                 return await issues_list(
@@ -4507,6 +4536,307 @@ async def nested_repo_page(
                     if len(action_parts) == 3 and action_parts[2] == "new":
                         return await repo_pipeline_schedule_new_page(
                             request, owner, repo.name, error=error, db=db
+                        )
+
+            if request.method == "POST" and section == "members":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_member_create(
+                        request,
+                        owner,
+                        repo.name,
+                        username=str(form.get("username") or ""),
+                        access_level=str(form.get("access_level") or "20"),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    user_id = int(action_parts[2])
+                    member_action = action_parts[3]
+                    if member_action == "update":
+                        form = await request.form()
+                        return await repo_member_update(
+                            request,
+                            owner,
+                            repo.name,
+                            user_id,
+                            access_level=str(form.get("access_level") or "20"),
+                            db=db,
+                        )
+                    if member_action == "delete":
+                        return await repo_member_delete(
+                            request, owner, repo.name, user_id, db=db
+                        )
+
+            if request.method == "POST" and section == "labels":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_label_create(
+                        request,
+                        owner,
+                        repo.name,
+                        name=str(form.get("name") or ""),
+                        color=str(form.get("color") or "6699cc"),
+                        description=str(form.get("description") or ""),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    label_id = int(action_parts[2])
+                    label_action = action_parts[3]
+                    if label_action == "update":
+                        form = await request.form()
+                        return await repo_label_update(
+                            request,
+                            owner,
+                            repo.name,
+                            label_id,
+                            name=str(form.get("name") or ""),
+                            color=str(form.get("color") or "6699cc"),
+                            description=str(form.get("description") or ""),
+                            db=db,
+                        )
+                    if label_action == "delete":
+                        return await repo_label_delete(
+                            request, owner, repo.name, label_id, db=db
+                        )
+
+            if request.method == "POST" and section == "variables":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_variable_create(
+                        request,
+                        owner,
+                        repo.name,
+                        key=str(form.get("key") or ""),
+                        value=str(form.get("value") or ""),
+                        variable_type=str(form.get("variable_type") or "env_var"),
+                        environment_scope=str(form.get("environment_scope") or "*"),
+                        description=str(form.get("description") or ""),
+                        masked=str(form.get("masked") or ""),
+                        hidden=str(form.get("hidden") or ""),
+                        protected=str(form.get("protected") or ""),
+                        raw=str(form.get("raw") or ""),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    variable_id = int(action_parts[2])
+                    variable_action = action_parts[3]
+                    if variable_action == "update":
+                        form = await request.form()
+                        return await repo_variable_update(
+                            request,
+                            owner,
+                            repo.name,
+                            variable_id,
+                            value=str(form.get("value") or ""),
+                            variable_type=str(form.get("variable_type") or "env_var"),
+                            environment_scope=str(form.get("environment_scope") or "*"),
+                            description=str(form.get("description") or ""),
+                            masked=str(form.get("masked") or ""),
+                            hidden=str(form.get("hidden") or ""),
+                            protected=str(form.get("protected") or ""),
+                            raw=str(form.get("raw") or ""),
+                            db=db,
+                        )
+                    if variable_action == "delete":
+                        return await repo_variable_delete(
+                            request, owner, repo.name, variable_id, db=db
+                        )
+
+            if request.method == "POST" and section == "secrets":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_secret_create(
+                        request,
+                        owner,
+                        repo.name,
+                        name=str(form.get("name") or ""),
+                        value=str(form.get("value") or ""),
+                        environment_scope=str(form.get("environment_scope") or "*"),
+                        branch_scope=str(form.get("branch_scope") or "*"),
+                        description=str(form.get("description") or ""),
+                        rotation_reminder_days=str(form.get("rotation_reminder_days") or ""),
+                        protected=str(form.get("protected") or ""),
+                        status=str(form.get("status") or "healthy"),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    secret_id = int(action_parts[2])
+                    secret_action = action_parts[3]
+                    if secret_action == "update":
+                        form = await request.form()
+                        return await repo_secret_update(
+                            request,
+                            owner,
+                            repo.name,
+                            secret_id,
+                            value=str(form.get("value") or ""),
+                            environment_scope=str(form.get("environment_scope") or "*"),
+                            branch_scope=str(form.get("branch_scope") or "*"),
+                            description=str(form.get("description") or ""),
+                            rotation_reminder_days=str(
+                                form.get("rotation_reminder_days") or ""
+                            ),
+                            protected=str(form.get("protected") or ""),
+                            status=str(form.get("status") or "healthy"),
+                            db=db,
+                        )
+                    if secret_action == "delete":
+                        return await repo_secret_delete(
+                            request, owner, repo.name, secret_id, db=db
+                        )
+
+            if request.method == "POST" and section == "snippets":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_snippet_create(
+                        request,
+                        owner,
+                        repo.name,
+                        title=str(form.get("title") or ""),
+                        file_name=str(form.get("file_name") or "snippet.txt"),
+                        content=str(form.get("content") or ""),
+                        description=str(form.get("description") or ""),
+                        visibility=str(form.get("visibility") or "private"),
+                        db=db,
+                    )
+                if (
+                    len(action_parts) == 4
+                    and action_parts[2].isdigit()
+                    and action_parts[3] == "delete"
+                ):
+                    return await repo_snippet_delete(
+                        request, owner, repo.name, int(action_parts[2]), db=db
+                    )
+
+            if request.method == "POST" and section == "milestones":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_milestone_create(
+                        request,
+                        owner,
+                        repo.name,
+                        title=str(form.get("title") or ""),
+                        description=str(form.get("description") or ""),
+                        state=str(form.get("state") or "open"),
+                        due_on=str(form.get("due_on") or ""),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    milestone_id = int(action_parts[2])
+                    milestone_action = action_parts[3]
+                    if milestone_action == "update":
+                        form = await request.form()
+                        return await repo_milestone_update(
+                            request,
+                            owner,
+                            repo.name,
+                            milestone_id,
+                            title=str(form.get("title") or ""),
+                            description=str(form.get("description") or ""),
+                            state=str(form.get("state") or "open"),
+                            due_on=str(form.get("due_on") or ""),
+                            db=db,
+                        )
+                    if milestone_action == "delete":
+                        return await repo_milestone_delete(
+                            request, owner, repo.name, milestone_id, db=db
+                        )
+
+            if request.method == "POST" and section == "releases":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_release_create(
+                        request,
+                        owner,
+                        repo.name,
+                        tag_name=str(form.get("tag_name") or ""),
+                        name=str(form.get("name") or ""),
+                        ref=str(form.get("ref") or ""),
+                        description=str(form.get("description") or ""),
+                        draft=str(form.get("draft") or ""),
+                        prerelease=str(form.get("prerelease") or ""),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    release_id = int(action_parts[2])
+                    release_action = action_parts[3]
+                    if release_action == "update":
+                        form = await request.form()
+                        return await repo_release_update(
+                            request,
+                            owner,
+                            repo.name,
+                            release_id,
+                            name=str(form.get("name") or ""),
+                            description=str(form.get("description") or ""),
+                            draft=str(form.get("draft") or ""),
+                            prerelease=str(form.get("prerelease") or ""),
+                            db=db,
+                        )
+                    if release_action == "delete":
+                        return await repo_release_delete(
+                            request, owner, repo.name, release_id, db=db
+                        )
+
+            if request.method == "POST" and section == "deploy_keys":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_deploy_key_create(
+                        request,
+                        owner,
+                        repo.name,
+                        title=str(form.get("title") or ""),
+                        key=str(form.get("key") or ""),
+                        read_only=str(form.get("read_only") or ""),
+                        db=db,
+                    )
+                if (
+                    len(action_parts) == 4
+                    and action_parts[2].isdigit()
+                    and action_parts[3] == "delete"
+                ):
+                    return await repo_deploy_key_delete(
+                        request, owner, repo.name, int(action_parts[2]), db=db
+                    )
+
+            if request.method == "POST" and section == "hooks":
+                if len(action_parts) == 2:
+                    form = await request.form()
+                    return await repo_webhook_create(
+                        request,
+                        owner,
+                        repo.name,
+                        url=str(form.get("url") or ""),
+                        token=str(form.get("token") or ""),
+                        enable_ssl_verification=str(
+                            form.get("enable_ssl_verification") or ""
+                        ),
+                        active=str(form.get("active") or ""),
+                        events=form.getlist("events"),
+                        db=db,
+                    )
+                if len(action_parts) == 4 and action_parts[2].isdigit():
+                    hook_id = int(action_parts[2])
+                    hook_action = action_parts[3]
+                    if hook_action == "update":
+                        form = await request.form()
+                        return await repo_webhook_update(
+                            request,
+                            owner,
+                            repo.name,
+                            hook_id,
+                            url=str(form.get("url") or ""),
+                            token=str(form.get("token") or ""),
+                            enable_ssl_verification=str(
+                                form.get("enable_ssl_verification") or ""
+                            ),
+                            active=str(form.get("active") or ""),
+                            events=form.getlist("events"),
+                            db=db,
+                        )
+                    if hook_action == "delete":
+                        return await repo_webhook_delete(
+                            request, owner, repo.name, hook_id, db=db
                         )
 
             if request.method == "POST" and section == "pipeline_schedules":
