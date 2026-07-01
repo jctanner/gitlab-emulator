@@ -260,6 +260,11 @@ def _webhook_events_from_form(events: list[str] | None) -> list[str]:
     return selected or ["push_events"]
 
 
+def _normalize_editor_content(content: str | None) -> str:
+    """Normalize browser textarea newlines before committing source files."""
+    return (content or "").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _parse_schedule_variables(value: str | None) -> list[dict[str, str]]:
     variables: list[dict[str, str]] = []
     for line in (value or "").splitlines():
@@ -3139,7 +3144,7 @@ async def repo_pipeline_editor_submit(
             disk_path=repo.disk_path,
             branch=selected_ref,
             path=".gitlab-ci.yml",
-            content=content.encode("utf-8"),
+            content=_normalize_editor_content(content).encode("utf-8"),
             message=commit_message,
             author_name=current_user.name or current_user.login,
             author_email=current_user.email or f"{current_user.login}@users.noreply.gitlab-emulator.local",
@@ -3890,7 +3895,7 @@ async def new_file_submit(
             disk_path=repo.disk_path,
             branch=ref,
             path=full_path,
-            content=content.encode("utf-8"),
+            content=_normalize_editor_content(content).encode("utf-8"),
             message=commit_message,
             author_name=current_user.name or current_user.login,
             author_email=current_user.email or f"{current_user.login}@users.noreply.gitlab-emulator.local",
@@ -3980,7 +3985,7 @@ async def edit_file_submit(
             disk_path=repo.disk_path,
             branch=ref,
             path=path,
-            content=content.encode("utf-8"),
+            content=_normalize_editor_content(content).encode("utf-8"),
             message=commit_message,
             author_name=current_user.name or current_user.login,
             author_email=current_user.email or f"{current_user.login}@users.noreply.gitlab-emulator.local",
@@ -5007,7 +5012,7 @@ async def nested_repo_page(
                             disk_path=repo.disk_path,
                             branch=selected_ref,
                             path=".gitlab-ci.yml",
-                            content=content.encode("utf-8"),
+                            content=_normalize_editor_content(content).encode("utf-8"),
                             message=commit_message,
                             author_name=current_user.name or current_user.login,
                             author_email=current_user.email or f"{current_user.login}@users.noreply.gitlab-emulator.local",
@@ -5176,7 +5181,7 @@ async def nested_repo_page(
                         disk_path=repo.disk_path,
                         branch=ref,
                         path=full_path,
-                        content=content.encode("utf-8"),
+                        content=_normalize_editor_content(content).encode("utf-8"),
                         message=commit_message,
                         author_name=current_user.name or current_user.login,
                         author_email=current_user.email or f"{current_user.login}@users.noreply.gitlab-emulator.local",

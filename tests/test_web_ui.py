@@ -319,6 +319,21 @@ def test_nested_project_management_posts_are_routed():
     assert 'events=form.getlist("events")' in routes
 
 
+def test_web_editor_content_normalizes_crlf_before_git_writes():
+    """Browser form newlines must not commit CRLF into source files."""
+    from app.web.routes import _normalize_editor_content
+
+    assert _normalize_editor_content("set -euo pipefail\r\nprintf ok\r\n") == (
+        "set -euo pipefail\nprintf ok\n"
+    )
+    assert _normalize_editor_content("one\rtwo") == "one\ntwo"
+    assert _normalize_editor_content(None) == ""
+
+    routes = (REPO_ROOT / "app/web/routes.py").read_text()
+    assert "content=content.encode(\"utf-8\")" not in routes
+    assert routes.count("content=_normalize_editor_content(content).encode(\"utf-8\")") == 5
+
+
 def test_web_job_scheduling_diagnostics_are_scoped_per_pipeline(monkeypatch):
     """Project jobs pages must not explain blockers using jobs from old pipelines."""
     from app.web import routes as web_routes
