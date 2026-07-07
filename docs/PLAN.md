@@ -34,6 +34,7 @@ No task files are currently checked into `docs/tasks/current/`.
 
 ## Runbooks
 
+- [Docker Compose stack runbook](runbooks/compose-stack.md)
 - [Operations runbook](runbooks/operations.md)
 - [k3s stack deployment guide](runbooks/k3s-stack-deployment.md)
 - [Runner deployment guide](runbooks/runner-deployment.md)
