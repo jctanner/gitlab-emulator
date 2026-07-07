@@ -22,6 +22,12 @@ screenshots/
 # Testing
 .pytest_cache/
 
+# Local browser tooling
+.playwright-mcp/
+node_modules/
+package.json
+package-lock.json
+
 # OS
 .DS_Store
 
