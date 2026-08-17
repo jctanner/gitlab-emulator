@@ -104,6 +104,137 @@ async def test_create_pipeline_with_one_job(client, test_token):
     assert jobs.json()[0]["status"] == "pending"
 
 
+async def test_create_pipeline_from_nested_gitlab_project_yaml_and_variables(
+    client, test_token
+):
+    """Normal pipeline creation resolves nested GitLab projects and YAML rules."""
+    root = await client.post(
+        f"{API}/groups",
+        json={"path": "redhat", "name": "Red Hat"},
+        headers=auth_headers(test_token),
+    )
+    assert root.status_code == 201
+    rhel_ai = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "rhel-ai",
+            "name": "RHEL AI",
+            "parent_id": root.json()["id"],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert rhel_ai.status_code == 201
+    agentic_ci = await client.post(
+        f"{API}/groups",
+        json={
+            "path": "agentic-ci",
+            "name": "Agentic CI",
+            "parent_id": rhel_ai.json()["id"],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert agentic_ci.status_code == 201
+
+    dashboard = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "strat-dashboard",
+            "namespace_path": "redhat/rhel-ai/agentic-ci",
+            "initialize_with_readme": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert dashboard.status_code == 201
+
+    project = await client.post(
+        f"{API}/projects",
+        json={
+            "name": "strat-pipeline",
+            "namespace_path": "redhat/rhel-ai/agentic-ci",
+            "initialize_with_readme": True,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_data = project.json()
+    assert project_data["id"] > 0
+    project_path = project_data["path_with_namespace"]
+
+    ci_yaml = """
+rfe_job:
+  rules:
+    - if: '$RFE_KEY == "RHAIRFE-1"'
+    - when: never
+  script:
+    - echo "$RFE_KEY"
+
+build_dashboard:
+  rules:
+    - if: '$RFE_KEY == "RHAIRFE-1"'
+  trigger:
+    project: redhat/rhel-ai/agentic-ci/strat-dashboard
+    branch: main
+"""
+    write = await client.post(
+        f"{API}/projects/{project_data['id']}/repository/files/.gitlab-ci.yml",
+        json={
+            "branch": "main",
+            "commit_message": "Add pipeline definition",
+            "content": ci_yaml,
+        },
+        headers=auth_headers(test_token),
+    )
+    assert write.status_code == 201
+
+    tree = await client.get(
+        f"{API}/projects/{project_data['id']}/repository/tree",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert tree.status_code == 200
+    assert any(entry["path"] == ".gitlab-ci.yml" for entry in tree.json())
+    raw = await client.get(
+        f"{API}/projects/{project_data['id']}/repository/files/.gitlab-ci.yml/raw",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert raw.status_code == 200
+    assert "RHAIRFE-1" in raw.text
+
+    for project_ref in (str(project_data["id"]), project_path):
+        created = await client.post(
+            f"{API}/projects/{project_ref}/pipeline",
+            json={
+                "ref": "main",
+                "variables": [{"key": "RFE_KEY", "value": "RHAIRFE-1"}],
+            },
+            headers=auth_headers(test_token),
+        )
+        assert created.status_code == 201, created.text
+        pipeline = created.json()
+        assert pipeline["status"] == "pending"
+        jobs = await client.get(
+            f"{API}/projects/{project_ref}/pipelines/{pipeline['id']}/jobs",
+            headers=auth_headers(test_token),
+        )
+        assert jobs.status_code == 200
+        assert {job["name"] for job in jobs.json()} == {"rfe_job", "build_dashboard"}
+        rfe_job = next(job for job in jobs.json() if job["name"] == "rfe_job")
+        assert rfe_job["status"] == "pending"
+        bridge = next(job for job in jobs.json() if job["name"] == "build_dashboard")
+        assert bridge["status"] == "failed"
+        assert bridge["failure_reason"] == ".gitlab-ci.yml not found"
+        pipeline_variables = await client.get(
+            f"{API}/projects/{project_ref}/pipelines/{pipeline['id']}/variables",
+            headers=auth_headers(test_token),
+        )
+        assert pipeline_variables.status_code == 200
+        assert {
+            variable["key"]: variable["value"]
+            for variable in pipeline_variables.json()
+        }["RFE_KEY"] == "RHAIRFE-1"
+
+
 async def test_delete_project_pipelines_clears_only_selected_project_runs(
     client, test_token
 ):

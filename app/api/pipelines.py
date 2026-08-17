@@ -2315,16 +2315,27 @@ async def _create_pipeline(
             target = bridge_targets.get(job.name)
             if target is None:
                 continue
-            downstream = await _create_pipeline(
-                target.id,
-                CreatePipelineRequest(ref=job.trigger_ref or body.ref),
-                db,
-                source="parent_pipeline",
-            )
-            job.downstream_pipeline_id = downstream.id
-            job.status = "success"
-            job.started_at = job.started_at or now
-            job.finished_at = now
+            try:
+                downstream = await _create_pipeline(
+                    target.id,
+                    CreatePipelineRequest(ref=job.trigger_ref or body.ref),
+                    db,
+                    source="parent_pipeline",
+                )
+            except HTTPException as exc:
+                # A bridge job is part of the parent pipeline even when the
+                # downstream pipeline cannot be created (for example, the
+                # target project has no .gitlab-ci.yml).  GitLab reports that
+                # failure on the bridge job after persisting the parent.
+                job.status = "failed"
+                job.failure_reason = str(exc.detail)
+                job.started_at = job.started_at or now
+                job.finished_at = now
+            else:
+                job.downstream_pipeline_id = downstream.id
+                job.status = "success"
+                job.started_at = job.started_at or now
+                job.finished_at = now
         await _derive_pipeline_status(pipeline, db)
         await db.commit()
         await db.refresh(pipeline)
