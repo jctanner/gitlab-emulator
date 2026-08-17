@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.models.ci import CiSecret, CiVariable
+from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
 from app.models.organization import Organization
 from tests.conftest import auth_headers
 
@@ -30,6 +30,60 @@ async def test_admin_dashboard_requires_auth(client):
     resp = await client.get("/admin/", follow_redirects=False)
     # Should redirect or show login
     assert resp.status_code in (200, 302, 303, 307)
+
+
+@pytest.mark.asyncio
+async def test_admin_project_detail_can_clear_pipeline_runs(
+    client, admin_user, test_token, db_session
+):
+    """Admin project details can clear pipeline runs without deleting the project."""
+    _admin_session(client)
+
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "admin-clear-pipeline-runs", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    for name in ("first", "second"):
+        pipeline = await client.post(
+            f"{API}/projects/{project_id}/pipeline",
+            json={"ref": "main", "job": {"name": name, "script": ["echo run"]}},
+            headers=auth_headers(test_token),
+        )
+        assert pipeline.status_code == 201
+
+    detail = await client.get(f"/admin/repos/{project_id}")
+    assert detail.status_code == 200
+    assert "2 pipeline runs" in detail.text
+    assert f"/admin/repos/{project_id}/pipelines/delete" in detail.text
+
+    cleared = await client.post(
+        f"/admin/repos/{project_id}/pipelines/delete",
+        data={"created_before": ""},
+        follow_redirects=False,
+    )
+    assert cleared.status_code in (302, 303)
+    assert f"/admin/repos/{project_id}?" in cleared.headers["location"]
+
+    remaining_pipelines = (
+        await db_session.execute(
+            select(Pipeline).where(Pipeline.project_id == project_id)
+        )
+    ).scalars().all()
+    remaining_jobs = (
+        await db_session.execute(
+            select(PipelineJob).where(PipelineJob.project_id == project_id)
+        )
+    ).scalars().all()
+    assert remaining_pipelines == []
+    assert remaining_jobs == []
+
+    detail_after = await client.get(cleared.headers["location"])
+    assert "Cleared 2 pipeline run(s) and their jobs." in detail_after.text
+    assert "0 pipeline runs" in detail_after.text
 
 
 @pytest.mark.asyncio

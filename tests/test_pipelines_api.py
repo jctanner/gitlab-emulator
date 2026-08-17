@@ -104,6 +104,70 @@ async def test_create_pipeline_with_one_job(client, test_token):
     assert jobs.json()[0]["status"] == "pending"
 
 
+async def test_delete_project_pipelines_clears_only_selected_project_runs(
+    client, test_token
+):
+    project = await _create_named_project(client, test_token, "clear-project-runs")
+    other_project = await _create_named_project(
+        client, test_token, "keep-project-runs"
+    )
+
+    for name in ("first", "second"):
+        response = await client.post(
+            f"{API}/projects/{project['id']}/pipeline",
+            json={"ref": "main", "job": {"name": name, "script": ["echo run"]}},
+            headers=auth_headers(test_token),
+        )
+        assert response.status_code == 201
+    other_pipeline = await client.post(
+        f"{API}/projects/{other_project['id']}/pipeline",
+        json={"ref": "main", "job": {"name": "keep", "script": ["echo keep"]}},
+        headers=auth_headers(test_token),
+    )
+    assert other_pipeline.status_code == 201
+
+    variable = await client.post(
+        f"{API}/projects/{project['id']}/variables",
+        json={"key": "KEEP_VARIABLE", "value": "value"},
+        headers=auth_headers(test_token),
+    )
+    secret = await client.post(
+        f"{API}/projects/{project['id']}/secrets",
+        json={"name": "KEEP_SECRET", "value": "value"},
+        headers=auth_headers(test_token),
+    )
+    assert variable.status_code == 201
+    assert secret.status_code == 201
+
+    cleared = await client.delete(
+        f"{API}/projects/{project['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert cleared.status_code == 200
+    assert cleared.json() == {"project_id": project["id"], "deleted": 2}
+
+    project_pipelines = await client.get(
+        f"{API}/projects/{project['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    other_pipelines = await client.get(
+        f"{API}/projects/{other_project['id']}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    project_variables = await client.get(
+        f"{API}/projects/{project['id']}/variables",
+        headers=auth_headers(test_token),
+    )
+    project_secrets = await client.get(
+        f"{API}/projects/{project['id']}/secrets",
+        headers=auth_headers(test_token),
+    )
+    assert project_pipelines.json() == []
+    assert len(other_pipelines.json()) == 1
+    assert [item["key"] for item in project_variables.json()] == ["KEEP_VARIABLE"]
+    assert [item["name"] for item in project_secrets.json()] == ["KEEP_SECRET"]
+
+
 async def test_project_ci_lint_validates_yaml_and_returns_jobs(client, test_token):
     project = await _create_project(client, test_token)
     lint = await client.post(

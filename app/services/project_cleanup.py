@@ -2,6 +2,8 @@
 
 import os
 
+from datetime import datetime
+
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -25,7 +27,37 @@ async def delete_project_ci_data(db: AsyncSession, project_id: int) -> None:
     keys, so they need explicit cleanup. Pipelines are loaded with their
     dependent jobs so SQLAlchemy's existing job/trace/artifact cascades apply.
     """
-    result = await db.execute(
+    await delete_project_pipelines(db, project_id)
+
+    await db.execute(
+        delete(CiVariable).where(
+            CiVariable.scope_type == "project",
+            CiVariable.scope_id == project_id,
+        )
+    )
+    await db.execute(
+        delete(CiSecret).where(
+            CiSecret.scope_type == "project",
+            CiSecret.scope_id == project_id,
+        )
+    )
+    await db.execute(
+        delete(PipelineTrigger).where(PipelineTrigger.project_id == project_id)
+    )
+    await db.execute(
+        delete(PipelineSchedule).where(PipelineSchedule.project_id == project_id)
+    )
+
+
+async def delete_project_pipelines(
+    db: AsyncSession,
+    project_id: int,
+    *,
+    pipeline_ids: list[int] | None = None,
+    created_before: datetime | None = None,
+) -> int:
+    """Delete selected pipelines and all of their persisted job data."""
+    query = (
         select(Pipeline)
         .options(
             selectinload(Pipeline.jobs).selectinload(PipelineJob.trace),
@@ -33,6 +65,12 @@ async def delete_project_ci_data(db: AsyncSession, project_id: int) -> None:
         )
         .where(Pipeline.project_id == project_id)
     )
+    if pipeline_ids is not None:
+        query = query.where(Pipeline.id.in_(pipeline_ids))
+    if created_before is not None:
+        query = query.where(Pipeline.created_at < created_before)
+
+    result = await db.execute(query)
     pipelines = list(result.scalars().all())
     pipeline_ids = [pipeline.id for pipeline in pipelines]
     job_ids = [job.id for pipeline in pipelines for job in pipeline.jobs]
@@ -66,25 +104,6 @@ async def delete_project_ci_data(db: AsyncSession, project_id: int) -> None:
         event_filters.append(CiSecretAccessEvent.job_id.in_(job_ids))
     await db.execute(delete(CiSecretAccessEvent).where(or_(*event_filters)))
 
-    await db.execute(
-        delete(CiVariable).where(
-            CiVariable.scope_type == "project",
-            CiVariable.scope_id == project_id,
-        )
-    )
-    await db.execute(
-        delete(CiSecret).where(
-            CiSecret.scope_type == "project",
-            CiSecret.scope_id == project_id,
-        )
-    )
-    await db.execute(
-        delete(PipelineTrigger).where(PipelineTrigger.project_id == project_id)
-    )
-    await db.execute(
-        delete(PipelineSchedule).where(PipelineSchedule.project_id == project_id)
-    )
-
     for pipeline in pipelines:
         for job in pipeline.jobs:
             for artifact in job.artifacts:
@@ -94,3 +113,5 @@ async def delete_project_ci_data(db: AsyncSession, project_id: int) -> None:
                     except FileNotFoundError:
                         pass
         await db.delete(pipeline)
+
+    return len(pipelines)

@@ -45,7 +45,10 @@ from app.models.user import User
 from app.models.import_job import ImportJob
 from app.services.auth_service import hash_password, verify_password
 from app.services.import_service import start_single_import, start_bulk_import
-from app.services.project_cleanup import delete_project_ci_data
+from app.services.project_cleanup import (
+    delete_project_ci_data,
+    delete_project_pipelines,
+)
 from app.services.user_service import create_token, create_user
 
 # ---------------------------------------------------------------------------
@@ -1459,6 +1462,8 @@ async def list_repos(
 async def repo_detail(
     request: Request,
     repo_id: int,
+    flash_message: str | None = None,
+    flash_type: str = "info",
     db: AsyncSession = Depends(get_db),
 ):
     """View repository details."""
@@ -1471,10 +1476,78 @@ async def repo_detail(
     if not repo:
         return RedirectResponse(url="/admin/repos", status_code=302)
 
+    pipeline_count = (
+        await db.execute(
+            select(func.count(Pipeline.id)).where(Pipeline.project_id == repo.id)
+        )
+    ).scalar() or 0
+    pipeline_job_count = (
+        await db.execute(
+            select(func.count(PipelineJob.id)).where(PipelineJob.project_id == repo.id)
+        )
+    ).scalar() or 0
+
     return templates.TemplateResponse(
         request=request,
         name="repo_detail.html",
-        context=_ctx(request, admin_user=admin_user, repo=repo),
+        context=_ctx(
+            request,
+            admin_user=admin_user,
+            flash_message=flash_message,
+            flash_type=flash_type,
+            repo=repo,
+            pipeline_count=pipeline_count,
+            pipeline_job_count=pipeline_job_count,
+        ),
+    )
+
+
+@router.post("/repos/{repo_id}/pipelines/delete", response_class=HTMLResponse)
+async def delete_repo_pipelines(
+    request: Request,
+    repo_id: int,
+    created_before: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear pipeline runs for one repository from the admin UI."""
+    admin_user = _get_admin_user(request)
+    if not admin_user:
+        return RedirectResponse(url="/admin/login", status_code=302)
+
+    result = await db.execute(select(Repository).where(Repository.id == repo_id))
+    repo = result.scalar_one_or_none()
+    if not repo:
+        return RedirectResponse(url="/admin/repos", status_code=302)
+
+    cutoff = None
+    if created_before.strip():
+        try:
+            cutoff = datetime.fromisoformat(created_before.strip())
+        except ValueError:
+            params = urlencode(
+                {
+                    "flash_message": "Invalid pipeline cutoff datetime.",
+                    "flash_type": "error",
+                }
+            )
+            return RedirectResponse(
+                url=f"/admin/repos/{repo_id}?{params}", status_code=302
+            )
+        if cutoff.tzinfo is not None:
+            cutoff = cutoff.astimezone(timezone.utc).replace(tzinfo=None)
+
+    deleted = await delete_project_pipelines(
+        db, repo.id, created_before=cutoff
+    )
+    await db.commit()
+    params = urlencode(
+        {
+            "flash_message": f"Cleared {deleted} pipeline run(s) and their jobs.",
+            "flash_type": "success",
+        }
+    )
+    return RedirectResponse(
+        url=f"/admin/repos/{repo_id}?{params}", status_code=302
     )
 
 

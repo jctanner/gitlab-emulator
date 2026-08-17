@@ -68,6 +68,7 @@ from app.services.pipeline_schedules import (
     play_pipeline_schedule as materialize_pipeline_schedule,
     set_schedule_next_run,
 )
+from app.services.project_cleanup import delete_project_pipelines
 
 router = APIRouter(tags=["pipelines"])
 
@@ -3273,6 +3274,26 @@ async def get_pipeline(
     return _pipeline_json(pipeline)
 
 
+@router.delete("/projects/{project_ref:path}/pipelines")
+async def delete_project_pipelines_endpoint(
+    project_ref: str,
+    db: DbSession,
+    current_user: CurrentUser,
+    created_before: str | None = None,
+):
+    """Delete a project's pipeline runs without changing project settings."""
+    project = await _get_project_ref(project_ref, db, current_user)
+    await require_project_access(project, current_user, db, MAINTAINER)
+    cutoff = _parse_filter_datetime(created_before)
+    if created_before is not None and cutoff is None:
+        raise HTTPException(status_code=400, detail="Invalid created_before")
+    deleted = await delete_project_pipelines(
+        db, project.id, created_before=cutoff
+    )
+    await db.commit()
+    return {"project_id": project.id, "deleted": deleted}
+
+
 @router.delete("/projects/{project_ref:path}/pipelines/{pipeline_id}", status_code=204)
 async def delete_pipeline(
     project_ref: str,
@@ -3282,7 +3303,9 @@ async def delete_pipeline(
 ):
     pipeline = await _get_pipeline_for_project_ref(project_ref, pipeline_id, db)
     await require_project_access(pipeline.project, current_user, db, DEVELOPER)
-    await db.delete(pipeline)
+    await delete_project_pipelines(
+        db, pipeline.project_id, pipeline_ids=[pipeline.id]
+    )
     await db.commit()
     return Response(status_code=204)
 

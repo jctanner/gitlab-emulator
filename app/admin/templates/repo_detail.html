@@ -38,6 +38,23 @@
     </table>
 </div>
 
+<div class="Box p-4 mb-3">
+    <h3 class="f4 mb-2">Pipeline execution history</h3>
+    <p class="color-fg-muted">
+        {{ pipeline_count }} pipeline run{{ "s" if pipeline_count != 1 else "" }}
+        and {{ pipeline_job_count }} job{{ "s" if pipeline_job_count != 1 else "" }} are stored for this project.
+        Source-controlled <code>.gitlab-ci.yml</code>, project variables, and secrets are not affected.
+    </p>
+    <form method="post" action="/admin/repos/{{ repo.id }}/pipelines/delete" class="admin-form" onsubmit="return confirm('Clear the selected pipeline runs and all their jobs, traces, and artifacts?');">
+        <div class="form-group">
+            <label for="created-before">Delete runs created before (UTC, optional)</label>
+            <input id="created-before" name="created_before" type="datetime-local" class="form-control">
+            <span class="form-hint">Leave blank to clear every pipeline run in this project.</span>
+        </div>
+        <button type="submit" class="btn btn-danger">Clear Pipeline Runs</button>
+    </form>
+</div>
+
 <form method="post" action="/admin/repos/{{ repo.id }}/delete" class="d-inline" onsubmit="return confirm('Are you sure you want to delete {{ repo.full_name }}? This cannot be undone.');">
     <button type="submit" class="btn btn-danger">Delete Repository</button>
 </form>
