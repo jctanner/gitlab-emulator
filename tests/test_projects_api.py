@@ -8,7 +8,9 @@ import secrets
 from urllib.parse import quote
 
 import pytest
+from sqlalchemy import select
 
+from app.models.ci import CiSecret, CiVariable, Pipeline, PipelineJob
 from tests.conftest import auth_headers
 
 API = "/api/v4"
@@ -1648,3 +1650,72 @@ async def test_delete_project_requires_owner(client, db_session, test_user, test
         headers=auth_headers(test_token),
     )
     assert allowed.status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_delete_project_removes_ci_data_before_recreation(
+    client, db_session, test_user, test_token
+):
+    project_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "delete-project-ci-data", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project_resp.status_code == 201
+    project_id = project_resp.json()["id"]
+
+    variable_resp = await client.post(
+        f"{API}/projects/{project_id}/variables",
+        json={"key": "OLD_VARIABLE", "value": "old-value"},
+        headers=auth_headers(test_token),
+    )
+    assert variable_resp.status_code == 201
+    secret_resp = await client.post(
+        f"{API}/projects/{project_id}/secrets",
+        json={"name": "OLD_SECRET", "value": "old-value"},
+        headers=auth_headers(test_token),
+    )
+    assert secret_resp.status_code == 201
+
+    pipeline_resp = await client.post(
+        f"{API}/projects/{project_id}/pipeline",
+        json={
+            "ref": "main",
+            "job": {"name": "old-job", "script": ["echo old"]},
+        },
+        headers=auth_headers(test_token),
+    )
+    assert pipeline_resp.status_code == 201
+
+    deleted = await client.delete(
+        f"{API}/projects/{project_id}", headers=auth_headers(test_token)
+    )
+    assert deleted.status_code == 202
+
+    for model in (CiVariable, CiSecret, Pipeline, PipelineJob):
+        rows = (await db_session.execute(select(model))).scalars().all()
+        assert rows == []
+
+    recreated_resp = await client.post(
+        f"{API}/projects",
+        json={"name": "delete-project-ci-data", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert recreated_resp.status_code == 201
+    recreated_id = recreated_resp.json()["id"]
+
+    variables = await client.get(
+        f"{API}/projects/{recreated_id}/variables",
+        headers=auth_headers(test_token),
+    )
+    secrets = await client.get(
+        f"{API}/projects/{recreated_id}/secrets",
+        headers=auth_headers(test_token),
+    )
+    pipelines = await client.get(
+        f"{API}/projects/{recreated_id}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert variables.status_code == 200 and variables.json() == []
+    assert secrets.status_code == 200 and secrets.json() == []
+    assert pipelines.status_code == 200 and pipelines.json() == []

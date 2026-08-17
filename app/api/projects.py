@@ -40,6 +40,7 @@ from app.services.permissions import (
     project_access_level,
     require_project_access,
 )
+from app.services.project_cleanup import delete_project_ci_data
 
 router = APIRouter(tags=["projects"])
 VARIABLE_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1886,6 +1887,7 @@ async def delete_project(project_ref: str, user: AuthUser, db: DbSession):
     project = await _get_project_or_404(project_ref, db, user)
     await require_project_access(project, user, db, OWNER)
     disk_path = project.disk_path
+    await delete_project_ci_data(db, project.id)
     await db.delete(project)
     await db.commit()
     if disk_path and os.path.isdir(disk_path):

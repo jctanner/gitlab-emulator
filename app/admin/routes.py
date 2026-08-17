@@ -45,6 +45,7 @@ from app.models.user import User
 from app.models.import_job import ImportJob
 from app.services.auth_service import hash_password, verify_password
 from app.services.import_service import start_single_import, start_bulk_import
+from app.services.project_cleanup import delete_project_ci_data
 from app.services.user_service import create_token, create_user
 
 # ---------------------------------------------------------------------------
@@ -1491,6 +1492,7 @@ async def delete_repo(
     result = await db.execute(select(Repository).where(Repository.id == repo_id))
     repo = result.scalar_one_or_none()
     if repo:
+        await delete_project_ci_data(db, repo.id)
         await db.delete(repo)
         await db.commit()
 

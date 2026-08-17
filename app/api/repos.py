@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.organization import Organization
 from app.schemas.user import SimpleUser, _fmt_dt, _make_node_id
 from app.services.permissions import OWNER, require_group_access, require_project_access
+from app.services.project_cleanup import delete_project_ci_data
 
 router = APIRouter(tags=["repos"])
 
@@ -284,6 +285,7 @@ async def delete_repo(owner: str, repo: str, user: AuthUser, db: DbSession):
 
     await require_project_access(repository, user, db, OWNER)
 
+    await delete_project_ci_data(db, repository.id)
     await db.delete(repository)
     await db.commit()
     return Response(status_code=204)

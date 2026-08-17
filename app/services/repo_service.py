@@ -15,6 +15,7 @@ from app.services.git_service import (
     get_repo_size,
     init_bare_repo,
 )
+from app.services.project_cleanup import delete_project_ci_data
 
 # Valid repository name pattern: alphanumeric, hyphens, underscores, dots
 REPO_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+$")
@@ -165,6 +166,7 @@ async def delete_repo(db: AsyncSession, repo: Repository) -> None:
         repo: The repository to delete.
     """
     disk_path = repo.disk_path
+    await delete_project_ci_data(db, repo.id)
     await db.delete(repo)
     await db.commit()
 
