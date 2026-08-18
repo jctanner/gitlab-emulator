@@ -11,49 +11,96 @@
 </div>
 {% endblock %}
 
-{% block content %}
-{# ---- Breadcrumb ---- #}
-<div class="breadcrumb-nav mb-3 f5">
-    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
-    <span class="separator">/</span>
-    {% set parts = path.split('/') %}
-    {% for part in parts %}
-        {% if not loop.last %}
-        {% set partial = parts[:loop.index]|join('/') %}
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ ref }}/{{ partial }}">{{ part }}</a>
-        <span class="separator">/</span>
+{% macro file_browser(nodes) %}
+<ul class="repo-file-browser-list">
+    {% for node in nodes %}
+    <li class="repo-file-browser-item{% if node.path == path %} current{% endif %}">
+        {% if node.type == "tree" %}
+        <details{% if node.expanded %} open{% endif %}>
+            <summary>
+                <span class="repo-file-browser-chevron" aria-hidden="true">{% if node.expanded %}⌄{% else %}›{% endif %}</span>
+                {{ file_directory(16) }}
+                <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ ref }}/{{ node.path }}">{{ node.name }}</a>
+            </summary>
+            {% if node.children %}{{ file_browser(node.children) }}{% endif %}
+        </details>
         {% else %}
-        <strong>{{ part }}</strong>
+        <a class="repo-file-browser-file" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/blob/{{ ref }}/{{ node.path }}">
+            <span class="repo-file-browser-chevron" aria-hidden="true"></span>
+            {{ file_icon(16) }}
+            <span>{{ node.name }}</span>
+        </a>
         {% endif %}
+    </li>
     {% endfor %}
-</div>
+</ul>
+{% endmacro %}
 
-{# ---- Directory listing ---- #}
-{% if entries is not none %}
-<div class="Box">
-    <div class="Box-header d-flex flex-items-center flex-justify-between">
-        <h2 class="Box-title f5">{{ path }}</h2>
-        {% if current_user %}
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/new/{{ ref }}/{{ path }}"
-           class="btn btn-sm btn-primary">{{ plus(16) }} Add file</a>
-        {% endif %}
-    </div>
-    {% for entry in entries %}
-    <div class="Box-row py-2 d-flex flex-items-center">
-        {% if entry.type == "tree" %}
-        <span class="color-fg-muted mr-2">{{ file_directory(16) }}</span>
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ ref }}/{{ path }}/{{ entry.name }}" class="Link--primary">{{ entry.name }}</a>
+{% block content %}
+{% include "_repo_code_header.html" %}
+
+<div class="repo-browser-layout">
+    <aside class="Box repo-file-browser" aria-label="Repository files">
+        <div class="Box-header repo-file-browser-header">
+            <strong>Files</strong>
+        </div>
+        <div class="Box-body repo-file-browser-body">
+            {{ file_browser(file_browser_entries) }}
+        </div>
+    </aside>
+
+    <section class="repo-tree-content" aria-label="Repository directory">
+        {% if entries is not none %}
+        <div class="Box">
+            <div class="Box-header repo-file-list-header">
+                <span>Name</span>
+                <span>Last commit</span>
+                <span>Last update</span>
+            </div>
+            {% set parent_parts = path.strip('/').split('/')[:-1] %}
+            <div class="Box-row repo-file-row repo-parent-row">
+                <div class="repo-file-name">
+                    <span class="color-fg-muted mr-2">↰</span>
+                    {% if parent_parts %}
+                    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ ref }}/{{ parent_parts|join('/') }}" class="Link--secondary">..</a>
+                    {% else %}
+                    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}" class="Link--secondary">..</a>
+                    {% endif %}
+                </div>
+                <div></div>
+                <div></div>
+            </div>
+            {% for entry in entries %}
+            {% set entry_path = path.strip('/') ~ '/' ~ entry.name %}
+            <div class="Box-row repo-file-row">
+                <div class="repo-file-name">
+                    {% if entry.type == "tree" %}
+                    <span class="color-fg-muted mr-2">{{ file_directory(16) }}</span>
+                    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ ref }}/{{ entry_path }}" class="Link--primary">{{ entry.name }}</a>
+                    {% else %}
+                    <span class="color-fg-muted mr-2">{{ file_icon(16) }}</span>
+                    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/blob/{{ ref }}/{{ entry_path }}" class="Link--primary">{{ entry.name }}</a>
+                    {% endif %}
+                </div>
+                <div class="repo-file-commit">
+                    {% if entry.last_commit %}
+                    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commit/{{ entry.last_commit.sha }}" class="Link--secondary">{{ entry.last_commit.message }}</a>
+                    {% else %}
+                    <span class="color-fg-muted">—</span>
+                    {% endif %}
+                </div>
+                <div class="repo-file-date color-fg-muted" title="{{ entry.last_commit.committer_date if entry.last_commit else '' }}">
+                    {{ entry.last_update_label }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
         {% else %}
-        <span class="color-fg-muted mr-2">{{ file_icon(16) }}</span>
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/blob/{{ ref }}/{{ path }}/{{ entry.name }}" class="Link--primary">{{ entry.name }}</a>
+        <div class="blankslate">
+            <h3 class="blankslate-heading">Directory not found</h3>
+            <p>This directory does not exist at this ref.</p>
+        </div>
         {% endif %}
-    </div>
-    {% endfor %}
+    </section>
 </div>
-{% else %}
-<div class="blankslate">
-    <h3 class="blankslate-heading">Directory not found</h3>
-    <p>This directory does not exist at this ref.</p>
-</div>
-{% endif %}
 {% endblock %}

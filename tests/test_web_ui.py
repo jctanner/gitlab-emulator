@@ -64,6 +64,54 @@ async def test_ui_explore_lists_repositories_by_default_with_pagination(
 
 
 @pytest.mark.asyncio
+async def test_ui_repository_folder_view_matches_repository_shell(client, test_user):
+    """Folder browsing preserves the repository shell and commit-aware listing."""
+    _ui_session(client, test_user.login)
+
+    create_repo = await client.post(
+        "/ui/new",
+        data={"name": "ui-tree-view", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    assert create_repo.status_code in (302, 303)
+
+    for filename, content, message in (
+        ("src/main.py", "print('main')\n", "Add main source"),
+        ("src/test.py", "print('test')\n", "Add source test"),
+    ):
+        create_file = await client.post(
+            "/ui/testuser/ui-tree-view/new/main",
+            data={
+                "filename": filename,
+                "content": content,
+                "commit_message": message,
+            },
+            follow_redirects=False,
+        )
+        assert create_file.status_code in (302, 303)
+
+    folder = await client.get("/ui/testuser/ui-tree-view/tree/main/src")
+    assert folder.status_code == 200
+    assert "Repository" in folder.text
+    assert "Project ID:" in folder.text
+    assert "main" in folder.text
+    assert "src" in folder.text
+    assert "Find file" in folder.text
+    assert "Code" in folder.text
+    assert 'aria-label="Repository files"' in folder.text
+    assert "Last commit" in folder.text
+    assert "Last update" in folder.text
+    assert "Add source test" in folder.text
+    assert re.search(
+        r"(?:just now|\d+ (?:minute|hour|day|week|month|year)s? ago)",
+        folder.text,
+    )
+    assert ">..</a>" in folder.text
+    assert "/ui/testuser/ui-tree-view/blob/main/src/main.py" in folder.text
+    assert "/ui/testuser/ui-tree-view/tree/main/src" in folder.text
+
+
+@pytest.mark.asyncio
 async def test_ui_create_repo_under_nested_group_namespace(
     client, test_user, db_session, tmp_path
 ):

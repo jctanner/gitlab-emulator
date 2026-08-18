@@ -1,0 +1,91 @@
+{% from "_octicons.html" import git_branch, plus, history, tag, star, triangle_down %}
+
+{# Shared repository identity, branch controls, statistics, and commit summary. #}
+<nav class="repo-breadcrumb" aria-label="Project breadcrumb">
+    <span>{{ owner }}</span>
+    <span class="repo-breadcrumb-separator">/</span>
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
+    <span class="repo-breadcrumb-separator">/</span>
+    <strong>Repository</strong>
+    {% if path %}
+    <span class="repo-breadcrumb-separator">/</span>
+    <strong>{{ path }}</strong>
+    {% endif %}
+</nav>
+
+<div class="repo-project-header">
+    <div class="repo-project-avatar">{{ repo.name[0]|upper }}</div>
+    <div class="repo-project-heading">
+        <h1>{{ repo.name }}</h1>
+        <div class="repo-project-meta">
+            <span>{{ repo.full_name }}</span>
+            <span class="Label Label--secondary">{{ "Private" if repo.private else "Public" }}</span>
+            <span>Project ID: {{ repo.id }}</span>
+        </div>
+    </div>
+    <div class="repo-project-actions">
+        <button class="btn btn-sm" type="button">{{ star(16) }} Star <span class="repo-action-count">0</span></button>
+        <button class="btn btn-sm repo-icon-button" type="button" aria-label="More project actions">⋮</button>
+    </div>
+</div>
+{% if repo.description %}
+<p class="repo-project-description color-fg-muted">{{ repo.description }}</p>
+{% endif %}
+
+<div class="repo-toolbar">
+    <a class="repo-branch-selector" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches">
+        {{ git_branch(16) }} <span>{{ ref }}</span> {{ triangle_down(14) }}
+    </a>
+    <span class="repo-toolbar-name">{{ path or repo.name }}</span>
+    <div class="repo-toolbar-actions">
+        <button class="btn btn-sm" type="button">Find file</button>
+        <button class="btn btn-sm" type="button">Code {{ triangle_down(14) }}</button>
+        {% if current_user %}
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/new/{{ ref }}{% if path %}/{{ path }}{% endif %}"
+           class="btn btn-sm btn-primary">{{ plus(16) }} Add file</a>
+        {% endif %}
+        <button class="btn btn-sm repo-icon-button" type="button" aria-label="More repository actions">⋮</button>
+    </div>
+</div>
+
+{% if commit_count %}
+<div class="d-flex flex-items-center color-fg-muted f6 mb-3 repo-stats-bar" style="gap:12px;">
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commits/{{ ref }}"
+       class="Link--secondary d-flex flex-items-center">
+        <span class="mr-1">{{ history(16) }}</span>
+        <strong class="color-fg-default">{{ commit_count }}</strong>&nbsp;commit{{ 's' if commit_count != 1 else '' }}
+    </a>
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches"
+       class="Link--secondary d-flex flex-items-center">
+        <span class="mr-1">{{ git_branch(16) }}</span>
+        <strong class="color-fg-default">{{ branch_count }}</strong>&nbsp;branch{{ 'es' if branch_count != 1 else '' }}
+    </a>
+    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tags"
+       class="Link--secondary d-flex flex-items-center">
+        <span class="mr-1">{{ tag(16) }}</span>
+        <strong class="color-fg-default">{{ tag_count }}</strong>&nbsp;tag{{ 's' if tag_count != 1 else '' }}
+    </a>
+</div>
+{% endif %}
+
+{% if latest_commit %}
+<div class="Box repo-latest-commit mb-3">
+    <div class="repo-commit-avatar">{{ latest_commit.author_name[0]|upper }}</div>
+    <div class="repo-commit-summary">
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commit/{{ latest_commit.sha }}"
+           class="Link--primary text-bold">{{ latest_commit.message }}</a>
+        <div class="f6 color-fg-muted mt-1">
+            {{ latest_commit.author_name }} authored {{ latest_commit.author_age_label }}
+            {% if latest_commit.committer_name and latest_commit.committer_name != latest_commit.author_name %}
+            and {{ latest_commit.committer_name }} committed {{ latest_commit.committer_age_label }}
+            {% endif %}
+        </div>
+    </div>
+    <div class="repo-commit-actions">
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commit/{{ latest_commit.sha }}"
+           class="btn btn-sm text-mono">{{ latest_commit.sha[:8] }}</a>
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commits/{{ ref }}"
+           class="btn btn-sm">History</a>
+    </div>
+</div>
+{% endif %}

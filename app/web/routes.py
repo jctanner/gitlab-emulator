@@ -861,6 +861,87 @@ def _relative_time_label(value: str | None) -> str:
     return f"{count} {unit} ago"
 
 
+def _with_commit_age_labels(commit: dict | None) -> dict | None:
+    """Add the relative author/committer labels used by repository pages."""
+    if commit:
+        commit["author_age_label"] = _relative_time_label(commit.get("author_date"))
+        commit["committer_age_label"] = _relative_time_label(
+            commit.get("committer_date")
+        )
+    return commit
+
+
+async def _repository_latest_commit(
+    disk_path: str, ref: str, path: str | None = None
+) -> dict | None:
+    commits = await get_log(disk_path, ref=ref, max_count=1, path=path)
+    return _with_commit_age_labels(commits[0] if commits else None)
+
+
+async def _repository_tree_entries(
+    disk_path: str, ref: str, path: str = ""
+) -> list[dict] | None:
+    """Load a directory and decorate every entry with its last commit."""
+    entries = await list_tree(disk_path, ref, path)
+    if entries is None:
+        return None
+
+    entries.sort(key=lambda entry: (0 if entry["type"] == "tree" else 1, entry["name"]))
+    for entry in entries:
+        entry_path = "/".join(part for part in (path.strip("/"), entry["name"]) if part)
+        entry["last_commit"] = await _repository_latest_commit(
+            disk_path, ref, entry_path
+        )
+        entry["last_update_label"] = _relative_time_label(
+            entry["last_commit"].get("committer_date")
+            if entry["last_commit"]
+            else None
+        )
+    return entries
+
+
+async def _repository_stats(disk_path: str, ref: str) -> dict[str, int]:
+    return {
+        "commit_count": await get_commit_count(disk_path, ref),
+        "branch_count": len(await get_branches(disk_path)),
+        "tag_count": len(await get_tags(disk_path)),
+    }
+
+
+async def _repository_file_browser(
+    disk_path: str, ref: str, current_path: str
+) -> list[dict]:
+    """Build a compact tree with the current directory path expanded."""
+    path_parts = [part for part in current_path.strip("/").split("/") if part]
+
+    async def build(parent_path: str, depth: int) -> list[dict]:
+        entries = await list_tree(disk_path, ref, parent_path)
+        if not entries:
+            return []
+        entries.sort(key=lambda entry: (0 if entry["type"] == "tree" else 1, entry["name"]))
+        nodes = []
+        for entry in entries:
+            entry_path = "/".join(
+                part for part in (parent_path.strip("/"), entry["name"]) if part
+            )
+            node = {
+                "name": entry["name"],
+                "path": entry_path,
+                "type": entry["type"],
+                "children": [],
+                "expanded": False,
+            }
+            if entry["type"] == "tree" and depth < len(path_parts):
+                expected_path = "/".join(path_parts[: depth + 1])
+                if entry_path == expected_path:
+                    node["expanded"] = True
+                    node["children"] = await build(entry_path, depth + 1)
+            nodes.append(node)
+        return nodes
+
+    return await build("", 0)
+
+
 async def _repository_overview_data(
     repo: Repository,
     default_branch: str,
@@ -874,24 +955,9 @@ async def _repository_overview_data(
     tag_count = 0
 
     if repo.disk_path and os.path.isdir(repo.disk_path):
-        tree_entries = await list_tree(repo.disk_path, default_branch)
+        tree_entries = await _repository_tree_entries(repo.disk_path, default_branch)
         if tree_entries:
-            tree_entries.sort(
-                key=lambda entry: (0 if entry["type"] == "tree" else 1, entry["name"])
-            )
             for entry in tree_entries:
-                entry_commits = await get_log(
-                    repo.disk_path,
-                    ref=default_branch,
-                    max_count=1,
-                    path=entry["name"],
-                )
-                entry["last_commit"] = entry_commits[0] if entry_commits else None
-                entry["last_update_label"] = _relative_time_label(
-                    entry["last_commit"].get("committer_date")
-                    if entry["last_commit"]
-                    else None
-                )
                 if entry["name"].lower().startswith("readme"):
                     raw = await get_file_content(
                         repo.disk_path, default_branch, entry["name"]
@@ -899,18 +965,11 @@ async def _repository_overview_data(
                     if raw:
                         readme_content = raw.decode("utf-8", errors="replace")
 
-        commits = await get_log(repo.disk_path, ref=default_branch, max_count=1)
-        latest_commit = commits[0] if commits else None
-        if latest_commit:
-            latest_commit["author_age_label"] = _relative_time_label(
-                latest_commit.get("author_date")
-            )
-            latest_commit["committer_age_label"] = _relative_time_label(
-                latest_commit.get("committer_date")
-            )
-        commit_count = await get_commit_count(repo.disk_path, default_branch)
-        branch_count = len(await get_branches(repo.disk_path))
-        tag_count = len(await get_tags(repo.disk_path))
+        latest_commit = await _repository_latest_commit(repo.disk_path, default_branch)
+        stats = await _repository_stats(repo.disk_path, default_branch)
+        commit_count = stats["commit_count"]
+        branch_count = stats["branch_count"]
+        tag_count = stats["tag_count"]
 
     return {
         "tree_entries": tree_entries,
@@ -4363,10 +4422,19 @@ async def tree_view(
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
     entries = None
+    latest_commit = None
+    commit_count = 0
+    branch_count = 0
+    tag_count = 0
+    file_browser_entries = []
     if repo.disk_path and os.path.isdir(repo.disk_path):
-        entries = await list_tree(repo.disk_path, ref, path)
-        if entries:
-            entries.sort(key=lambda e: (0 if e["type"] == "tree" else 1, e["name"]))
+        entries = await _repository_tree_entries(repo.disk_path, ref, path)
+        latest_commit = await _repository_latest_commit(repo.disk_path, ref, path)
+        stats = await _repository_stats(repo.disk_path, ref)
+        commit_count = stats["commit_count"]
+        branch_count = stats["branch_count"]
+        tag_count = stats["tag_count"]
+        file_browser_entries = await _repository_file_browser(repo.disk_path, ref, path)
 
     return templates.TemplateResponse(
         request=request,
@@ -4374,6 +4442,11 @@ async def tree_view(
         context=_ctx(
             request, owner=owner, repo=repo, repo_name=repo.name,
             ref=ref, path=path, entries=entries,
+            latest_commit=latest_commit,
+            commit_count=commit_count,
+            branch_count=branch_count,
+            tag_count=tag_count,
+            file_browser_entries=file_browser_entries,
             current_user=current_user,
         ),
     )
