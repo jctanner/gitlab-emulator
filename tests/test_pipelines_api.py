@@ -1883,11 +1883,14 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
     assert raw_trace.status_code == 200
     assert raw_trace.text == "persisted"
 
-    archive = b"fake artifact zip"
+    archive_buffer = io.BytesIO()
+    with zipfile.ZipFile(archive_buffer, "w") as archive_zip:
+        archive_zip.writestr("out/result.txt", "artifact content\n")
+    archive = archive_buffer.getvalue()
     artifact_upload = await client.post(
         f"{API}/jobs/{job_id}/artifacts?artifact_format=zip&artifact_type=archive",
-        headers={"JOB-TOKEN": job_token, "Content-Type": "application/zip"},
-        content=archive,
+        headers={"JOB-TOKEN": job_token},
+        files={"file": ("artifacts.zip", archive, "application/octet-stream")},
     )
     assert artifact_upload.status_code == 201
 
@@ -1904,6 +1907,8 @@ async def test_runner_executes_persisted_pipeline_job(client, test_token):
     )
     assert artifact_download.status_code == 200
     assert artifact_download.content == archive
+    with zipfile.ZipFile(io.BytesIO(artifact_download.content)) as downloaded_archive:
+        assert downloaded_archive.read("out/result.txt") == b"artifact content\n"
 
 
 async def test_erase_project_job_clears_trace_and_artifacts(client, test_token):

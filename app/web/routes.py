@@ -8,7 +8,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWSError, jws
 from sqlalchemy import select, func, or_
@@ -67,6 +67,7 @@ from app.services.pipeline_schedules import (
 )
 from app.services import issue_service, pr_service, repo_service
 from app.services.repo_service import REPO_NAME_PATTERN
+from app.services.permissions import REPORTER, project_access_level
 
 _WEB_DIR = os.path.dirname(os.path.abspath(__file__))
 _TEMPLATES_DIR = os.path.join(_WEB_DIR, "templates")
@@ -815,6 +816,111 @@ async def profile_page(
 # Repository overview
 # ---------------------------------------------------------------------------
 
+def _relative_time_label(value: str | None) -> str:
+    """Format an ISO timestamp using the relative labels shown by GitLab."""
+    if not value:
+        return "—"
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return value
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    elapsed = max(
+        0,
+        int(
+            (
+                datetime.now(timezone.utc)
+                - parsed.astimezone(timezone.utc)
+            ).total_seconds()
+        ),
+    )
+
+    if elapsed < 60:
+        return "just now"
+    if elapsed < 60 * 60:
+        count = elapsed // 60
+        unit = "minute" if count == 1 else "minutes"
+    elif elapsed < 24 * 60 * 60:
+        count = elapsed // (60 * 60)
+        unit = "hour" if count == 1 else "hours"
+    elif elapsed < 7 * 24 * 60 * 60:
+        count = elapsed // (24 * 60 * 60)
+        unit = "day" if count == 1 else "days"
+    elif elapsed < 30 * 24 * 60 * 60:
+        count = elapsed // (7 * 24 * 60 * 60)
+        unit = "week" if count == 1 else "weeks"
+    elif elapsed < 365 * 24 * 60 * 60:
+        count = elapsed // (30 * 24 * 60 * 60)
+        unit = "month" if count == 1 else "months"
+    else:
+        count = elapsed // (365 * 24 * 60 * 60)
+        unit = "year" if count == 1 else "years"
+    return f"{count} {unit} ago"
+
+
+async def _repository_overview_data(
+    repo: Repository,
+    default_branch: str,
+) -> dict:
+    """Load the repository metadata shown above and beside the file tree."""
+    tree_entries = None
+    readme_content = None
+    latest_commit = None
+    commit_count = 0
+    branch_count = 0
+    tag_count = 0
+
+    if repo.disk_path and os.path.isdir(repo.disk_path):
+        tree_entries = await list_tree(repo.disk_path, default_branch)
+        if tree_entries:
+            tree_entries.sort(
+                key=lambda entry: (0 if entry["type"] == "tree" else 1, entry["name"])
+            )
+            for entry in tree_entries:
+                entry_commits = await get_log(
+                    repo.disk_path,
+                    ref=default_branch,
+                    max_count=1,
+                    path=entry["name"],
+                )
+                entry["last_commit"] = entry_commits[0] if entry_commits else None
+                entry["last_update_label"] = _relative_time_label(
+                    entry["last_commit"].get("committer_date")
+                    if entry["last_commit"]
+                    else None
+                )
+                if entry["name"].lower().startswith("readme"):
+                    raw = await get_file_content(
+                        repo.disk_path, default_branch, entry["name"]
+                    )
+                    if raw:
+                        readme_content = raw.decode("utf-8", errors="replace")
+
+        commits = await get_log(repo.disk_path, ref=default_branch, max_count=1)
+        latest_commit = commits[0] if commits else None
+        if latest_commit:
+            latest_commit["author_age_label"] = _relative_time_label(
+                latest_commit.get("author_date")
+            )
+            latest_commit["committer_age_label"] = _relative_time_label(
+                latest_commit.get("committer_date")
+            )
+        commit_count = await get_commit_count(repo.disk_path, default_branch)
+        branch_count = len(await get_branches(repo.disk_path))
+        tag_count = len(await get_tags(repo.disk_path))
+
+    return {
+        "tree_entries": tree_entries,
+        "readme_content": readme_content,
+        "latest_commit": latest_commit,
+        "commit_count": commit_count,
+        "branch_count": branch_count,
+        "tag_count": tag_count,
+    }
+
 @router.get("/{owner}/{repo_name}", response_class=HTMLResponse)
 async def repo_page(
     request: Request,
@@ -828,36 +934,8 @@ async def repo_page(
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
-    tree_entries = None
-    readme_content = None
     default_branch = repo.default_branch or "main"
-    commit_count = 0
-    branch_count = 0
-    tag_count = 0
-
-    if repo.disk_path and os.path.isdir(repo.disk_path):
-        tree_entries = await list_tree(repo.disk_path, default_branch)
-        if tree_entries:
-            # Sort: directories first, then files
-            tree_entries.sort(key=lambda e: (0 if e["type"] == "tree" else 1, e["name"]))
-            # Try to find and read README
-            for entry in tree_entries:
-                if entry["name"].lower().startswith("readme"):
-                    raw = await get_file_content(
-                        repo.disk_path, default_branch, entry["name"]
-                    )
-                    if raw:
-                        try:
-                            readme_content = raw.decode("utf-8", errors="replace")
-                        except Exception:
-                            readme_content = None
-                    break
-
-        commit_count = await get_commit_count(repo.disk_path, default_branch)
-        branches = await get_branches(repo.disk_path)
-        branch_count = len(branches)
-        tags = await get_tags(repo.disk_path)
-        tag_count = len(tags)
+    overview = await _repository_overview_data(repo, default_branch)
 
     # Open issue/PR counts for tab counters
     pr_issue_ids = select(PullRequest.issue_id)
@@ -883,14 +961,10 @@ async def repo_page(
             owner=owner,
             repo=repo,
             repo_name=repo.name,
-            tree_entries=tree_entries,
-            readme_content=readme_content,
+            **overview,
             default_branch=default_branch,
             open_issues_count=open_issues_count,
             open_pulls_count=open_pulls_count,
-            commit_count=commit_count,
-            branch_count=branch_count,
-            tag_count=tag_count,
             current_user=current_user,
         ),
     )
@@ -3226,7 +3300,7 @@ async def repo_artifacts_page(
             "artifact": artifact,
             "job": job,
             "pipeline": pipeline,
-            "download_url": f"/api/v4/projects/{repo.id}/jobs/{job.id}/artifacts",
+            "download_url": f"/ui/{repo.full_name}/-/artifacts/{job.id}/download",
         }
         for artifact, job, pipeline in rows
     ]
@@ -3243,6 +3317,60 @@ async def repo_artifacts_page(
             artifacts=artifacts,
         ),
     )
+
+
+async def _repo_artifact_download_response(
+    repo: Repository,
+    job_id: int,
+    current_user: Optional[User],
+    db: AsyncSession,
+):
+    """Serve an artifact through the UI session used by repository pages."""
+    if repo.private and (
+        current_user is None
+        or await project_access_level(repo, current_user, db) < REPORTER
+    ):
+        return HTMLResponse(content="<h1>404 - Project Not Found</h1>", status_code=404)
+
+    job = (
+        await db.execute(
+            select(PipelineJob)
+            .options(selectinload(PipelineJob.artifacts))
+            .where(PipelineJob.project_id == repo.id, PipelineJob.id == job_id)
+        )
+    ).scalar_one_or_none()
+    artifact = job.artifacts[0] if job and job.artifacts else None
+    if (
+        artifact is None
+        or not artifact.storage_path
+        or not os.path.isfile(artifact.storage_path)
+    ):
+        return HTMLResponse(content="<h1>404 - Artifacts Not Found</h1>", status_code=404)
+    if artifact.expire_at and artifact.expire_at <= datetime.now(timezone.utc).replace(
+        tzinfo=None
+    ):
+        return HTMLResponse(content="<h1>404 - Artifacts Expired</h1>", status_code=404)
+    return FileResponse(
+        artifact.storage_path,
+        media_type=artifact.content_type or "application/zip",
+        filename=artifact.filename,
+    )
+
+
+@router.get("/{owner}/{repo_name}/-/artifacts/{job_id}/download")
+async def repo_artifact_download(
+    request: Request,
+    owner: str,
+    repo_name: str,
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download an artifact using the authenticated UI session."""
+    current_user = await _get_current_user(request, db)
+    repo = await _get_repo(db, owner, repo_name)
+    if repo is None:
+        return HTMLResponse(content="<h1>404 - Project Not Found</h1>", status_code=404)
+    return await _repo_artifact_download_response(repo, job_id, current_user, db)
 
 
 @router.get("/{owner}/{repo_name}/-/jobs/{job_id}", response_class=HTMLResponse)
@@ -5142,7 +5270,7 @@ async def nested_repo_page(
                         "artifact": artifact,
                         "job": job,
                         "pipeline": pipeline,
-                        "download_url": f"/api/v4/projects/{repo.id}/jobs/{job.id}/artifacts",
+                        "download_url": f"/ui/{repo.full_name}/-/artifacts/{job.id}/download",
                     }
                     for artifact, job, pipeline in rows
                 ]
@@ -5157,6 +5285,17 @@ async def nested_repo_page(
                         current_user=current_user,
                         artifacts=artifacts,
                     ),
+                )
+
+            if (
+                request.method == "GET"
+                and section == "artifacts"
+                and len(action_parts) == 4
+                and action_parts[2].isdigit()
+                and action_parts[3] == "download"
+            ):
+                return await _repo_artifact_download_response(
+                    repo, int(action_parts[2]), current_user, db
                 )
 
             return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
@@ -5251,29 +5390,8 @@ async def nested_repo_page(
 
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
-    tree_entries = None
-    readme_content = None
     default_branch = repo.default_branch or "main"
-    commit_count = 0
-    branch_count = 0
-    tag_count = 0
-
-    if repo.disk_path and os.path.isdir(repo.disk_path):
-        tree_entries = await list_tree(repo.disk_path, default_branch)
-        if tree_entries:
-            tree_entries.sort(key=lambda e: (0 if e["type"] == "tree" else 1, e["name"]))
-            for entry in tree_entries:
-                if entry["name"].lower().startswith("readme"):
-                    raw = await get_file_content(
-                        repo.disk_path, default_branch, entry["name"]
-                    )
-                    if raw:
-                        readme_content = raw.decode("utf-8", errors="replace")
-                    break
-
-        commit_count = await get_commit_count(repo.disk_path, default_branch)
-        branch_count = len(await get_branches(repo.disk_path))
-        tag_count = len(await get_tags(repo.disk_path))
+    overview = await _repository_overview_data(repo, default_branch)
 
     pr_issue_ids = select(PullRequest.issue_id)
     open_issues_count = (await db.execute(
@@ -5297,14 +5415,10 @@ async def nested_repo_page(
             owner=owner,
             repo=repo,
             repo_name=repo.name,
-            tree_entries=tree_entries,
-            readme_content=readme_content,
+            **overview,
             default_branch=default_branch,
             open_issues_count=open_issues_count,
             open_pulls_count=open_pulls_count,
-            commit_count=commit_count,
-            branch_count=branch_count,
-            tag_count=tag_count,
             current_user=current_user,
         ),
     )

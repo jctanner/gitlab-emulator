@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_octicons.html" import file_icon, file_directory, book, git_branch, plus, history, tag %}
+{% from "_octicons.html" import file_icon, file_directory, book, git_branch, plus, history, tag, star, triangle_down %}
 {% block title %}{{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
 
 {% block subnav %}
@@ -12,21 +12,46 @@
 {% endblock %}
 
 {% block content %}
-{# ---- About / description ---- #}
+{# ---- Project identity header ---- #}
+<nav class="repo-breadcrumb" aria-label="Project breadcrumb">
+    <span>{{ owner }}</span>
+    <span class="repo-breadcrumb-separator">/</span>
+    <strong>{{ repo.name }}</strong>
+</nav>
+<div class="repo-project-header">
+    <div class="repo-project-avatar">{{ repo.name[0]|upper }}</div>
+    <div class="repo-project-heading">
+        <h1>{{ repo.name }}</h1>
+        <div class="repo-project-meta">
+            <span>{{ repo.full_name }}</span>
+            <span class="Label Label--secondary">{{ "Private" if repo.private else "Public" }}</span>
+            <span>Project ID: {{ repo.id }}</span>
+        </div>
+    </div>
+    <div class="repo-project-actions">
+        <button class="btn btn-sm" type="button">{{ star(16) }} Star <span class="repo-action-count">0</span></button>
+        <button class="btn btn-sm repo-icon-button" type="button" aria-label="More project actions">⋮</button>
+    </div>
+</div>
 {% if repo.description %}
-<p class="f4 color-fg-muted mb-3">{{ repo.description }}</p>
+<p class="repo-project-description color-fg-muted">{{ repo.description }}</p>
 {% endif %}
 
-{# ---- Branch selector ---- #}
-<div class="d-flex flex-items-center flex-justify-between mb-3">
-    <div class="d-flex flex-items-center">
-        <span class="color-fg-muted mr-1">{{ git_branch(16) }}</span>
-        <span class="branch-name">{{ default_branch }}</span>
+{# ---- Repository toolbar ---- #}
+<div class="repo-toolbar">
+    <a class="repo-branch-selector" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches">
+        {{ git_branch(16) }} <span>{{ default_branch }}</span> {{ triangle_down(14) }}
+    </a>
+    <span class="repo-toolbar-name">{{ repo.name }}</span>
+    <div class="repo-toolbar-actions">
+        <button class="btn btn-sm" type="button">Find file</button>
+        <button class="btn btn-sm" type="button">Code {{ triangle_down(14) }}</button>
+        {% if current_user %}
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/new/{{ default_branch }}"
+           class="btn btn-sm btn-primary">{{ plus(16) }} Add file</a>
+        {% endif %}
+        <button class="btn btn-sm repo-icon-button" type="button" aria-label="More repository actions">⋮</button>
     </div>
-    {% if current_user %}
-    <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/new/{{ default_branch }}"
-       class="btn btn-sm btn-primary">{{ plus(16) }} Add file</a>
-    {% endif %}
 </div>
 
 {# ---- Stats bar (commits / branches / tags) ---- #}
@@ -50,21 +75,58 @@
 </div>
 {% endif %}
 
+{# ---- Latest commit summary ---- #}
+{% if latest_commit %}
+<div class="Box repo-latest-commit mb-3">
+    <div class="repo-commit-avatar">{{ latest_commit.author_name[0]|upper }}</div>
+    <div class="repo-commit-summary">
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commit/{{ latest_commit.sha }}"
+           class="Link--primary text-bold">{{ latest_commit.message }}</a>
+        <div class="f6 color-fg-muted mt-1">
+            {{ latest_commit.author_name }} authored {{ latest_commit.author_age_label }}
+            {% if latest_commit.committer_name and latest_commit.committer_name != latest_commit.author_name %}
+            and {{ latest_commit.committer_name }} committed {{ latest_commit.committer_age_label }}
+            {% endif %}
+        </div>
+    </div>
+    <div class="repo-commit-actions">
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commit/{{ latest_commit.sha }}"
+           class="btn btn-sm text-mono">{{ latest_commit.sha[:8] }}</a>
+        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commits/{{ default_branch }}"
+           class="btn btn-sm">History</a>
+    </div>
+</div>
+{% endif %}
+
 {# ---- File tree ---- #}
 {% if tree_entries is not none %}
 <div class="Box mb-3">
-    <div class="Box-header d-flex flex-items-center">
-        <h2 class="Box-title f5">Files</h2>
+    <div class="Box-header repo-file-list-header">
+        <span>Name</span>
+        <span>Last commit</span>
+        <span>Last update</span>
     </div>
     {% for entry in tree_entries %}
-    <div class="Box-row py-2 d-flex flex-items-center">
-        {% if entry.type == "tree" %}
-        <span class="color-fg-muted mr-2">{{ file_directory(16) }}</span>
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ default_branch }}/{{ entry.name }}" class="Link--primary">{{ entry.name }}</a>
-        {% else %}
-        <span class="color-fg-muted mr-2">{{ file_icon(16) }}</span>
-        <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/blob/{{ default_branch }}/{{ entry.name }}" class="Link--primary">{{ entry.name }}</a>
-        {% endif %}
+    <div class="Box-row repo-file-row">
+        <div class="repo-file-name">
+            {% if entry.type == "tree" %}
+            <span class="color-fg-muted mr-2">{{ file_directory(16) }}</span>
+            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/tree/{{ default_branch }}/{{ entry.name }}" class="Link--primary">{{ entry.name }}</a>
+            {% else %}
+            <span class="color-fg-muted mr-2">{{ file_icon(16) }}</span>
+            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/blob/{{ default_branch }}/{{ entry.name }}" class="Link--primary">{{ entry.name }}</a>
+            {% endif %}
+        </div>
+        <div class="repo-file-commit">
+            {% if entry.last_commit %}
+            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/commit/{{ entry.last_commit.sha }}" class="Link--secondary">{{ entry.last_commit.message }}</a>
+            {% else %}
+            <span class="color-fg-muted">—</span>
+            {% endif %}
+        </div>
+        <div class="repo-file-date color-fg-muted" title="{{ entry.last_commit.committer_date if entry.last_commit else '' }}">
+            {{ entry.last_update_label }}
+        </div>
     </div>
     {% endfor %}
 </div>

@@ -1786,7 +1786,20 @@ async def upload_job_artifacts(
     if persisted_job is not None:
         if not _is_persisted_job_token(persisted_job, job_token):
             raise HTTPException(status_code=403, detail="Forbidden")
-        body = await request.body()
+        request_content_type = request.headers.get("Content-Type", "")
+        stored_content_type = request_content_type
+        if request_content_type.lower().startswith("multipart/form-data"):
+            form = await request.form()
+            upload = form.get("file")
+            if upload is None or not hasattr(upload, "read"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Multipart artifact upload is missing the file field",
+                )
+            body = await upload.read()
+            stored_content_type = getattr(upload, "content_type", None) or "application/zip"
+        else:
+            body = await request.body()
         artifact_dir = os.path.join(
             settings.DATA_DIR, "artifacts", str(persisted_job.id)
         )
@@ -1799,7 +1812,7 @@ async def upload_job_artifacts(
             JobArtifact(
                 job_id=persisted_job.id,
                 filename=filename,
-                content_type=request.headers.get("Content-Type"),
+                content_type=stored_content_type,
                 file_type=artifact_type or "archive",
                 file_format=artifact_format or "zip",
                 size=len(body),

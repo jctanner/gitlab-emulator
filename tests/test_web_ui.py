@@ -17,6 +17,17 @@ from tests.test_projects_api import _create_user_and_token
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_relative_time_label_uses_gitlab_units():
+    from datetime import datetime, timedelta, timezone
+
+    from app.web.routes import _relative_time_label
+
+    now = datetime.now(timezone.utc)
+    assert _relative_time_label((now - timedelta(minutes=2)).isoformat()) == "2 minutes ago"
+    assert _relative_time_label((now - timedelta(hours=3)).isoformat()) == "3 hours ago"
+    assert _relative_time_label((now - timedelta(days=7)).isoformat()) == "1 week ago"
+
+
 def _ui_session(client, username: str) -> None:
     from app.web.routes import _sign_session
 
@@ -54,7 +65,7 @@ async def test_ui_explore_lists_repositories_by_default_with_pagination(
 
 @pytest.mark.asyncio
 async def test_ui_create_repo_under_nested_group_namespace(
-    client, test_user, db_session
+    client, test_user, db_session, tmp_path
 ):
     """The repository create form can target a nested GitLab group namespace."""
     parent = Organization(login="redhat", name="Red Hat")
@@ -108,6 +119,15 @@ async def test_ui_create_repo_under_nested_group_namespace(
     assert nested_page.status_code == 200
     assert "strat-pipeline" in nested_page.text
     assert "Nested project" in nested_page.text
+    assert "Project ID:" in nested_page.text
+    assert "Find file" in nested_page.text
+    assert "Last commit" in nested_page.text
+    assert "Last update" in nested_page.text
+    assert "Initial commit" in nested_page.text
+    assert re.search(
+        r"(?:just now|\d+ (?:minute|hour|day|week|month|year)s? ago)",
+        nested_page.text,
+    )
 
     new_file_page = await client.get(
         "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/new/main"
@@ -135,6 +155,57 @@ async def test_ui_create_repo_under_nested_group_namespace(
     )
     assert blob.status_code == 200
     assert "Strategy pipeline" in blob.text
+
+    from app.models.ci import JobArtifact, Pipeline, PipelineJob
+
+    pipeline = Pipeline(
+        project_id=repo.id,
+        iid=1,
+        ref="main",
+        sha="nested-artifact-sha",
+        status="success",
+        source="web",
+    )
+    db_session.add(pipeline)
+    await db_session.flush()
+    job = PipelineJob(
+        pipeline_id=pipeline.id,
+        project_id=repo.id,
+        name="package",
+        stage="build",
+        status="success",
+        script=["echo package"],
+        artifacts_paths=["dist/package.zip"],
+        job_token="nested-ui-artifacts-job",
+    )
+    db_session.add(job)
+    await db_session.flush()
+    artifact_path = tmp_path / "nested-artifacts.zip"
+    artifact_path.write_bytes(b"nested artifact")
+    db_session.add(
+        JobArtifact(
+            job_id=job.id,
+            filename="nested-artifacts.zip",
+            content_type="application/zip",
+            file_type="archive",
+            file_format="zip",
+            size=15,
+            storage_path=str(artifact_path),
+        )
+    )
+    await db_session.commit()
+
+    artifacts_page = await client.get(
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/artifacts"
+    )
+    assert artifacts_page.status_code == 200
+    download_path = (
+        f"/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/artifacts/{job.id}/download"
+    )
+    assert download_path in artifacts_page.text
+    download = await client.get(download_path)
+    assert download.status_code == 200
+    assert download.content == b"nested artifact"
 
     pipelines_page = await client.get(
         "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/-/pipelines"
@@ -1494,7 +1565,7 @@ api_probe:
 
 
 @pytest.mark.asyncio
-async def test_ui_project_artifacts_page(client, db_session, test_user):
+async def test_ui_project_artifacts_page(client, db_session, test_user, tmp_path):
     """The project UI lists job artifacts and links to existing downloads."""
     from sqlalchemy import select
 
@@ -1537,6 +1608,8 @@ async def test_ui_project_artifacts_page(client, db_session, test_user):
     )
     db_session.add(job)
     await db_session.flush()
+    artifact_path = tmp_path / "ui-artifact.zip"
+    artifact_path.write_bytes(b"ui artifact")
     db_session.add(
         JobArtifact(
             job_id=job.id,
@@ -1545,7 +1618,7 @@ async def test_ui_project_artifacts_page(client, db_session, test_user):
             file_type="archive",
             file_format="zip",
             size=512,
-            storage_path="/tmp/gitlab-emulator-ui-artifact.zip",
+            storage_path=str(artifact_path),
         )
     )
     await db_session.commit()
@@ -1557,7 +1630,11 @@ async def test_ui_project_artifacts_page(client, db_session, test_user):
     assert "job-package-artifacts.zip" in artifacts_page.text
     assert "archive/zip" in artifacts_page.text
     assert "512 bytes" in artifacts_page.text
-    assert f"/api/v4/projects/{repo.id}/jobs/{job.id}/artifacts" in artifacts_page.text
+    download_path = f"/ui/testuser/ui-artifacts/-/artifacts/{job.id}/download"
+    assert download_path in artifacts_page.text
+    download = await client.get(download_path)
+    assert download.status_code == 200
+    assert download.content == b"ui artifact"
     assert f"/ui/testuser/ui-artifacts/-/jobs/{job.id}" in artifacts_page.text
     assert f"/ui/testuser/ui-artifacts/-/pipelines/{pipeline.id}" in artifacts_page.text
     assert re.search(

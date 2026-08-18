@@ -124,6 +124,176 @@ td.blob-code {
     border-radius: 6px;
 }
 
+/* ---- Repository overview header, toolbar, and commit-aware file list ---- */
+.repo-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    color: var(--gl-text-muted);
+    font-size: 13px;
+}
+.repo-breadcrumb strong {
+    color: var(--gl-text);
+}
+.repo-breadcrumb-separator {
+    color: var(--gl-border-strong);
+}
+.repo-project-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.repo-project-avatar,
+.repo-commit-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: #403483;
+    background: #ece9f8;
+    border: 1px solid #d9d1f2;
+    font-weight: 600;
+}
+.repo-project-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    font-size: 24px;
+}
+.repo-project-heading {
+    min-width: 0;
+    flex: 1;
+}
+.repo-project-heading h1 {
+    margin: 0 0 4px;
+    font-size: 28px;
+    line-height: 1.2;
+}
+.repo-project-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--gl-text-muted);
+    font-size: 12px;
+}
+.repo-project-actions,
+.repo-toolbar-actions,
+.repo-commit-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.repo-project-actions svg {
+    margin-right: 4px;
+    vertical-align: -3px;
+}
+.repo-action-count {
+    padding-left: 8px;
+    margin-left: 4px;
+    border-left: 1px solid var(--gl-border);
+}
+.repo-icon-button {
+    min-width: 32px;
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 18px;
+    line-height: 1;
+}
+.repo-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border-top: 1px solid var(--gl-border);
+    border-bottom: 1px solid var(--gl-border);
+}
+.repo-branch-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px;
+    color: var(--gl-text);
+    background: var(--gl-bg-default);
+    border: 1px solid var(--gl-border-strong);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    text-decoration: none;
+}
+.repo-branch-selector:hover {
+    color: var(--gl-text);
+    background: #ececef;
+    text-decoration: none;
+}
+.repo-toolbar-name {
+    color: var(--gl-text);
+    font-size: 13px;
+    font-weight: 600;
+}
+.repo-toolbar-actions {
+    margin-left: auto;
+}
+.repo-latest-commit {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+}
+.repo-commit-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 14px;
+}
+.repo-commit-summary {
+    min-width: 0;
+    flex: 1;
+}
+.repo-commit-summary a,
+.repo-file-commit a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.repo-commit-summary a {
+    display: block;
+}
+.repo-file-list-header,
+.repo-file-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) minmax(240px, 1fr) 140px;
+    align-items: center;
+    column-gap: 18px;
+}
+.repo-file-list-header {
+    color: var(--gl-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+.repo-file-row {
+    min-height: 46px;
+}
+.repo-file-name,
+.repo-file-commit {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.repo-file-commit a {
+    display: block;
+    max-width: 100%;
+}
+.repo-file-date {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 /* ---- Timeline items ---- */
 .TimelineItem {
     position: relative;
