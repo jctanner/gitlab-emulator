@@ -1,7 +1,7 @@
 """Tests for GitLab repository files API endpoints."""
 
 import base64
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import pytest
 
@@ -228,6 +228,209 @@ async def test_create_update_and_delete_repository_file(client, test_token):
 
 
 @pytest.mark.asyncio
+async def test_create_repository_commit_batches_file_actions(client, test_token):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "batch-commit-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    create = await client.post(
+        f"{API}/projects/{project_id}/repository/commits",
+        json={
+            "branch": "main",
+            "commit_message": "batch repository changes",
+            "author_name": "Batch Author",
+            "author_email": "batch@example.test",
+            "actions": [
+                {
+                    "action": "update",
+                    "file_path": "README.md",
+                    "content": "# Batched project\n",
+                },
+                {
+                    "action": "create",
+                    "file_path": ".gitlab-ci.yml",
+                    "content": "batch_job:\n  script:\n    - echo batch\n",
+                },
+                {
+                    "action": "create",
+                    "file_path": "docs/created.txt",
+                    "content": "created\n",
+                },
+                {
+                    "action": "create",
+                    "file_path": "docs/deleted.txt",
+                    "content": "temporary\n",
+                },
+                {"action": "delete", "file_path": "docs/deleted.txt"},
+                {
+                    "action": "create",
+                    "file_path": "docs/move-old.txt",
+                    "content": "moved\n",
+                },
+                {
+                    "action": "move",
+                    "file_path": "docs/move-new.txt",
+                    "previous_path": "docs/move-old.txt",
+                },
+                {
+                    "action": "chmod",
+                    "file_path": "docs/move-new.txt",
+                    "execute_filemode": True,
+                },
+            ],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert create.status_code == 201
+    commit = create.json()
+    assert len(commit["id"]) == 40
+    assert commit["title"] == "batch repository changes"
+    assert commit["author_name"] == "Batch Author"
+    assert len(commit["parent_ids"]) == 1
+    assert commit["stats"]["total"] > 0
+
+    pipelines = await client.get(
+        f"{API}/projects/{project_id}/pipelines",
+        headers=auth_headers(test_token),
+    )
+    assert pipelines.status_code == 200
+    assert len(pipelines.json()) == 1
+    assert pipelines.json()[0]["source"] == "push"
+    assert pipelines.json()[0]["sha"] == commit["id"]
+
+    commits = await client.get(
+        f"{API}/projects/{project_id}/repository/commits",
+        params={"ref_name": "main", "per_page": 100},
+        headers=auth_headers(test_token),
+    )
+    assert commits.status_code == 200
+    assert len(commits.json()) == 2
+
+    readme = await client.get(
+        f"{API}/projects/{project_id}/repository/files/README.md",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert base64.b64decode(readme.json()["content"]).decode() == "# Batched project\n"
+
+    created = await client.get(
+        f"{API}/projects/{project_id}/repository/files/docs%2Fcreated.txt",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert base64.b64decode(created.json()["content"]).decode() == "created\n"
+
+    moved = await client.get(
+        f"{API}/projects/{project_id}/repository/files/docs%2Fmove-new.txt",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert moved.status_code == 200
+    assert base64.b64decode(moved.json()["content"]).decode() == "moved\n"
+    assert moved.json()["execute_filemode"] is True
+
+    old_path = await client.get(
+        f"{API}/projects/{project_id}/repository/files/docs%2Fmove-old.txt",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    deleted_path = await client.get(
+        f"{API}/projects/{project_id}/repository/files/docs%2Fdeleted.txt",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert old_path.status_code == 404
+    assert deleted_path.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_repository_commit_accepts_encoded_path_and_form_actions(
+    client, test_token
+):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "batch-form-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+
+    create = await client.post(
+        f"{API}/projects/testuser%2Fbatch-form-project/repository/commits",
+        content=urlencode([
+            ("branch", "feature/batch"),
+            ("start_branch", "main"),
+            ("commit_message", "form batch commit"),
+            ("actions[][action]", "create"),
+            ("actions[][file_path]", "generated/config.txt"),
+            ("actions[][content]", "generated by form\n"),
+        ]),
+        headers={
+            **auth_headers(test_token),
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+    assert create.status_code == 201
+    assert create.json()["title"] == "form batch commit"
+
+    generated = await client.get(
+        f"{API}/projects/{project.json()['id']}/repository/files/generated%2Fconfig.txt",
+        params={"ref": "feature/batch"},
+        headers=auth_headers(test_token),
+    )
+    assert generated.status_code == 200
+    assert base64.b64decode(generated.json()["content"]).decode() == "generated by form\n"
+
+
+@pytest.mark.asyncio
+async def test_repository_commit_batch_failure_is_atomic(client, test_token):
+    project = await client.post(
+        f"{API}/projects",
+        json={"name": "batch-atomic-project", "initialize_with_readme": True},
+        headers=auth_headers(test_token),
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    before = await client.get(
+        f"{API}/projects/{project_id}/repository/commits",
+        headers=auth_headers(test_token),
+    )
+    assert before.status_code == 200
+
+    failed = await client.post(
+        f"{API}/projects/{project_id}/repository/commits",
+        json={
+            "branch": "main",
+            "commit_message": "should not be committed",
+            "actions": [
+                {"action": "create", "file_path": "partial.txt", "content": "partial\n"},
+                {"action": "update", "file_path": "missing.txt", "content": "fail\n"},
+            ],
+        },
+        headers=auth_headers(test_token),
+    )
+    assert failed.status_code == 404
+
+    after = await client.get(
+        f"{API}/projects/{project_id}/repository/commits",
+        headers=auth_headers(test_token),
+    )
+    assert after.status_code == 200
+    assert len(after.json()) == len(before.json())
+
+    partial = await client.get(
+        f"{API}/projects/{project_id}/repository/files/partial.txt",
+        params={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert partial.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_repository_file_in_empty_default_branch(client, test_token):
     project = await client.post(
         f"{API}/projects",
@@ -436,6 +639,20 @@ async def test_repository_file_writes_honor_protected_branch_push_access(
     )
     assert denied_create.status_code == 403
     assert "protected branch 'main'" in denied_create.json()["message"]
+
+    denied_batch = await client.post(
+        f"{API}/projects/{project_id}/repository/commits",
+        json={
+            "branch": "main",
+            "commit_message": "developer protected batch",
+            "actions": [
+                {"action": "create", "file_path": "batch.txt", "content": "denied\n"}
+            ],
+        },
+        headers=auth_headers(developer_token),
+    )
+    assert denied_batch.status_code == 403
+    assert "protected branch 'main'" in denied_batch.json()["message"]
 
     create = await client.post(
         f"{API}/projects/{project_id}/repository/files/protected.txt",

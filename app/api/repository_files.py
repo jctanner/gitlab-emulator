@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from urllib.parse import unquote
@@ -90,9 +91,60 @@ def _start_ref_from_body(body: dict) -> str | None:
     return decoded or None
 
 
+def _form_bool(value) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _repository_commit_body(request: Request) -> dict:
+    """Parse JSON or GitLab's form-encoded multi-action commit payload."""
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Request body must be an object")
+        return body
+
+    if "application/x-www-form-urlencoded" not in content_type and "multipart/form-data" not in content_type:
+        raise HTTPException(status_code=415, detail="Content-Type must be application/json or form encoded")
+
+    form = await request.form()
+    body: dict = {}
+    action_fields: dict[str, list] = {}
+    action_pattern = re.compile(r"^actions\[\]\[([^]]+)\]$")
+    for key, value in form.multi_items():
+        match = action_pattern.match(key)
+        if match:
+            if hasattr(value, "read"):
+                value = (await value.read()).decode("utf-8", errors="replace")
+            action_fields.setdefault(match.group(1), []).append(value)
+        elif key not in body:
+            body[key] = value
+
+    action_count = max((len(values) for values in action_fields.values()), default=0)
+    body["actions"] = [
+        {
+            field: values[index]
+            for field, values in action_fields.items()
+            if index < len(values)
+        }
+        for index in range(action_count)
+    ]
+    for key in ("force", "allow_empty"):
+        if key in body:
+            body[key] = _form_bool(body[key])
+    return body
+
+
 def _normalize_file_path(file_path: str) -> str:
     decoded_path = unquote(file_path).strip("/")
-    if not decoded_path or decoded_path.endswith("/"):
+    if (
+        not decoded_path
+        or decoded_path.endswith("/")
+        or any(part in {".", ".."} for part in decoded_path.split("/"))
+    ):
         raise HTTPException(status_code=400, detail="file_path is invalid")
     return decoded_path
 
@@ -231,6 +283,206 @@ async def _commit_file_change(
     return commit_sha, blob_sha, parent_sha
 
 
+async def _index_entries(repo_path: str, index_env: dict[str, str]) -> dict[str, tuple[str, str]]:
+    """Read the current temporary index as path -> (mode, blob SHA)."""
+    output = await _git(repo_path, "ls-files", "--stage", extra_env=index_env)
+    entries: dict[str, tuple[str, str]] = {}
+    for line in output.splitlines():
+        metadata, separator, path = line.partition("\t")
+        if not separator:
+            continue
+        mode, blob, _stage = metadata.split(maxsplit=2)
+        entries[path] = (mode, blob)
+    return entries
+
+
+def _index_has_descendant(entries: dict[str, tuple[str, str]], path: str) -> bool:
+    prefix = f"{path}/"
+    return any(entry_path.startswith(prefix) for entry_path in entries)
+
+
+def _action_path_error(entries: dict[str, tuple[str, str]], path: str) -> str:
+    if path in entries:
+        return "file"
+    if _index_has_descendant(entries, path):
+        return "directory"
+    return "missing"
+
+
+async def _create_multi_action_commit(
+    project: Project,
+    branch: str,
+    actions: list,
+    message: str,
+    start_ref: str | None,
+    force: bool,
+    author_name: str | None,
+    author_email: str | None,
+    committer_name: str | None,
+    committer_email: str | None,
+) -> tuple[str, str | None]:
+    """Apply a GitLab actions array to one temporary index and commit once."""
+    repo_path = project.disk_path
+    if not repo_path or not os.path.isdir(repo_path):
+        raise HTTPException(status_code=404, detail="404 Project Not Found")
+
+    try:
+        await _git(repo_path, "check-ref-format", "--branch", branch)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail="branch is invalid") from exc
+
+    branch_exists = True
+    try:
+        parent_sha = await _resolve_commit(project, branch, status_code=400)
+    except HTTPException:
+        branch_exists = False
+        if start_ref:
+            parent_sha = await _resolve_commit(project, start_ref, status_code=400)
+        elif branch == project.default_branch:
+            parent_sha = None
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="branch does not exist; provide start_branch or start_sha",
+            )
+
+    fd, index_path = tempfile.mkstemp(prefix="glemu-commit-index-")
+    os.close(fd)
+    index_env = {"GIT_INDEX_FILE": index_path}
+    try:
+        if parent_sha is None:
+            await _git(repo_path, "read-tree", "--empty", extra_env=index_env)
+        else:
+            await _git(repo_path, "read-tree", parent_sha, extra_env=index_env)
+        entries = await _index_entries(repo_path, index_env)
+
+        for action_index, raw_action in enumerate(actions):
+            if not isinstance(raw_action, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"actions[{action_index}] must be an object",
+                )
+            action = str(raw_action.get("action") or "").lower()
+            if action not in {"create", "update", "delete", "move", "chmod"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"actions[{action_index}].action is invalid",
+                )
+            if not raw_action.get("file_path"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"actions[{action_index}].file_path is required",
+                )
+            file_path = _normalize_file_path(str(raw_action["file_path"]))
+            path_state = _action_path_error(entries, file_path)
+
+            if action == "create":
+                if path_state == "file":
+                    raise HTTPException(status_code=400, detail=f"A file with this name already exists: {file_path}")
+                if path_state == "directory":
+                    raise HTTPException(status_code=400, detail=f"A directory with this name already exists: {file_path}")
+                content = _decode_content(raw_action)
+                mode = "100755" if _form_bool(raw_action.get("execute_filemode", False)) else "100644"
+                blob = (await _git(repo_path, "hash-object", "-w", "--stdin", input_data=content)).strip()
+                await _git(
+                    repo_path,
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"{mode},{blob},{file_path}",
+                    extra_env=index_env,
+                )
+                entries[file_path] = (mode, blob)
+                continue
+
+            if action in {"update", "delete", "chmod"} and path_state != "file":
+                detail = "directory" if path_state == "directory" else "file"
+                raise HTTPException(status_code=404, detail=f"404 {detail.title()} Not Found: {file_path}")
+
+            if action == "delete":
+                await _git(repo_path, "rm", "--cached", "--quiet", "--", file_path, extra_env=index_env)
+                del entries[file_path]
+                continue
+
+            if action == "move":
+                previous_path = raw_action.get("previous_path")
+                if not previous_path:
+                    raise HTTPException(status_code=400, detail="previous_path is required for move actions")
+                previous_path = _normalize_file_path(str(previous_path))
+                previous_state = _action_path_error(entries, previous_path)
+                if previous_state != "file":
+                    raise HTTPException(status_code=404, detail=f"404 File Not Found: {previous_path}")
+                if path_state != "missing":
+                    raise HTTPException(status_code=400, detail=f"A file with this name already exists: {file_path}")
+                old_mode, old_blob = entries[previous_path]
+                content = (
+                    old_blob
+                    if raw_action.get("content") is None
+                    else (await _git(repo_path, "hash-object", "-w", "--stdin", input_data=_decode_content(raw_action))).strip()
+                )
+                await _git(repo_path, "rm", "--cached", "--quiet", "--", previous_path, extra_env=index_env)
+                await _git(
+                    repo_path,
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"{old_mode},{content},{file_path}",
+                    extra_env=index_env,
+                )
+                del entries[previous_path]
+                entries[file_path] = (old_mode, content)
+                continue
+
+            # update and chmod both operate on an existing index entry.
+            old_mode, old_blob = entries[file_path]
+            if action == "update":
+                content = _decode_content(raw_action)
+                blob = (await _git(repo_path, "hash-object", "-w", "--stdin", input_data=content)).strip()
+                mode = old_mode
+                if "execute_filemode" in raw_action:
+                    mode = "100755" if _form_bool(raw_action["execute_filemode"]) else "100644"
+            else:
+                if "execute_filemode" not in raw_action:
+                    raise HTTPException(status_code=400, detail="execute_filemode is required for chmod actions")
+                blob = old_blob
+                mode = "100755" if _form_bool(raw_action["execute_filemode"]) else "100644"
+            await _git(
+                repo_path,
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"{mode},{blob},{file_path}",
+                extra_env=index_env,
+            )
+            entries[file_path] = (mode, blob)
+
+        tree_sha = (await _git(repo_path, "write-tree", extra_env=index_env)).strip()
+    finally:
+        if os.path.exists(index_path):
+            os.unlink(index_path)
+
+    commit_env = {}
+    if author_name:
+        commit_env["GIT_AUTHOR_NAME"] = str(author_name)
+    if author_email:
+        commit_env["GIT_AUTHOR_EMAIL"] = str(author_email)
+    if committer_name:
+        commit_env["GIT_COMMITTER_NAME"] = str(committer_name)
+    if committer_email:
+        commit_env["GIT_COMMITTER_EMAIL"] = str(committer_email)
+    commit_args = ["commit-tree", tree_sha]
+    if parent_sha:
+        commit_args.extend(["-p", parent_sha])
+    commit_args.extend(["-m", message])
+    commit_sha = (await _git(repo_path, *commit_args, extra_env=commit_env)).strip()
+    update_ref_args = ["update-ref", f"refs/heads/{branch}", commit_sha]
+    if branch_exists and not force and parent_sha:
+        update_ref_args.append(parent_sha)
+    await _git(repo_path, *update_ref_args)
+    project.pushed_at = datetime.now(timezone.utc)
+    return commit_sha, parent_sha
+
+
 async def _create_push_pipeline_for_file_commit(
     project: Project,
     branch: str,
@@ -301,6 +553,62 @@ def _file_headers(metadata: dict) -> dict[str, str]:
         "X-Gitlab-Ref": metadata["ref"],
         "X-Gitlab-Size": str(metadata["size"]),
     }
+
+
+@router.post("/projects/{project_ref:path}/repository/commits", status_code=201)
+async def create_repository_commit(
+    project_ref: str,
+    request: Request,
+    user: AuthUser,
+    db: DbSession,
+):
+    """Create one commit containing GitLab's ordered file actions batch."""
+    project = await _get_project_or_404(project_ref, db, user)
+    await require_project_access(project, user, db, DEVELOPER)
+    body = await _repository_commit_body(request)
+
+    if not body.get("branch"):
+        raise HTTPException(status_code=400, detail="branch is required")
+    if not body.get("commit_message"):
+        raise HTTPException(status_code=400, detail="commit_message is required")
+    actions = body.get("actions", [])
+    if not isinstance(actions, list):
+        raise HTTPException(status_code=400, detail="actions must be an array")
+    allow_empty = _form_bool(body.get("allow_empty", False))
+    if not actions and not allow_empty:
+        raise HTTPException(status_code=400, detail="actions must not be empty")
+
+    branch = unquote(str(body["branch"])).strip()
+    message = str(body["commit_message"])
+    await require_branch_push_access(project, branch, user, db)
+    start_ref = _start_ref_from_body(body)
+    commit_sha, before_sha = await _create_multi_action_commit(
+        project,
+        branch,
+        actions,
+        message,
+        start_ref,
+        _form_bool(body.get("force", False)),
+        body.get("author_name"),
+        body.get("author_email"),
+        body.get("committer_name"),
+        body.get("committer_email"),
+    )
+    # Read the commit while the SQLAlchemy project instance is still live;
+    # committing the session expires its scalar attributes.
+    from app.api.gitlab_commits import _read_commit
+
+    commit_response = await _read_commit(project, commit_sha, include_stats=True)
+    await db.commit()
+    await _create_push_pipeline_for_file_commit(
+        project,
+        branch,
+        commit_sha,
+        before_sha,
+        db,
+        actor=user,
+    )
+    return commit_response
 
 
 @router.get("/projects/{project_ref:path}/repository/tree")
