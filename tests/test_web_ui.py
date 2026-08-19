@@ -203,6 +203,11 @@ async def test_ui_create_repo_under_nested_group_namespace(
         r"(?:just now|\d+ (?:minute|hour|day|week|month|year)s? ago)",
         nested_page.text,
     )
+    nested_branch_root = await client.get(
+        "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/tree/main"
+    )
+    assert nested_branch_root.status_code == 200
+    assert "Repository" in nested_branch_root.text
 
     new_file_page = await client.get(
         "/ui/redhat/rhel-ai/agentic-ci/strat-pipeline/new/main"

@@ -5453,13 +5453,13 @@ async def nested_repo_page(
                 ),
             )
 
-        if request.method == "GET" and action_parts[0] == "tree" and len(action_parts) >= 3:
+        if request.method == "GET" and action_parts[0] == "tree" and len(action_parts) >= 2:
             return await tree_view(
                 request,
                 owner,
                 repo.name,
                 action_parts[1],
-                "/".join(action_parts[2:]),
+                "/".join(action_parts[2:]) if len(action_parts) >= 3 else "",
                 db=db,
             )
 
