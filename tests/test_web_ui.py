@@ -28,6 +28,30 @@ def test_relative_time_label_uses_gitlab_units():
     assert _relative_time_label((now - timedelta(days=7)).isoformat()) == "1 week ago"
 
 
+@pytest.mark.asyncio
+async def test_repository_file_browser_keeps_collapsed_folder_children(monkeypatch):
+    """Collapsed folders contain children so their disclosure arrows can expand."""
+    import app.web.routes as web_routes
+
+    async def fake_recursive_tree(_disk_path, _ref):
+        return [
+            {"type": "tree", "name": "docs", "sha": "docs-sha", "mode": "040000"},
+            {"type": "blob", "name": "docs/guide.md", "sha": "guide-sha", "mode": "100644"},
+            {"type": "tree", "name": "src", "sha": "src-sha", "mode": "040000"},
+            {"type": "blob", "name": "src/main.py", "sha": "main-sha", "mode": "100644"},
+        ]
+
+    monkeypatch.setattr(web_routes, "list_tree_recursive", fake_recursive_tree)
+    nodes = await web_routes._repository_file_browser("unused", "main", "src")
+
+    docs = next(node for node in nodes if node["name"] == "docs")
+    src = next(node for node in nodes if node["name"] == "src")
+    assert docs["expanded"] is False
+    assert docs["children"][0]["name"] == "guide.md"
+    assert src["expanded"] is True
+    assert src["children"][0]["name"] == "main.py"
+
+
 def _ui_session(client, username: str) -> None:
     from app.web.routes import _sign_session
 
@@ -78,6 +102,7 @@ async def test_ui_repository_folder_view_matches_repository_shell(client, test_u
     for filename, content, message in (
         ("src/main.py", "print('main')\n", "Add main source"),
         ("src/test.py", "print('test')\n", "Add source test"),
+        ("docs/guide.md", "# Guide\n", "Add documentation"),
     ):
         create_file = await client.post(
             "/ui/testuser/ui-tree-view/new/main",
@@ -99,6 +124,8 @@ async def test_ui_repository_folder_view_matches_repository_shell(client, test_u
     assert "Find file" in folder.text
     assert "Code" in folder.text
     assert 'aria-label="Repository files"' in folder.text
+    assert "docs" in folder.text
+    assert "guide.md" in folder.text
     assert "Last commit" in folder.text
     assert "Last update" in folder.text
     assert "Add source test" in folder.text
@@ -613,6 +640,11 @@ async def test_ui_repo_and_source_management_workflow(client, test_user):
 
     branches_page = await client.get("/ui/testuser/ui-source-renamed/branches")
     assert branches_page.status_code == 200
+    assert "/ui/testuser/ui-source-renamed/tree/main" in branches_page.text
+    branch_root = await client.get("/ui/testuser/ui-source-renamed/tree/main")
+    assert branch_root.status_code == 200
+    assert "Repository" in branch_root.text
+    assert "src" in branch_root.text
     assert re.search(
         r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*href="/ui/testuser/ui-source-renamed/branches">Branches</a>',
         branches_page.text,

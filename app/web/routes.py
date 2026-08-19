@@ -37,6 +37,7 @@ from app.git.bare_repo import (
     get_log,
     get_tags,
     list_tree,
+    list_tree_recursive,
     write_file,
 )
 from app.models.comment import IssueComment
@@ -911,35 +912,44 @@ async def _repository_stats(disk_path: str, ref: str) -> dict[str, int]:
 async def _repository_file_browser(
     disk_path: str, ref: str, current_path: str
 ) -> list[dict]:
-    """Build a compact tree with the current directory path expanded."""
-    path_parts = [part for part in current_path.strip("/").split("/") if part]
+    """Build a collapsible repository tree from one recursive Git listing."""
+    entries = await list_tree_recursive(disk_path, ref)
+    if not entries:
+        return []
 
-    async def build(parent_path: str, depth: int) -> list[dict]:
-        entries = await list_tree(disk_path, ref, parent_path)
-        if not entries:
-            return []
-        entries.sort(key=lambda entry: (0 if entry["type"] == "tree" else 1, entry["name"]))
-        nodes = []
-        for entry in entries:
-            entry_path = "/".join(
-                part for part in (parent_path.strip("/"), entry["name"]) if part
-            )
-            node = {
-                "name": entry["name"],
-                "path": entry_path,
-                "type": entry["type"],
-                "children": [],
-                "expanded": False,
-            }
-            if entry["type"] == "tree" and depth < len(path_parts):
-                expected_path = "/".join(path_parts[: depth + 1])
-                if entry_path == expected_path:
-                    node["expanded"] = True
-                    node["children"] = await build(entry_path, depth + 1)
-            nodes.append(node)
-        return nodes
+    root: dict[str, dict] = {}
+    current_path = current_path.strip("/")
+    for entry in entries:
+        parts = entry["name"].split("/")
+        level = root
+        for index, name in enumerate(parts):
+            entry_path = "/".join(parts[: index + 1])
+            is_leaf = index == len(parts) - 1
+            node = level.get(name)
+            if node is None:
+                node = {
+                    "name": name,
+                    "path": entry_path,
+                    "type": entry["type"] if is_leaf else "tree",
+                    "children": {},
+                    "expanded": (
+                        entry_path == current_path
+                        or current_path.startswith(f"{entry_path}/")
+                    ),
+                }
+                level[name] = node
+            level = node["children"]
 
-    return await build("", 0)
+    def finalize(nodes: dict[str, dict]) -> list[dict]:
+        result = []
+        for node in sorted(
+            nodes.values(), key=lambda item: (0 if item["type"] == "tree" else 1, item["name"])
+        ):
+            node["children"] = finalize(node["children"])
+            result.append(node)
+        return result
+
+    return finalize(root)
 
 
 async def _repository_overview_data(
@@ -4406,13 +4416,14 @@ async def tags_list(
 # Tree (directory) view
 # ---------------------------------------------------------------------------
 
+@router.get("/{owner}/{repo_name}/tree/{ref}", response_class=HTMLResponse)
 @router.get("/{owner}/{repo_name}/tree/{ref}/{path:path}", response_class=HTMLResponse)
 async def tree_view(
     request: Request,
     owner: str,
     repo_name: str,
     ref: str,
-    path: str,
+    path: str = "",
     db: AsyncSession = Depends(get_db),
 ):
     """Directory listing at a given ref and path."""

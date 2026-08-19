@@ -513,6 +513,41 @@ async def list_tree(
     return entries
 
 
+async def list_tree_recursive(
+    disk_path: str, ref: str
+) -> Optional[list[dict]]:
+    """List every tree and blob below a ref in one Git subprocess."""
+    env = os.environ.copy()
+    env["GIT_DIR"] = disk_path
+
+    proc = await asyncio.create_subprocess_exec(
+        "git", "ls-tree", "-r", "-t", ref,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return None
+
+    entries = []
+    for line in stdout.decode().splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        meta, path = parts
+        meta_parts = meta.split()
+        if len(meta_parts) != 3:
+            continue
+        entries.append({
+            "mode": meta_parts[0],
+            "type": meta_parts[1],
+            "sha": meta_parts[2],
+            "name": path,
+        })
+    return entries
+
+
 async def get_tags(disk_path: str) -> list[dict]:
     """List tags with name, sha, and tagger date (via git for-each-ref)."""
     env = os.environ.copy()

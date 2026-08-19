@@ -71,7 +71,7 @@
                 <div></div>
             </div>
             {% for entry in entries %}
-            {% set entry_path = path.strip('/') ~ '/' ~ entry.name %}
+            {% set entry_path = (path.strip('/') ~ '/' if path.strip('/') else '') ~ entry.name %}
             <div class="Box-row repo-file-row">
                 <div class="repo-file-name">
                     {% if entry.type == "tree" %}
