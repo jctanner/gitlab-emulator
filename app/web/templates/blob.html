@@ -54,7 +54,7 @@
         {% if is_yaml_file %}
         <pre class="blob-code-viewer" data-code-viewer="yaml">{{ content }}</pre>
         {% else %}
-        <table class="blob-viewer">
+        <table class="blob-viewer" data-highlight-path="{{ path }}">
             <tbody>
                 {% for line in lines %}
                 <tr>
@@ -78,5 +78,10 @@
 {% block scripts %}
 {% if content is not none and is_yaml_file %}
 <script type="module" src="{{ url_prefix }}/static/js/codemirror-yaml.js"></script>
+{% elif content is not none %}
+<link rel="stylesheet" href="{{ url_prefix }}/static/vendor/highlightjs/github.min.css">
+<script src="{{ url_prefix }}/static/vendor/highlightjs/highlight.min.js"></script>
+<script src="{{ url_prefix }}/static/vendor/highlightjs/dockerfile.min.js"></script>
+<script src="{{ url_prefix }}/static/js/blob-highlight.js"></script>
 {% endif %}
 {% endblock %}

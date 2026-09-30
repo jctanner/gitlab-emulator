@@ -1952,3 +1952,41 @@ async def test_ui_browse_branch_whose_name_contains_a_slash(
     # A ref that does not exist still reports not found rather than resolving.
     missing = await client.get(f"{base}/tree/demo/nope")
     assert "Directory not found" in missing.text
+
+
+@pytest.mark.asyncio
+async def test_ui_blob_page_loads_the_local_highlighter_for_code_but_not_yaml(
+    client, test_user
+):
+    """Code files get the vendored highlighter; YAML keeps its own viewer."""
+    _ui_session(client, test_user.login)
+    await client.post(
+        "/ui/new", data={"name": "hl-repo", "auto_init": "true"}, follow_redirects=False
+    )
+    for filename, content in (
+        ("run.sh", "#!/bin/bash\necho hi\n"),
+        ("ci.yml", "stages:\n  - build\n"),
+    ):
+        await client.post(
+            "/ui/testuser/hl-repo/new/main",
+            data={"filename": filename, "content": content, "commit_message": "add"},
+            follow_redirects=False,
+        )
+
+    shell = await client.get("/ui/testuser/hl-repo/blob/main/run.sh")
+    assert shell.status_code == 200
+    assert 'data-highlight-path="run.sh"' in shell.text
+    for asset in (
+        "/ui/static/vendor/highlightjs/highlight.min.js",
+        "/ui/static/vendor/highlightjs/github.min.css",
+        "/ui/static/js/blob-highlight.js",
+    ):
+        assert asset in shell.text
+        served = await client.get(asset)
+        assert served.status_code == 200, asset
+    assert "esm.sh" not in shell.text  # no CDN dependency
+
+    yaml_page = await client.get("/ui/testuser/hl-repo/blob/main/ci.yml")
+    assert yaml_page.status_code == 200
+    assert "highlight.min.js" not in yaml_page.text
+    assert "codemirror-yaml.js" in yaml_page.text
