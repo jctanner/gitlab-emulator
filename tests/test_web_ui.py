@@ -1822,3 +1822,31 @@ async def test_ui_group_page_lists_projects_by_full_path_not_owner(
     # The top group shows only its direct children, not nested projects.
     top_page = await client.get("/ui/redhat")
     assert "strat-pipeline" not in top_page.text
+
+
+@pytest.mark.asyncio
+async def test_ui_yaml_blob_source_is_visible_until_highlighter_loads(
+    client, test_user
+):
+    """The raw YAML must not start hidden, or a failed CodeMirror load shows nothing."""
+    _ui_session(client, test_user.login)
+    await client.post(
+        "/ui/new",
+        data={"name": "yaml-view", "auto_init": "true"},
+        follow_redirects=False,
+    )
+    await client.post(
+        "/ui/testuser/yaml-view/new/main",
+        data={
+            "filename": "ci.yml",
+            "content": "stages:\n  - build\n",
+            "commit_message": "add ci",
+        },
+        follow_redirects=False,
+    )
+    page = await client.get("/ui/testuser/yaml-view/blob/main/ci.yml")
+    assert page.status_code == 200
+    match = re.search(r'<pre class="([^"]*)" data-code-viewer="yaml">', page.text)
+    assert match, page.text
+    assert "yaml-viewer-source" not in match.group(1).split()
+    assert "stages:" in page.text
