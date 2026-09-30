@@ -1,6 +1,7 @@
 """Tests for the browser-oriented repository and source UI."""
 
 import asyncio
+import os
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -1850,3 +1851,77 @@ async def test_ui_yaml_blob_source_is_visible_until_highlighter_loads(
     assert match, page.text
     assert "yaml-viewer-source" not in match.group(1).split()
     assert "stages:" in page.text
+
+
+@pytest.mark.asyncio
+async def test_ui_browse_branch_whose_name_contains_a_slash(
+    client, test_user, db_session
+):
+    """A ref like demo/feature resolves even though routes capture one segment."""
+    parent = Organization(login="redhat", name="Red Hat")
+    leaf = Organization(login="redhat/agentic-ci", name="Agentic CI")
+    db_session.add_all([parent, leaf])
+    await db_session.flush()
+    db_session.add(
+        OrgMembership(
+            org_id=leaf.id, user_id=test_user.id, role="admin", state="active"
+        )
+    )
+    await db_session.commit()
+
+    _ui_session(client, test_user.login)
+    created = await client.post(
+        "/ui/new",
+        data={
+            "namespace_path": "redhat/agentic-ci",
+            "name": "pipe",
+            "auto_init": "true",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in (302, 303)
+    repo = (
+        await db_session.execute(
+            select(Repository).where(Repository.full_name == "redhat/agentic-ci/pipe")
+        )
+    ).scalar_one()
+
+    proc = await asyncio.create_subprocess_exec(
+        "git", "branch", "demo/feature", "main",
+        env={"GIT_DIR": repo.disk_path, "PATH": os.environ["PATH"]},
+    )
+    assert await proc.wait() == 0
+
+    base = "/ui/redhat/agentic-ci/pipe"
+    added = await client.post(
+        f"{base}/new/demo/feature/docs",
+        data={
+            "filename": "guide.md",
+            "content": "# Guide\n",
+            "commit_message": "add guide",
+        },
+        follow_redirects=False,
+    )
+    assert added.status_code in (302, 303)
+
+    root = await client.get(f"{base}/tree/demo/feature")
+    assert root.status_code == 200
+    assert "Directory not found" not in root.text
+    assert "docs" in root.text
+
+    folder = await client.get(f"{base}/tree/demo/feature/docs")
+    assert folder.status_code == 200
+    assert "Directory not found" not in folder.text
+    assert "guide.md" in folder.text
+
+    blob = await client.get(f"{base}/blob/demo/feature/docs/guide.md")
+    assert blob.status_code == 200
+    assert "# Guide" in blob.text
+
+    raw = await client.get(f"{base}/raw/demo/feature/docs/guide.md")
+    assert raw.status_code == 200
+    assert raw.text == "# Guide\n"
+
+    # A ref that does not exist still reports not found rather than resolving.
+    missing = await client.get(f"{base}/tree/demo/nope")
+    assert "Directory not found" in missing.text

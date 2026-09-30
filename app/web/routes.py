@@ -38,6 +38,7 @@ from app.git.bare_repo import (
     get_tags,
     list_tree,
     list_tree_recursive,
+    ref_exists,
     write_file,
 )
 from app.models.comment import IssueComment
@@ -4094,6 +4095,7 @@ async def new_file_page(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
     if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
@@ -4127,6 +4129,7 @@ async def new_file_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
     if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
@@ -4182,6 +4185,7 @@ async def edit_file_page(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
     if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
@@ -4220,6 +4224,7 @@ async def edit_file_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
     if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
@@ -4273,6 +4278,7 @@ async def delete_file_submit(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
     if not await _can_manage_repo(current_user, repo, db):
         return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
 
@@ -4480,6 +4486,7 @@ async def tree_view(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
 
     entries = None
     latest_commit = None
@@ -4530,6 +4537,7 @@ async def blob_view(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
 
     content = None
     if repo.disk_path and os.path.isdir(repo.disk_path):
@@ -4563,6 +4571,7 @@ async def raw_file_view(
     repo = await _get_repo(db, owner, repo_name)
     if repo is None or not repo.disk_path or not os.path.isdir(repo.disk_path):
         return PlainTextResponse(content="Not Found", status_code=404)
+    ref, path = await _split_ref_and_path(repo, ref, path)
 
     raw = await get_file_content(repo.disk_path, ref, path)
     if raw is None:
@@ -5442,8 +5451,9 @@ async def nested_repo_page(
                 return RedirectResponse(url="/ui/login", status_code=302)
             if not await _can_manage_repo(current_user, repo, db):
                 return HTMLResponse(content="<h1>403 - Forbidden</h1>", status_code=403)
-            ref = action_parts[1]
-            dir_path = "/".join(action_parts[2:])
+            ref, dir_path = await _split_ref_and_path(
+                repo, action_parts[1], "/".join(action_parts[2:])
+            )
             if request.method == "POST":
                 form = await request.form()
                 filename = str(form.get("filename") or "")
@@ -5486,8 +5496,9 @@ async def nested_repo_page(
             )
 
         if request.method == "GET" and action_parts[0] == "blob" and len(action_parts) >= 3:
-            ref = action_parts[1]
-            path = "/".join(action_parts[2:])
+            ref, path = await _split_ref_and_path(
+                repo, action_parts[1], "/".join(action_parts[2:])
+            )
             content = None
             if repo.disk_path and os.path.isdir(repo.disk_path):
                 raw = await get_file_content(repo.disk_path, ref, path)
@@ -5564,6 +5575,27 @@ async def nested_repo_page(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+async def _split_ref_and_path(
+    repo: Repository, ref: str, path: str
+) -> tuple[str, str]:
+    """Split ``ref/path`` where the ref may itself contain slashes.
+
+    Routes capture only the first URL segment as the ref, but branch and tag
+    names such as ``demo/feature`` contain slashes. Git refuses a ref that is a
+    path prefix of another, so at most one prefix of the URL names a real ref.
+    If none does, the original split is returned so the caller reports its
+    usual not-found error.
+    """
+    if not repo.disk_path or not os.path.isdir(repo.disk_path):
+        return ref, path
+    parts = [ref, *(part for part in path.split("/") if part)]
+    for count in range(1, len(parts) + 1):
+        candidate = "/".join(parts[:count])
+        if await ref_exists(repo.disk_path, candidate):
+            return candidate, "/".join(parts[count:])
+    return ref, path
+
 
 async def _get_repo(
     db: AsyncSession, owner: str, repo_name: str

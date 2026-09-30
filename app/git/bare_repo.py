@@ -700,3 +700,17 @@ async def get_log(
         }
         commits.append(commit)
     return commits
+
+
+async def ref_exists(disk_path: str, ref: str) -> bool:
+    """Whether ``ref`` names a branch, tag or commit in the repository."""
+    env = os.environ.copy()
+    env["GIT_DIR"] = disk_path
+    proc = await asyncio.create_subprocess_exec(
+        "git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+        env=env,
+    )
+    await proc.communicate()
+    return proc.returncode == 0
