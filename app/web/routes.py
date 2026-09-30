@@ -26,6 +26,7 @@ from app.api.pipelines import (
 from app.api.runner import explain_job_scheduling, registered_runner_diagnostics
 from app.api.releases import _ensure_release_tag
 from app.config import settings
+from app.web.ci_trace import render_trace
 from app.database import get_db
 from app.git.bare_repo import (
     delete_file,
@@ -3128,6 +3129,7 @@ async def _repo_ci_template(
             job_diagnostics=job_diagnostics,
             downstream_by_job=downstream_by_job,
             trace_text=trace_text,
+            trace_html=render_trace(trace_text),
             default_branch=repo.default_branch or "main",
             flash_message=flash_message,
             flash_type=flash_type,

@@ -152,7 +152,7 @@
             {% endfor %}
         </ul>
         {% endif %}
-        <pre class="ci-trace">{{ trace_text or "" }}</pre>
+        <div class="ci-trace" data-testid="job-trace">{{ trace_html }}</div>
     </div>
 </div>
 {% endif %}

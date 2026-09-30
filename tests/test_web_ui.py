@@ -1336,7 +1336,7 @@ async def test_ui_project_webhooks_management(client, test_user):
 
 
 @pytest.mark.asyncio
-async def test_ui_repo_pipeline_and_job_interface(client, test_user):
+async def test_ui_repo_pipeline_and_job_interface(client, test_user, db_session):
     """The web UI can create repository pipelines and inspect job runs."""
     _ui_session(client, test_user.login)
 
@@ -1458,8 +1458,35 @@ ui_job:
         jobs_page.text,
     )
 
+    from app.models.ci import JobTrace
+
+    esc = "\x1b"
+    trace = (
+        await db_session.execute(select(JobTrace).where(JobTrace.job_id == job_id))
+    ).scalar_one_or_none()
+    if trace is None:
+        trace = JobTrace(job_id=job_id)
+        db_session.add(trace)
+    trace.content = (
+        f"2026-09-30T19:33:41.1Z 00O section_start:100:step_script\n"
+        f"{esc}[0K\n"
+        f"2026-09-30T19:33:41.2Z 00O+{esc}[0K{esc}[36;1mRunning the script{esc}[0;m\n"
+        f"2026-09-30T19:33:42.3Z 01O {esc}[32;1m$ echo hi{esc}[0;m\n"
+        f"2026-09-30T19:33:43.4Z 00O section_end:103:step_script\n"
+        f"{esc}[0K\n"
+    )
+    await db_session.commit()
+
     job_page = await client.get(f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}")
     assert job_page.status_code == 200
+    # The trace is rendered, not dumped: no control bytes, markers or prefixes.
+    assert "\x1b" not in job_page.text
+    assert "section_start" not in job_page.text
+    assert 'class="ansi-fg-2 ansi-bold">$ echo hi</span>' in job_page.text
+    # A plain log: the runner's own timestamp prefix stays, nothing is added.
+    assert "2026-09-30T19:33:42.3Z 01O " in job_page.text
+    assert "<details" not in job_page.text
+    assert "ci-ln" not in job_page.text
     assert f"Job #{job_id}" in job_page.text
     assert f"Pipeline #{pipeline_id}" in job_page.text
     assert "Recent pipelines" not in job_page.text
