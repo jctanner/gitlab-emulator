@@ -29,11 +29,23 @@
             </div>
         </nav>
 
+        {% if subgroups %}
+        <h2 class="f4 text-bold mb-2">Subgroups</h2>
+        <ul class="list-style-none mb-4">
+            {% for group in subgroups %}
+            <li class="py-2 border-bottom">
+                <a href="{{ url_prefix }}/{{ group.login }}" class="text-bold Link--primary">{{ group.login.rsplit('/', 1)[-1] }}</a>
+                {% if group.name and group.name != group.login %}<span class="color-fg-muted f6 ml-2">{{ group.name }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
         {% if repos %}
         {% for repo in repos %}
         <div class="py-4 border-bottom">
             <div class="d-flex flex-items-center">
-                <a href="{{ url_prefix }}/{{ profile.login }}/{{ repo.name }}" class="text-bold Link--primary f4 mr-2">
+                <a href="{{ url_prefix }}/{{ repo.full_name }}" class="text-bold Link--primary f4 mr-2">
                     {{ repo.name }}
                 </a>
                 {% if repo.private %}

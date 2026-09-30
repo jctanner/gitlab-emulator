@@ -775,6 +775,75 @@ async def search_page(
 # User / Org profile
 # ---------------------------------------------------------------------------
 
+async def _namespace_profile_response(
+    request: Request, db: AsyncSession, path: str
+) -> HTMLResponse | None:
+    """Render a user, group, or nested-subgroup page for a namespace path.
+
+    Groups are Organization rows whose login is the full path
+    (``redhat/rhel-ai``), so nested namespaces resolve the same way as top-level
+    ones. Returns None when no namespace has this path.
+    """
+    normalized = path.strip("/")
+    current_user = await _get_current_user(request, db)
+
+    profile = None
+    if "/" not in normalized:
+        result = await db.execute(select(User).where(User.login == normalized))
+        profile = result.scalar_one_or_none()
+
+    if profile is None:
+        result = await db.execute(
+            select(Organization).where(Organization.login == normalized)
+        )
+        profile = result.scalar_one_or_none()
+
+    if profile is None:
+        return None
+
+    # A project belongs to the namespace named by its full path, whichever
+    # group row it happens to be owned by, so list by path rather than owner_id.
+    prefix = f"{normalized}/"
+    result = await db.execute(
+        select(Repository)
+        .where(Repository.full_name.like(f"{prefix}%"))
+        .order_by(Repository.updated_at.desc())
+    )
+    repos = [
+        repo
+        for repo in result.scalars().all()
+        if repo.full_name.startswith(prefix)
+        and "/" not in repo.full_name[len(prefix):]
+    ]
+
+    # Direct child groups: one path segment below this namespace.
+    subgroups: list[Organization] = []
+    if isinstance(profile, Organization):
+        result = await db.execute(
+            select(Organization)
+            .where(Organization.login.like(f"{prefix}%"))
+            .order_by(Organization.login)
+        )
+        subgroups = [
+            org
+            for org in result.scalars().all()
+            if "/" not in org.login[len(prefix):]
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="profile.html",
+        context=_ctx(
+            request,
+            profile=profile,
+            repos=repos,
+            subgroups=subgroups,
+            namespace_path=normalized,
+            current_user=current_user,
+        ),
+    )
+
+
 @router.get("/{owner}", response_class=HTMLResponse)
 async def profile_page(
     request: Request,
@@ -782,35 +851,10 @@ async def profile_page(
     db: AsyncSession = Depends(get_db),
 ):
     """User or organization profile page with their repositories."""
-    current_user = await _get_current_user(request, db)
-
-    # Try user first
-    result = await db.execute(select(User).where(User.login == owner))
-    profile = result.scalar_one_or_none()
-
-    if profile is None:
-        # Try organization
-        result = await db.execute(
-            select(Organization).where(Organization.login == owner)
-        )
-        profile = result.scalar_one_or_none()
-
-    if profile is None:
+    response = await _namespace_profile_response(request, db, owner)
+    if response is None:
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
-
-    # Get repos
-    result = await db.execute(
-        select(Repository).where(
-            Repository.owner_id == profile.id
-        ).order_by(Repository.updated_at.desc())
-    )
-    repos = list(result.scalars().all())
-
-    return templates.TemplateResponse(
-        request=request,
-        name="profile.html",
-        context=_ctx(request, profile=profile, repos=repos, current_user=current_user),
-    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -1001,6 +1045,11 @@ async def repo_page(
     current_user = await _get_current_user(request, db)
     repo = await _get_repo(db, owner, repo_name)
     if repo is None:
+        group_page = await _namespace_profile_response(
+            request, db, f"{owner}/{repo_name}"
+        )
+        if group_page is not None:
+            return group_page
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
     default_branch = repo.default_branch or "main"
@@ -4538,6 +4587,10 @@ async def nested_repo_page(
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
     repo, action_parts = await _resolve_repo_and_remainder(db, normalized)
     if repo is None:
+        if request.method == "GET":
+            group_page = await _namespace_profile_response(request, db, normalized)
+            if group_page is not None:
+                return group_page
         return HTMLResponse(content="<h1>404 - Not Found</h1>", status_code=404)
 
     owner = repo.full_name.rsplit("/", 1)[0]

@@ -1,0 +1,8 @@
+{# Namespace path as links: "a/b/c" -> a / b / c, each linking to its group page. #}
+{% macro namespace_links(path, url_prefix, separator_class="repo-breadcrumb-separator") -%}
+{%- set parts = path.split('/') -%}
+{%- for part in parts -%}
+<a href="{{ url_prefix }}/{{ parts[:loop.index]|join('/') }}">{{ part }}</a>
+{%- if not loop.last %}<span class="{{ separator_class }}">/</span>{% endif -%}
+{%- endfor -%}
+{%- endmacro %}

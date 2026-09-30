@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_namespace.html" import namespace_links %}
 {% from "_octicons.html" import file_icon, file_directory, book, git_branch, plus, history, tag, star, triangle_down %}
 {% block title %}{{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
 
@@ -14,7 +15,7 @@
 {% block content %}
 {# ---- Project identity header ---- #}
 <nav class="repo-breadcrumb" aria-label="Project breadcrumb">
-    <span>{{ owner }}</span>
+    {{ namespace_links(owner, url_prefix) }}
     <span class="repo-breadcrumb-separator">/</span>
     <strong>{{ repo.name }}</strong>
 </nav>

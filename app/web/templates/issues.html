@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_namespace.html" import namespace_links %}
 {% from "_octicons.html" import issue_opened, issue_closed, comment_icon %}
 {% block title %}Work items - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
 
@@ -15,7 +16,7 @@
 <div class="work-items-shell{% if selected_issue %} has-selection{% endif %}">
     <section class="work-items-list" aria-label="Work items">
         <div class="work-items-breadcrumb color-fg-muted">
-            <a href="{{ url_prefix }}/{{ owner }}">{{ owner }}</a>
+            {{ namespace_links(owner, url_prefix, "") }}
             <span>/</span>
             <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
             <span>/</span>

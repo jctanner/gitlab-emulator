@@ -1734,3 +1734,91 @@ async def test_ui_project_artifacts_page(client, db_session, test_user, tmp_path
         r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Jobs</a>',
         artifacts_page.text,
     )
+
+
+@pytest.mark.asyncio
+async def test_ui_nested_group_pages_and_breadcrumb_links(
+    client, test_user, db_session
+):
+    """Every namespace segment resolves to a page, and repo links use full paths."""
+    parent = Organization(login="redhat", name="Red Hat")
+    child = Organization(login="redhat/rhel-ai", name="RHEL AI")
+    grandchild = Organization(login="redhat/rhel-ai/agentic-ci", name="Agentic CI")
+    db_session.add_all([parent, child, grandchild])
+    await db_session.flush()
+    db_session.add(
+        OrgMembership(
+            org_id=grandchild.id, user_id=test_user.id, role="admin", state="active"
+        )
+    )
+    await db_session.commit()
+
+    _ui_session(client, test_user.login)
+    created = await client.post(
+        "/ui/new",
+        data={
+            "namespace_path": "redhat/rhel-ai/agentic-ci",
+            "name": "strat-pipeline",
+            "private": "true",
+            "auto_init": "true",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in (302, 303)
+
+    # Breadcrumb: each ancestor is a link to its own page.
+    project = await client.get("/ui/redhat/rhel-ai/agentic-ci/strat-pipeline")
+    assert project.status_code == 200
+    for href in (
+        "/ui/redhat",
+        "/ui/redhat/rhel-ai",
+        "/ui/redhat/rhel-ai/agentic-ci",
+    ):
+        assert f'<a href="{href}">' in project.text
+
+    # Two-segment group path (would otherwise be read as owner/repo).
+    middle = await client.get("/ui/redhat/rhel-ai")
+    assert middle.status_code == 200
+    assert "RHEL AI" in middle.text
+    assert 'href="/ui/redhat/rhel-ai/agentic-ci"' in middle.text  # subgroup
+
+    # Three-segment group path, via the catch-all route.
+    leaf = await client.get("/ui/redhat/rhel-ai/agentic-ci")
+    assert leaf.status_code == 200
+    assert 'href="/ui/redhat/rhel-ai/agentic-ci/strat-pipeline"' in leaf.text
+
+    # Top-level group lists its direct subgroup, not a broken repo link.
+    top = await client.get("/ui/redhat")
+    assert top.status_code == 200
+    assert 'href="/ui/redhat/rhel-ai"' in top.text
+
+    assert (await client.get("/ui/redhat/nope")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ui_group_page_lists_projects_by_full_path_not_owner(
+    client, db_session
+):
+    """A project appears under the group in its path even if another group owns it."""
+    top = Organization(login="redhat", name="Red Hat")
+    leaf = Organization(login="redhat/rhel-ai/agentic-ci", name="Agentic CI")
+    db_session.add_all([top, leaf])
+    await db_session.flush()
+    db_session.add(
+        Repository(
+            name="strat-pipeline",
+            full_name="redhat/rhel-ai/agentic-ci/strat-pipeline",
+            owner_id=top.id,
+            owner_type="Organization",
+            disk_path="/nonexistent",
+        )
+    )
+    await db_session.commit()
+
+    leaf_page = await client.get("/ui/redhat/rhel-ai/agentic-ci")
+    assert leaf_page.status_code == 200
+    assert 'href="/ui/redhat/rhel-ai/agentic-ci/strat-pipeline"' in leaf_page.text
+
+    # The top group shows only its direct children, not nested projects.
+    top_page = await client.get("/ui/redhat")
+    assert "strat-pipeline" not in top_page.text

@@ -5,6 +5,7 @@
     Expects: owner, repo (Repository object), url_prefix, active_tab
     Optional: open_issues_count, open_pulls_count
 -#}
+{% from "_namespace.html" import namespace_links %}
 {% from "_octicons.html" import repo_icon, code, issue_opened, git_pull_request, git_branch, history, tag %}
 {% set current_path = request.url.path %}
 
@@ -14,7 +15,7 @@
         <div class="gl-project-avatar">{{ repo.name[0]|upper }}</div>
         <div class="gl-project-title">
             <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
-            <span>{{ owner }}</span>
+            <span>{{ namespace_links(owner, url_prefix, "") }}</span>
         </div>
         {% if repo.private %}
         <span class="Label Label--secondary">Private</span>
