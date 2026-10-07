@@ -1,5 +1,7 @@
 """Tests for the Admin UI endpoints."""
 
+import re
+
 import pytest
 from sqlalchemy import select
 
@@ -603,7 +605,8 @@ manual_probe:
     assert "Requeue" in diagnosed_page.text
     assert "Selected job URL" in diagnosed_page.text
     assert f"/admin/ci-lab?project_id={project_id}&amp;pipeline_id={pipeline_id}&amp;job_id={job_id}" in diagnosed_page.text
-    assert f"/api/v4/projects/{project_id}/jobs/{job_id}/trace" in diagnosed_page.text
+    # Trace and artifact links use the browser session, not a token-only API.
+    assert re.search(rf'href="/ui/[^"]+/-/jobs/{job_id}/trace"', diagnosed_page.text)
     assert "Refresh" in diagnosed_page.text
 
     request = await client.post(
@@ -681,5 +684,5 @@ manual_probe:
     )
     assert artifact_page.status_code == 200
     assert "Download artifacts" in artifact_page.text
-    assert f"/api/v4/projects/{project_id}/jobs/{job_id}/artifacts" in artifact_page.text
+    assert re.search(rf'href="/ui/[^"]+/-/artifacts/{job_id}/download"', artifact_page.text)
     assert f"job-{job_id}-artifacts.zip" in artifact_page.text
