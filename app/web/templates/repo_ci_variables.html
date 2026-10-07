@@ -52,32 +52,34 @@
     {% for variable in variables %}
     {% set flags = variable_flags(variable) %}
     <div class="Box-row">
-        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables/{{ variable.id }}/update">
-            <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
-                <div class="text-bold" style="min-width:180px;"><code>{{ variable.key }}</code></div>
-                <label>New value<br><input class="form-control" name="value" placeholder="leave unchanged" autocomplete="off"></label>
-                <label>Type<br>
-                    <select class="form-select" name="variable_type">
-                        <option value="env_var" {% if variable.variable_type == "env_var" %}selected{% endif %}>env_var</option>
-                        <option value="file" {% if variable.variable_type == "file" %}selected{% endif %}>file</option>
-                    </select>
-                </label>
-                <label>Environment scope<br><input class="form-control" name="environment_scope" value="{{ variable.environment_scope }}"></label>
-                <label>Description<br><input class="form-control" name="description" value="{{ variable.description or '' }}"></label>
-            </div>
-            <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
-                <label><input type="checkbox" name="masked" value="1" {% if flags.masked %}checked{% endif %}> Masked</label>
-                <label><input type="checkbox" name="hidden" value="1" {% if flags.hidden %}checked{% endif %}> Hidden</label>
-                <label><input type="checkbox" name="protected" value="1" {% if variable.protected %}checked{% endif %}> Protected</label>
-                <label><input type="checkbox" name="raw" value="1" {% if variable.raw %}checked{% endif %}> Raw</label>
-                <span class="color-fg-muted">Value: {% if flags.hidden %}hidden{% else %}stored{% endif %}</span>
-                <button class="btn btn-sm" type="submit">Update</button>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables/{{ variable.id }}/update"
+              style="display:grid; grid-template-columns:240px minmax(0, 1fr); gap:12px; align-items:start;">
+            <div class="text-bold" style="padding-top:26px; overflow-wrap:anywhere;"><code>{{ variable.key }}</code></div>
+            <div>
+                <div class="d-flex flex-items-center flex-wrap" style="gap:12px;">
+                    <label>New value<br><input class="form-control" name="value" placeholder="leave unchanged" autocomplete="off"></label>
+                    <label>Type<br>
+                        <select class="form-select" name="variable_type">
+                            <option value="env_var" {% if variable.variable_type == "env_var" %}selected{% endif %}>env_var</option>
+                            <option value="file" {% if variable.variable_type == "file" %}selected{% endif %}>file</option>
+                        </select>
+                    </label>
+                    <label>Environment scope<br><input class="form-control" name="environment_scope" value="{{ variable.environment_scope }}"></label>
+                    <label>Description<br><input class="form-control" name="description" value="{{ variable.description or '' }}"></label>
+                </div>
+                <div class="d-flex flex-items-center flex-wrap mt-2" style="gap:16px;">
+                    <label><input type="checkbox" name="masked" value="1" {% if flags.masked %}checked{% endif %}> Masked</label>
+                    <label><input type="checkbox" name="hidden" value="1" {% if flags.hidden %}checked{% endif %}> Hidden</label>
+                    <label><input type="checkbox" name="protected" value="1" {% if variable.protected %}checked{% endif %}> Protected</label>
+                    <label><input type="checkbox" name="raw" value="1" {% if variable.raw %}checked{% endif %}> Raw</label>
+                    <span class="color-fg-muted">Value: {% if flags.hidden %}hidden{% else %}stored{% endif %}</span>
+                    <button class="btn btn-sm" type="submit">Update</button>
+                    <button class="btn btn-sm btn-danger" type="submit" form="delete-variables-{{ variable.id }}">Delete</button>
+                </div>
             </div>
         </form>
-        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables/{{ variable.id }}/delete" class="mt-2"
-              onsubmit="return confirm('Delete variable {{ variable.key }}?');">
-            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
-        </form>
+        <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/variables/{{ variable.id }}/delete" id="delete-variables-{{ variable.id }}" hidden
+              onsubmit="return confirm('Delete variable {{ variable.key }}?');"></form>
     </div>
     {% endfor %}
     {% else %}
