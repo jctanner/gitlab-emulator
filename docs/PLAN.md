@@ -22,6 +22,7 @@ No task files are currently checked into `docs/tasks/current/`.
 
 ## Pending Tasks
 
+- [Architectural maintainability follow-ups](tasks/pending/architectural-maintainability-followups.md)
 - [Targeted GitLab parity follow-ups](tasks/pending/targeted-gitlab-parity-followups.md)
 
 ## Completed Task Ledgers
