@@ -26,7 +26,11 @@ from app.api.pagination import pagination_headers
 from app.config import settings
 from app.models.ci import CiRunner, JobArtifact, JobTrace, Pipeline, PipelineJob
 from app.models.project import Project
-from app.services.ci_redaction import redact_trace_text
+from app.services.ci_redaction import (
+    mask_trace_bytes,
+    redact_trace_text,
+    trace_display_text,
+)
 from app.services.delayed_jobs import promote_due_delayed_jobs
 
 router = APIRouter(tags=["runner"])
@@ -618,11 +622,15 @@ def _last_update_headers() -> dict[str, str]:
 
 
 def _persisted_remote_job_headers(job: PipelineJob) -> dict[str, str]:
+    # GitLab answers "Range: 0-<stored byte count>". On a 416 the runner takes
+    # the number after the dash as the next byte to send (network/
+    # patch_response.go, NewOffset), so it must be the size, not the last
+    # byte's index: "0-<size - 1>" pins the runner one byte short forever.
     trace_size = job.trace_size or 0
     return {
         "Job-Status": job.status,
         "X-GitLab-Trace-Update-Interval": "1",
-        "Range": f"0-{trace_size - 1}" if trace_size else "0-0",
+        "Range": f"0-{trace_size}",
     }
 
 
@@ -703,6 +711,18 @@ def _image_payload(job: PipelineJob) -> dict:
 
 def _redact_trace_text(text: str, job: PipelineJob) -> str:
     return redact_trace_text(text, job.variables or {})
+
+
+def _stored_trace_bytes(trace: JobTrace) -> bytes:
+    """The trace bytes in the runner's offset space.
+
+    Rows written before ``raw`` existed only have the display text; its
+    encoding is the closest available, and a mismatch is resolved by the
+    runner resending from the size in the 416 response.
+    """
+    if trace.raw is not None:
+        return trace.raw
+    return (trace.content or "").encode()
 
 
 def _coverage_pattern(raw_pattern: str) -> tuple[str, int]:
@@ -804,6 +824,7 @@ def _prepare_auto_retry(job: PipelineJob) -> None:
     job.finished_at = None
     if job.trace:
         job.trace.content = ""
+        job.trace.raw = b""
         job.trace.size = 0
 
 
@@ -1692,29 +1713,37 @@ async def patch_job_trace(
             raise HTTPException(status_code=403, detail="Forbidden")
         trace = persisted_job.trace
         if trace is None:
-            trace = JobTrace(job_id=persisted_job.id, content="", size=0)
+            trace = JobTrace(job_id=persisted_job.id, content="", raw=b"", size=0)
             db.add(trace)
             await db.flush()
-        current = (trace.content or "").encode()
+        current = _stored_trace_bytes(trace)
+        incoming = await request.body()
+        # GitLab's AppendBuildTraceService / Trace#append: the chunk is
+        # written at its start offset, replacing anything stored from there.
+        # A runner whose PATCH was committed but whose response was lost (an
+        # emulator restart, a proxy 502) resends from its last confirmed
+        # offset, so an overlapping chunk is a normal retry, not an error. A
+        # chunk starting past the end is refused with the stored size.
         start = len(current)
         if content_range:
             try:
-                range_start = int(content_range.split("-", 1)[0])
+                start = int(content_range.split("-", 1)[0])
             except ValueError as exc:
                 raise HTTPException(
                     status_code=400, detail="Invalid Content-Range"
                 ) from exc
-            if range_start != start:
+            if start < 0 or start > len(current):
+                persisted_job.trace_size = len(current)
                 return Response(
                     status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
                     headers=_persisted_remote_job_headers(persisted_job),
                 )
-        incoming = await request.body()
-        trace.content = _redact_trace_text(
-            (current + incoming).decode(errors="replace"),
-            persisted_job,
+        raw = mask_trace_bytes(
+            current[:start] + incoming, persisted_job.variables or {}
         )
-        trace.size = len(trace.content.encode())
+        trace.raw = raw
+        trace.content = trace_display_text(raw)
+        trace.size = len(raw)
         persisted_job.trace_size = trace.size
         _refresh_job_coverage(persisted_job)
         await db.commit()

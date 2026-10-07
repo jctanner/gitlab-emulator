@@ -7,6 +7,12 @@ RUN apt-get update && \
     chmod +x /usr/local/bin/caddy && \
     rm -rf /var/lib/apt/lists/*
 
+# Serving a fetch runs pack-objects inside this container's memory limit, with
+# one delta thread per visible CPU (every host CPU) by default. A clone of a
+# 60 MiB repository peaked at ~205 MB with 16 threads and ~124 MB with one;
+# the former, on top of the app, OOM-killed the emulator mid-clone.
+RUN git config --system pack.threads 1
+
 # Set working directory
 WORKDIR /app
 

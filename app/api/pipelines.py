@@ -1555,6 +1555,7 @@ def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
     job.finished_at = None
     if job.trace:
         job.trace.content = ""
+        job.trace.raw = b""
         job.trace.size = 0
 
 
@@ -1564,6 +1565,7 @@ async def _erase_job_trace_and_artifacts(job: PipelineJob, db: DbSession) -> Non
     job.erased_at = datetime.now(timezone.utc)
     if job.trace:
         job.trace.content = ""
+        job.trace.raw = b""
         job.trace.size = 0
 
     for artifact in list(job.artifacts):
@@ -2300,7 +2302,7 @@ async def _create_pipeline(
                     accessed_at=now,
                 )
             )
-        db.add(JobTrace(job_id=job.id, content="", size=0))
+        db.add(JobTrace(job_id=job.id, content="", raw=b"", size=0))
     await _cancel_interruptible_jobs_for_new_pipeline(
         project.id, body.ref, pipeline.id, db
     )

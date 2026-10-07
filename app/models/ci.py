@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -317,7 +318,12 @@ class JobTrace(Base):
     job_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("pipeline_jobs.id"), unique=True, nullable=False
     )
+    # The display text: ``raw`` decoded, with masked values shown as [MASKED].
     content: Mapped[str] = mapped_column(Text, default="")
+    # The runner's bytes, in the runner's offset space (see
+    # ci_redaction.mask_trace_bytes). ``size`` is its length; NULL on rows
+    # written before it existed.
+    raw: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     size: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

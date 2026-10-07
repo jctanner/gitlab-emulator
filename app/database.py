@@ -48,6 +48,7 @@ async def _ensure_sqlite_compat_columns(conn) -> None:
         if column not in existing:
             await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
+    await ensure_column("job_traces", "raw", "raw BLOB")
     await ensure_column(
         "repositories",
         "ci_security_settings",
