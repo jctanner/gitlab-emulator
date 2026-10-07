@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% block title %}CI/CD - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+{% from "_namespace.html" import namespace_links %}
+{% from "_ci_status.html" import ci_icon, ci_badge, human_duration, time_ago %}
+{% block title %}Pipeline #{{ selected_pipeline.id }} - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
 
 {% block subnav %}
 <div class="color-bg-default border-bottom">
@@ -11,159 +13,150 @@
 {% endblock %}
 
 {% block content %}
+{% set base = url_prefix ~ "/" ~ owner ~ "/" ~ repo.name %}
+{% set pipeline = selected_pipeline %}
+<div class="ci-page-head">
+    <nav class="gl-breadcrumbs" aria-label="Breadcrumb">
+        {{ namespace_links(owner, url_prefix, "") }}
+        <span>/</span>
+        <a href="{{ base }}">{{ repo.name }}</a>
+        <span>/</span>
+        <a href="{{ base }}/-/pipelines">Pipelines</a>
+        <span>/</span>
+        <strong>#{{ pipeline.id }}</strong>
+    </nav>
+    {% if can_manage_repo|default(false) and pipeline.status in ["created", "pending", "running"] %}
+    <form method="post" action="{{ base }}/-/pipelines/{{ pipeline.id }}/cancel">
+        <button type="submit" class="btn btn-danger">Cancel pipeline</button>
+    </form>
+    {% endif %}
+</div>
+
 {% if flash_message %}
 <div class="flash {% if flash_type == 'error' %}flash-error{% else %}flash-success{% endif %} mb-3">{{ flash_message }}</div>
 {% endif %}
 
-<div class="mb-3">
-    <a class="Link--secondary" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines">Back to pipelines</a>
+<h1 class="ci-pipeline-title">{{ pipeline.name or ("#" ~ pipeline.id) }}</h1>
+<div class="ci-pipeline-meta">
+    <div>
+        {{ ci_badge(pipeline.status) }}
+        Created {{ time_ago(pipeline.created_at, now) }}
+        {% if pipeline.user %}by <strong>{{ pipeline.user.name or pipeline.user.login }}</strong>{% endif %}
+        {%- if pipeline.finished_at %}, finished {{ time_ago(pipeline.finished_at, now) }}{% endif %}
+    </div>
+    <div>
+        For commit <code class="ci-sha">{{ pipeline.sha[:8] }}</code>
+        {% if commit_title %}<span class="ml-1">{{ commit_title }}</span>{% endif %}
+    </div>
+    <div>In <a class="ci-ref" href="{{ base }}/tree/{{ pipeline.ref }}">{{ pipeline.ref }}</a></div>
+    <div>
+        <span class="Label ci-label-source">{{ pipeline.source }}</span>
+        <span class="ml-2">{{ jobs|length }} job{{ "" if jobs|length == 1 else "s" }}</span>
+        {% if pipeline.started_at %}
+        <span class="ml-2 color-fg-muted">
+            {% if pipeline.finished_at %}
+            took {{ human_duration((pipeline.finished_at - pipeline.started_at).total_seconds()) }}
+            {% else %}
+            in progress for {{ human_duration((now - pipeline.started_at).total_seconds()) }}
+            {% endif %}
+        </span>
+        {% endif %}
+    </div>
 </div>
 
-{% if selected_pipeline %}
-<div class="Box mb-4">
-    <div class="Box-header d-flex flex-items-center flex-justify-between">
-        <h3 class="Box-title">Pipeline #{{ selected_pipeline.id }}</h3>
-        <span class="status-{{ selected_pipeline.status }}">{{ selected_pipeline.status }}</span>
+{% if pipeline.security_warnings %}
+<div class="flash flash-warn mb-3">
+    <div class="text-bold mb-1">Security warnings</div>
+    <ul class="ml-3 mb-0">
+        {% for warning in pipeline.security_warnings %}
+        <li>{{ warning.message }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<nav class="UnderlineNav mb-3" aria-label="Pipeline tabs">
+    <div class="UnderlineNav-body">
+        <a class="UnderlineNav-item{% if active_pipeline_tab == 'pipeline' %} selected{% endif %}" href="{{ base }}/-/pipelines/{{ pipeline.id }}">Pipeline</a>
+        <a class="UnderlineNav-item{% if active_pipeline_tab == 'jobs' %} selected{% endif %}" href="{{ base }}/-/pipelines/{{ pipeline.id }}?tab=jobs">Jobs <span class="Counter">{{ jobs|length }}</span></a>
     </div>
-    <div class="Box-row">
-        <span class="branch-name">{{ selected_pipeline.ref }}</span>
-        <span class="color-fg-muted ml-2">{{ selected_pipeline.sha[:8] }}</span>
-    </div>
-    {% if selected_pipeline.security_warnings %}
-    <div class="Box-row">
-        <div class="text-bold color-fg-attention mb-1">Security warnings</div>
-        <ul class="ml-3 mb-0">
-            {% for warning in selected_pipeline.security_warnings %}
-            <li>{{ warning.message }}</li>
+</nav>
+
+{% macro job_action(job, base) -%}
+{% if can_manage_repo|default(false) %}
+{% if job.status == "manual" %}
+<form method="post" action="{{ base }}/-/jobs/{{ job.id }}/play"><button type="submit" class="ci-job-action" title="Run" aria-label="Run {{ job.name }}">&#9654;</button></form>
+{% elif job.status in ["pending", "running", "created"] %}
+<form method="post" action="{{ base }}/-/jobs/{{ job.id }}/cancel"><button type="submit" class="ci-job-action" title="Cancel" aria-label="Cancel {{ job.name }}">&#8856;</button></form>
+{% elif job.status in ["failed", "canceled", "skipped", "success"] %}
+<form method="post" action="{{ base }}/-/jobs/{{ job.id }}/retry"><button type="submit" class="ci-job-action" title="Retry" aria-label="Retry {{ job.name }}">&#8635;</button></form>
+{% endif %}
+{% endif %}
+{%- endmacro %}
+
+{% if not jobs %}
+<div class="Box"><div class="Box-row color-fg-muted">No jobs for this pipeline.</div></div>
+{% elif active_pipeline_tab == "pipeline" %}
+<div class="ci-graph" data-testid="pipeline-graph">
+    {% for stage in stages %}
+    <div class="ci-stage">
+        <div class="ci-stage-name">{{ stage.name }}</div>
+        <div class="ci-stage-jobs">
+            {% for job in stage.jobs %}
+            {% set diagnostic = job_diagnostics.get(job.id) %}
+            {% set downstream = downstream_by_job.get(job.id) %}
+            <div class="ci-job-card">
+                <a class="ci-job-link" href="{{ base }}/-/jobs/{{ job.id }}" title="{{ job.name }} - {{ job.status }}">
+                    {{ ci_icon(job.status, 18) }}
+                    <span class="ci-job-name">{{ job.name }}</span>
+                </a>
+                {{ job_action(job, base) }}
+                {% if downstream %}
+                <div class="ci-job-note">
+                    Downstream pipeline
+                    <a href="{{ url_prefix }}/{{ downstream.pipeline.project.full_name }}/-/pipelines/{{ downstream.pipeline.id }}">#{{ downstream.pipeline.id }}</a>
+                    {{ ci_icon(downstream.pipeline.status, 12) }}
+                    {% if downstream.blocked_reasons %}<div class="color-fg-attention">Downstream pending: {{ downstream.blocked_reasons|join("; ") }}.</div>{% endif %}
+                </div>
+                {% endif %}
+                {% if diagnostic and diagnostic.blocked and diagnostic.reasons %}
+                <div class="ci-job-note color-fg-attention">Pending: {{ diagnostic.reasons|join("; ") }}.</div>
+                {% endif %}
+            </div>
             {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-    {% if jobs %}
-    {% for job in jobs %}
-    {% set diagnostic = job_diagnostics.get(job.id) if job_diagnostics is defined else none %}
-    {% set downstream = downstream_by_job.get(job.id) if downstream_by_job is defined else none %}
-    <div class="Box-row d-flex flex-items-center flex-justify-between flex-wrap" style="gap:12px;">
-        <div>
-            <a class="text-bold" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}">#{{ job.id }} {{ job.name }}</a>
-            <span class="Label Label--secondary ml-1">{{ job.stage }}</span>
-            <span class="status-{{ job.status }} ml-2">{{ job.status }}</span>
-            <div class="color-fg-muted f6 mt-1">
-                Job #{{ job.id }}
-                {% if job.runner_name %} · {{ job.runner_name }}{% endif %}
-                {% if job.tags %} · {{ job.tags|join(", ") }}{% endif %}
-            </div>
-            {% if downstream %}
-            <div class="color-fg-muted f6 mt-1">
-                Downstream pipeline
-                <a href="{{ url_prefix }}/{{ downstream.pipeline.project.full_name }}/-/pipelines/{{ downstream.pipeline.id }}">#{{ downstream.pipeline.id }}</a>
-                in {{ downstream.pipeline.project.full_name }}
-                <span class="status-{{ downstream.pipeline.status }} ml-1">{{ downstream.pipeline.status }}</span>
-            </div>
-            {% if downstream.blocked_reasons %}
-            <div class="color-fg-attention f6 mt-1">
-                Downstream pending: {{ downstream.blocked_reasons|join("; ") }}.
-            </div>
-            {% endif %}
-            {% endif %}
-            {% if diagnostic and diagnostic.blocked and diagnostic.reasons %}
-            <div class="color-fg-attention f6 mt-1">
-                Pending: {{ diagnostic.reasons|join("; ") }}.
-            </div>
-            {% endif %}
-            {% if job.secret_metadata %}
-            <div class="color-fg-muted f6 mt-1">
-                Secrets:
-                {% for secret in job.secret_metadata %}
-                <code>{{ secret.key }}</code> from <code>{{ secret.name }}</code> ({{ secret.mode }}){% if not loop.last %}, {% endif %}
-                {% endfor %}
-            </div>
-            {% endif %}
         </div>
-        {% if can_manage_repo|default(false) %}
-        <div class="d-flex flex-items-center" style="gap:6px;">
-            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}/play">
-                <button type="submit" class="btn btn-sm" {% if job.status != "manual" %}disabled{% endif %}>Play</button>
-            </form>
-            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}/retry">
-                <button type="submit" class="btn btn-sm" {% if job.status not in ["failed", "canceled", "skipped", "success"] %}disabled{% endif %}>Retry</button>
-            </form>
-            <form method="post" action="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ job.id }}/cancel">
-                <button type="submit" class="btn btn-sm" {% if job.status not in ["pending", "running", "manual"] %}disabled{% endif %}>Cancel</button>
-            </form>
-        </div>
-        {% endif %}
     </div>
     {% endfor %}
-    {% else %}
-    <div class="Box-row color-fg-muted">No jobs for this pipeline.</div>
-    {% endif %}
 </div>
-{% endif %}
-
-{% if selected_job %}
-{% set selected_diagnostic = job_diagnostics.get(selected_job.id) if job_diagnostics is defined else none %}
-<div class="Box mb-4" id="job-trace">
-    <div class="Box-header d-flex flex-items-center flex-justify-between">
-        <h3 class="Box-title">Job #{{ selected_job.id }} · {{ selected_job.name }}</h3>
-        <a class="btn btn-sm" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/jobs/{{ selected_job.id }}">Refresh</a>
+{% else %}
+<div class="Box ci-jobs-table">
+    <div class="Box-header ci-jobs-row ci-jobs-head">
+        <div>Status</div><div>Job</div><div>Stage</div><div>Duration</div><div></div>
     </div>
-    <div class="Box-row">
-        <div class="d-flex flex-wrap" style="gap:12px;">
-            <span>Status: <span class="status-{{ selected_job.status }}">{{ selected_job.status }}</span></span>
-            <span>Image: <code>{{ selected_job.image }}</code></span>
-            <span>Stage: {{ selected_job.stage }}</span>
-        </div>
-    </div>
-    {% if selected_diagnostic and selected_diagnostic.blocked and selected_diagnostic.reasons %}
-    <div class="Box-row">
-        <div class="flash flash-error mb-0">
-            This job is pending because {{ selected_diagnostic.reasons|join("; ") }}.
-        </div>
-    </div>
-    {% endif %}
-    {% if selected_job.secret_metadata %}
-    <div class="Box-row">
-        <div class="text-bold mb-2">Secrets</div>
-        <ul class="mb-0">
-            {% for secret in selected_job.secret_metadata %}
-            <li>
-                <code>{{ secret.key }}</code> uses <code>{{ secret.name }}</code>
-                as {{ secret.mode }} from {{ secret.scope_type }}
-                scope {{ secret.environment_scope }}/{{ secret.branch_scope }}
-                {% if secret.protected %}<span class="Label Label--secondary ml-1">protected</span>{% endif %}
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-    <div class="Box-row">
-        <div class="mb-2">
-            <a href="/api/v4/projects/{{ repo.id }}/jobs/{{ selected_job.id }}/trace">Trace API</a>
-            {% if selected_job.artifacts %}
-            <span class="mx-2">·</span>
-            <a href="/api/v4/projects/{{ repo.id }}/jobs/{{ selected_job.id }}/artifacts">Download artifacts</a>
+    {% for job in jobs %}
+    <div class="Box-row ci-jobs-row">
+        <div>{{ ci_badge(job.status) }}</div>
+        <div>
+            <a class="text-bold" href="{{ base }}/-/jobs/{{ job.id }}">{{ job.name }}</a>
+            <div class="color-fg-muted f6">#{{ job.id }}{% if job.runner_name %} · {{ job.runner_name }}{% endif %}{% if job.tags %} · {{ job.tags|join(", ") }}{% endif %}</div>
+            {% if job.secret_metadata %}
+            <div class="color-fg-muted f6">Secrets:
+                {% for secret in job.secret_metadata %}<code>{{ secret.key }}</code> from <code>{{ secret.name }}</code> ({{ secret.mode }}){% if not loop.last %}, {% endif %}{% endfor %}
+            </div>
             {% endif %}
         </div>
-        {% if selected_job.artifacts %}
-        <ul class="mb-3">
-            {% for artifact in selected_job.artifacts %}
-            <li>{{ artifact.filename }} · {{ artifact.size }} bytes · {{ artifact.file_type }}/{{ artifact.file_format }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        <div class="ci-trace" data-testid="job-trace">{{ trace_html }}</div>
+        <div>{{ job.stage }}</div>
+        <div class="color-fg-muted f6">
+            {% if job.started_at %}{{ human_duration(((job.finished_at or now) - job.started_at).total_seconds()) }}{% endif %}
+        </div>
+        <div class="text-right">{{ job_action(job, base) }}</div>
     </div>
+    {% endfor %}
 </div>
 {% endif %}
 
-{% set active_statuses = ["created", "waiting_for_resource", "preparing", "pending", "running", "manual"] %}
-{% set should_auto_refresh = (
-    selected_job and selected_job.status in active_statuses
-) or (
-    selected_pipeline and selected_pipeline.status in active_statuses
-) %}
-{% if should_auto_refresh %}
+{% set active_statuses = ["created", "waiting_for_resource", "preparing", "pending", "running"] %}
+{% if pipeline.status in active_statuses %}
 <script>
 window.setTimeout(function () {
     window.location.reload();

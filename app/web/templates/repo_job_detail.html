@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+{% from "_namespace.html" import namespace_links %}
+{% from "_ci_status.html" import ci_icon, ci_badge, human_duration %}
+{% block title %}{{ selected_job.name }} (#{{ selected_job.id }}) - Jobs - {{ owner }}/{{ repo.name }} - GitLab Emulator{% endblock %}
+
+{% block subnav %}
+<div class="color-bg-default border-bottom">
+    <div class="container-xl px-3 px-md-4 px-lg-5 pt-3">
+        {% set active_tab = "pipelines" %}
+        {% include "_repo_nav.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% set base = url_prefix ~ "/" ~ owner ~ "/" ~ repo.name %}
+{% set job = selected_job %}
+{% set pipeline = selected_pipeline %}
+{% set diagnostic = job_diagnostics.get(job.id) %}
+{% set active_statuses = ["created", "waiting_for_resource", "preparing", "pending", "running"] %}
+{% set is_active = job.status in active_statuses %}
+
+<div class="ci-job-head">
+    <div class="ci-page-head">
+        <nav class="gl-breadcrumbs" aria-label="Breadcrumb">
+            {{ namespace_links(owner, url_prefix, "") }}
+            <span>/</span>
+            <a href="{{ base }}">{{ repo.name }}</a>
+            <span>/</span>
+            <a href="{{ base }}/-/jobs">Jobs</a>
+            <span>/</span>
+            <strong>#{{ job.id }}</strong>
+        </nav>
+        <div class="d-flex flex-items-center" style="gap:8px;">
+            {% if can_manage_repo|default(false) %}
+            {% if job.status == "manual" %}
+            <form method="post" action="{{ base }}/-/jobs/{{ job.id }}/play"><button type="submit" class="btn btn-primary">Run job</button></form>
+            {% endif %}
+            {% if job.status in ["pending", "running", "created", "manual"] %}
+            <form method="post" action="{{ base }}/-/jobs/{{ job.id }}/cancel"><button type="submit" class="btn btn-danger">Cancel</button></form>
+            {% endif %}
+            {% if job.status in ["failed", "canceled", "skipped", "success"] %}
+            <form method="post" action="{{ base }}/-/jobs/{{ job.id }}/retry"><button type="submit" class="btn">Retry</button></form>
+            {% endif %}
+            {% endif %}
+            <button type="button" class="btn ci-sidebar-toggle" aria-label="Toggle sidebar" title="Toggle sidebar" data-ci-sidebar-toggle>&#9707;</button>
+        </div>
+    </div>
+    <div class="ci-job-title">
+        {{ ci_badge(job.status) }}
+        <h1>{{ job.name }}</h1>
+    </div>
+</div>
+
+{% if flash_message %}
+<div class="flash {% if flash_type == 'error' %}flash-error{% else %}flash-success{% endif %} mb-3">{{ flash_message }}</div>
+{% endif %}
+
+<div class="ci-job-layout" data-ci-job-layout>
+    <div class="ci-job-main">
+        {% if diagnostic and diagnostic.blocked and diagnostic.reasons %}
+        <div class="flash flash-warn mb-3">
+            {% if job.status == "pending" %}
+            This job is pending because {{ diagnostic.reasons|join("; ") }}.
+            {% else %}
+            Job activity warning: {{ diagnostic.reasons|join("; ") }}.
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if job.failure_reason and job.status == "failed" %}
+        <div class="flash flash-error mb-3">
+            Failure reason: {{ job.failure_reason|replace("_", " ") }}{% if job.exit_code is not none %} (exit code {{ job.exit_code }}){% endif %}
+        </div>
+        {% endif %}
+
+        <div class="ci-log-shell" data-ci-log-shell>
+            <div class="ci-log-toolbar">
+                <div class="ci-log-search">
+                    <input type="search" class="form-control input-sm" placeholder="Search visible log output" aria-label="Search visible log output" data-ci-search>
+                    <span class="ci-log-search-count color-fg-muted f6" data-ci-search-count></span>
+                </div>
+                <button type="button" class="ci-tool" title="Previous match" aria-label="Previous match" data-ci-search-prev>&#8963;</button>
+                <button type="button" class="ci-tool" title="Next match" aria-label="Next match" data-ci-search-next>&#8964;</button>
+                <a class="ci-tool" href="{{ base }}/-/jobs/{{ job.id }}/trace" title="Show complete raw" aria-label="Show complete raw" target="_blank" rel="noopener">Raw</a>
+                <button type="button" class="ci-tool" title="Scroll to top" aria-label="Scroll to top" data-ci-scroll-top>&#10514;</button>
+                <button type="button" class="ci-tool" title="Scroll to bottom" aria-label="Scroll to bottom" data-ci-scroll-bottom>&#10515;</button>
+                <button type="button" class="ci-tool" title="Full screen" aria-label="Full screen" data-ci-fullscreen>&#x26F6;</button>
+            </div>
+            <div class="ci-log ci-trace" id="ci-log" data-testid="job-trace"
+                 data-trace-url="{{ base }}/-/jobs/{{ job.id }}/trace.json"
+                 data-size="{{ trace_size }}" data-status="{{ job.status }}"
+                 data-job-id="{{ job.id }}"
+                 data-active="{{ 'true' if is_active else 'false' }}">
+                {%- for line in trace_lines -%}
+                <div class="ci-log-line" id="L{{ loop.index }}"><a class="ci-log-ln" href="#L{{ loop.index }}">{{ loop.index }}</a><span class="ci-log-text">{{ line }}</span></div>
+                {%- endfor -%}
+            </div>
+            <div class="ci-log-footer" data-ci-log-footer>
+                {% if is_active %}
+                <span class="ci-log-spinner" aria-hidden="true"></span>
+                <span class="color-fg-muted f6">{% if job.status == "running" %}Running{% else %}Waiting for the job to start{% endif %}…</span>
+                {% elif not trace_lines %}
+                <span class="color-fg-muted f6">No log output.</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <aside class="ci-job-sidebar" aria-label="Job details">
+        {% if job.started_at %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">{% if job.finished_at %}Duration{% else %}Elapsed time{% endif %}</div>
+            <div {% if not job.finished_at %}data-ci-elapsed-since="{{ job.started_at.isoformat() }}Z"{% endif %}>{{ human_duration(((job.finished_at or now) - job.started_at).total_seconds()) }}</div>
+        </div>
+        {% endif %}
+        {% if job.queued_at %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Queued</div>
+            <div {% if not job.started_at %}data-ci-elapsed-since="{{ job.queued_at.isoformat() }}Z"{% endif %}>{{ human_duration(((job.started_at or now) - job.queued_at).total_seconds()) }}</div>
+        </div>
+        {% endif %}
+        {% if job.timeout_seconds %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Timeout</div>
+            <div>{{ human_duration(job.timeout_seconds) }} (from job)</div>
+        </div>
+        {% endif %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Runner</div>
+            <div>{{ job.runner_name or "Not assigned yet" }}</div>
+        </div>
+        <div class="ci-side-block">
+            <div class="ci-side-title">Source</div>
+            <div>{{ {"api": "API", "web": "Web", "push": "Push", "schedule": "Schedule", "trigger": "Trigger", "pipeline": "Pipeline", "parent_pipeline": "Parent pipeline", "merge_request_event": "Merge request event"}.get(pipeline.source, pipeline.source|replace("_", " ")|capitalize) }}</div>
+        </div>
+        <div class="ci-side-block">
+            <div class="ci-side-title">Image</div>
+            <div><code class="ci-sha">{{ job.image }}</code></div>
+        </div>
+        {% if job.tags %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Tags</div>
+            <div>{% for tag in job.tags %}<span class="ci-tag">{{ tag }}</span>{% endfor %}</div>
+        </div>
+        {% endif %}
+        {% if job.artifacts %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Job artifacts</div>
+            <ul class="ci-side-list">
+                {% for artifact in job.artifacts %}
+                <li>{{ artifact.filename }} · {{ artifact.size }} bytes · {{ artifact.file_type }}/{{ artifact.file_format }}</li>
+                {% endfor %}
+            </ul>
+            <a class="btn btn-sm mt-2" href="{{ base }}/-/artifacts/{{ job.id }}/download">Download artifacts</a>
+        </div>
+        {% endif %}
+        {% if job.secret_metadata %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Secrets</div>
+            <ul class="ci-side-list">
+                {% for secret in job.secret_metadata %}
+                <li>
+                    <code>{{ secret.key }}</code> uses <code>{{ secret.name }}</code>
+                    as {{ secret.mode }} from {{ secret.scope_type }}
+                    scope {{ secret.environment_scope }}/{{ secret.branch_scope }}
+                    {% if secret.protected %}<span class="Label Label--secondary ml-1">protected</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        <div class="ci-side-block">
+            <div class="ci-side-title">Commit <code class="ci-sha">{{ pipeline.sha[:8] }}</code></div>
+            {% if commit_title %}<div>{{ commit_title }}</div>{% endif %}
+        </div>
+        <div class="ci-side-block">
+            <div class="ci-side-title">
+                Pipeline <a href="{{ base }}/-/pipelines/{{ pipeline.id }}">#{{ pipeline.id }}</a>
+                {{ ci_badge(pipeline.status) }}
+                <span class="text-normal">for</span> <a class="ci-ref" href="{{ base }}/tree/{{ pipeline.ref }}">{{ pipeline.ref }}</a>
+            </div>
+            {% if stages|length > 1 %}
+            <select class="form-select input-block mt-2" aria-label="Stage" data-ci-stage-select>
+                {% for stage in stages %}
+                <option value="{{ loop.index0 }}" {% if stage.name == job.stage %}selected{% endif %}>{{ stage.name }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <div class="mt-2 color-fg-muted">{{ job.stage }}</div>
+            {% endif %}
+        </div>
+        <div class="ci-side-block ci-side-block-last">
+            <div class="ci-side-title">Related jobs</div>
+            {% for stage in stages %}
+            <ul class="ci-related" data-ci-stage="{{ loop.index0 }}" {% if stage.name != job.stage %}hidden{% endif %}>
+                {% for other in stage.jobs %}
+                <li class="{% if other.id == job.id %}current{% endif %}">
+                    <span class="ci-related-arrow">{% if other.id == job.id %}&rarr;{% endif %}</span>
+                    <a href="{{ base }}/-/jobs/{{ other.id }}" title="{{ other.name }}">{{ ci_icon(other.status, 16) }}<span>{{ other.name }}</span></a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+        </div>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var log = document.getElementById("ci-log");
+    if (!log) { return; }
+    var shell = document.querySelector("[data-ci-log-shell]");
+    var footer = document.querySelector("[data-ci-log-footer]");
+    var size = parseInt(log.dataset.size, 10) || 0;
+    var jobId = log.dataset.jobId;
+    var tailKey = "ci-tail-" + jobId;
+    var POLL_MS = 2000;
+
+    function fullscreen() { return shell.classList.contains("is-fullscreen"); }
+    function scroller() { return fullscreen() ? log : document.scrollingElement || document.documentElement; }
+    function atBottom() {
+        var el = scroller();
+        var view = fullscreen() ? el.clientHeight : window.innerHeight;
+        return el.scrollTop + view >= el.scrollHeight - 48;
+    }
+    function scrollToBottom() { var el = scroller(); el.scrollTop = el.scrollHeight; }
+    function scrollToTop() { scroller().scrollTop = 0; }
+
+    function lineNode(number, html) {
+        var row = document.createElement("div");
+        row.className = "ci-log-line";
+        row.id = "L" + number;
+        var ln = document.createElement("a");
+        ln.className = "ci-log-ln";
+        ln.href = "#L" + number;
+        ln.textContent = number;
+        var text = document.createElement("span");
+        text.className = "ci-log-text";
+        text.innerHTML = html;  // server-rendered, escaped trace HTML
+        row.appendChild(ln);
+        row.appendChild(text);
+        return row;
+    }
+
+    // The server sends the last line the page shows (a continued chunk or a
+    // carriage-return redraw can still change it) and everything after it,
+    // starting at data.offset. An offset of 0 with fewer lines than shown
+    // means the trace was reset, so everything is redrawn.
+    function applyLines(offset, lines) {
+        while (log.children.length > offset) {
+            log.removeChild(log.lastElementChild);
+        }
+        var fragment = document.createDocumentFragment();
+        for (var i = 0; i < lines.length; i++) {
+            fragment.appendChild(lineNode(offset + i + 1, lines[i]));
+        }
+        log.appendChild(fragment);
+    }
+
+    function poll() {
+        fetch(log.dataset.traceUrl + "?size=" + size + "&lines=" + log.children.length, {
+            credentials: "same-origin",
+            headers: { "Accept": "application/json" },
+        }).then(function (response) {
+            if (response.status === 403 || response.status === 404) {
+                // The trace endpoint applies project permissions that this
+                // page does not (e.g. a signed-out viewer of a private
+                // project): fall back to reloading, still following the end.
+                try { if (atBottom()) { sessionStorage.setItem(tailKey, "1"); } } catch (e) {}
+                window.setTimeout(function () { window.location.reload(); }, 3000);
+                return null;
+            }
+            if (!response.ok) { throw new Error("trace " + response.status); }
+            return response.json();
+        }).then(function (data) {
+            if (!data) { return; }
+            var follow = atBottom();
+            if (data.lines) {
+                applyLines(data.offset, data.lines);
+                size = data.size;
+                if (follow) { scrollToBottom(); }
+            }
+            if (data.complete || data.status !== log.dataset.status) {
+                // Status, sidebar and actions are server-rendered: reload once
+                // and, if the reader was following the log, stay at the end.
+                try { if (follow) { sessionStorage.setItem(tailKey, "1"); } } catch (e) {}
+                window.location.reload();
+                return;
+            }
+            window.setTimeout(poll, POLL_MS);
+        }).catch(function () {
+            window.setTimeout(poll, POLL_MS * 2);
+        });
+    }
+
+    var resumeTail = false;
+    try { resumeTail = sessionStorage.getItem(tailKey) === "1"; sessionStorage.removeItem(tailKey); } catch (e) {}
+    if (!window.location.hash && (log.dataset.active === "true" || resumeTail)) {
+        window.requestAnimationFrame(scrollToBottom);
+    }
+    if (log.dataset.active === "true") {
+        window.setTimeout(poll, POLL_MS);
+    }
+
+    document.querySelector("[data-ci-scroll-top]").addEventListener("click", scrollToTop);
+    document.querySelector("[data-ci-scroll-bottom]").addEventListener("click", scrollToBottom);
+    document.querySelector("[data-ci-fullscreen]").addEventListener("click", function () {
+        var follow = atBottom();
+        shell.classList.toggle("is-fullscreen");
+        if (follow) { scrollToBottom(); }
+    });
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && fullscreen()) { shell.classList.remove("is-fullscreen"); }
+    });
+
+    var sidebarToggle = document.querySelector("[data-ci-sidebar-toggle]");
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener("click", function () {
+            document.querySelector("[data-ci-job-layout]").classList.toggle("sidebar-hidden");
+        });
+    }
+
+    var stageSelect = document.querySelector("[data-ci-stage-select]");
+    if (stageSelect) {
+        stageSelect.addEventListener("change", function () {
+            document.querySelectorAll("[data-ci-stage]").forEach(function (list) {
+                list.hidden = list.dataset.ciStage !== stageSelect.value;
+            });
+        });
+    }
+
+    // Live elapsed/queued counters, in the sidebar's own wording.
+    function words(seconds) {
+        seconds = Math.max(0, Math.floor(seconds));
+        var h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
+        var parts = [];
+        if (h) { parts.push(h + (h === 1 ? " hour" : " hours")); }
+        if (m) { parts.push(m + (m === 1 ? " minute" : " minutes")); }
+        if (s || !parts.length) { parts.push(s + (s === 1 ? " second" : " seconds")); }
+        return parts.join(" ");
+    }
+    var counters = document.querySelectorAll("[data-ci-elapsed-since]");
+    if (counters.length) {
+        window.setInterval(function () {
+            counters.forEach(function (el) {
+                el.textContent = words((Date.now() - Date.parse(el.dataset.ciElapsedSince)) / 1000);
+            });
+        }, 1000);
+    }
+
+    // Search the rendered log: highlight matching lines and step through them.
+    var search = document.querySelector("[data-ci-search]");
+    var count = document.querySelector("[data-ci-search-count]");
+    var matches = [], current = -1;
+    function runSearch() {
+        matches.forEach(function (row) { row.classList.remove("is-match", "is-current"); });
+        matches = []; current = -1;
+        var term = search.value.trim().toLowerCase();
+        if (term) {
+            Array.prototype.forEach.call(log.children, function (row) {
+                if (row.textContent.toLowerCase().indexOf(term) !== -1) {
+                    row.classList.add("is-match");
+                    matches.push(row);
+                }
+            });
+        }
+        count.textContent = term ? matches.length + " found" : "";
+        step(1);
+    }
+    function step(direction) {
+        if (!matches.length) { return; }
+        if (current >= 0) { matches[current].classList.remove("is-current"); }
+        current = (current + direction + matches.length) % matches.length;
+        matches[current].classList.add("is-current");
+        matches[current].scrollIntoView({ block: "center" });
+        count.textContent = (current + 1) + " / " + matches.length;
+    }
+    search.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            if (matches.length && search.dataset.term === search.value) { step(event.shiftKey ? -1 : 1); }
+            else { search.dataset.term = search.value; runSearch(); }
+        }
+    });
+    search.addEventListener("search", function () { search.dataset.term = search.value; runSearch(); });
+    document.querySelector("[data-ci-search-next]").addEventListener("click", function () { step(1); });
+    document.querySelector("[data-ci-search-prev]").addEventListener("click", function () { step(-1); });
+})();
+</script>
+{% endblock %}

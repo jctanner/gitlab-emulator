@@ -10,7 +10,8 @@ The runner writes a trace containing more than text:
 The output stays the log as written: one line per line of output, in the
 runner's own format with its timestamp prefix. Colours are kept as spans,
 control sequences and section markers are removed, and everything is
-HTML-escaped. Nothing is added: no line numbers, folding or summaries.
+HTML-escaped. Nothing is added: no folding or summaries. The job page puts
+a line number beside each line, outside the text, as GitLab does.
 """
 
 from __future__ import annotations
@@ -221,14 +222,23 @@ def _parse_entries(text: str) -> list[dict]:
 
 def render_trace(text: str | None) -> Markup:
     """Return the trace as safe HTML; an empty trace renders as nothing."""
+    return Markup("\n".join(render_trace_lines(text)))
+
+
+def render_trace_lines(text: str | None) -> list[Markup]:
+    """Return each visible trace line as safe HTML, in order.
+
+    Styling never spans two lines, so each item stands alone; the job page
+    numbers them the way GitLab's log viewer does.
+    """
     if not text:
-        return Markup("")
-    lines: list[str] = []
+        return []
+    lines: list[Markup] = []
     for entry in _parse_entries(text):
         content = entry["content"]
         remainder = _SECTION.sub("", content)
         if remainder != content and not _strip_controls(remainder).strip():
             continue  # a section marker on its own line is not output
         prefix = html.escape(entry["prefix"], quote=False)
-        lines.append(f"{prefix}{_ansi_to_html(remainder)}")
-    return Markup("\n".join(lines))
+        lines.append(Markup(f"{prefix}{_ansi_to_html(remainder)}"))
+    return lines

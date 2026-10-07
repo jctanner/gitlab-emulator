@@ -1802,3 +1802,368 @@ td.blob-code {
 .ci-trace .ansi-bg-13 { background-color: #bc8cff; }
 .ci-trace .ansi-bg-14 { background-color: #39c5cf; }
 .ci-trace .ansi-bg-15 { background-color: #f0f6fc; color: #0d1117; }
+
+
+/* ---- Pipeline and job pages: GitLab's header, stage graph and log viewer ---- */
+.ci-icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--gl-text-muted);
+    vertical-align: middle;
+}
+.ci-icon svg { display: block; }
+.ci-icon-success { color: var(--gl-success); }
+.ci-icon-failed { color: var(--gl-danger); }
+.ci-icon-running { color: var(--gl-info); }
+.ci-icon-pending,
+.ci-icon-waiting_for_resource,
+.ci-icon-preparing { color: var(--gl-warning); }
+.ci-icon-canceled,
+.ci-icon-skipped,
+.ci-icon-created,
+.ci-icon-manual { color: #626168; }
+.ci-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px 1px 4px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 20px;
+    vertical-align: middle;
+    background: #ececef;
+    color: #535158;
+}
+.ci-badge .ci-icon { color: inherit; }
+.ci-badge-success { background: #c3e6cd; color: #24663b; }
+.ci-badge-failed { background: #fdd4cd; color: #ae1800; }
+.ci-badge-running { background: #cbe2f9; color: #0b5cad; }
+.ci-badge-pending,
+.ci-badge-waiting_for_resource,
+.ci-badge-preparing { background: #f5d9a8; color: #8f4700; }
+
+.ci-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 36px;
+    margin-bottom: 8px;
+}
+.ci-page-head form { margin: 0; }
+.ci-page-head .gl-breadcrumbs { flex-wrap: wrap; }
+.ci-page-head .gl-breadcrumbs strong { color: var(--gl-text); }
+.ci-sha {
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: #ececef;
+    font-size: 12px;
+}
+.ci-ref {
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: #e9f3fc;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+.ci-pipeline-title {
+    margin: 4px 0 12px;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.ci-pipeline-meta {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+    color: var(--gl-text-muted);
+}
+.ci-pipeline-meta strong { color: var(--gl-text); }
+.ci-label-source { background: #cbe2f9; border-color: transparent; color: #0b5cad; }
+
+/* Stage columns, one card per job, joined by a connector line. */
+.ci-graph {
+    display: flex;
+    align-items: flex-start;
+    gap: 48px;
+    padding: 32px 36px 48px;
+    overflow-x: auto;
+    background: var(--gl-bg-subtle);
+    border-radius: 4px;
+}
+.ci-stage {
+    position: relative;
+    flex: none;
+    width: 300px;
+    padding: 0 6px 6px;
+    background: #ececef;
+    border-radius: 10px;
+}
+.ci-stage + .ci-stage::before {
+    content: "";
+    position: absolute;
+    top: 26px;
+    left: -48px;
+    width: 48px;
+    border-top: 2px solid var(--gl-border-strong);
+}
+.ci-stage-name {
+    padding: 14px 12px 10px;
+    font-weight: 600;
+}
+.ci-stage-jobs {
+    display: grid;
+    gap: 4px;
+    padding: 4px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(5, 5, 6, .08);
+}
+.ci-job-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 6px 6px 8px;
+    border-radius: 6px;
+}
+.ci-job-card:hover { background: var(--gl-bg-subtle); }
+.ci-job-link {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: var(--gl-text) !important;
+    text-decoration: none !important;
+}
+.ci-job-name { overflow-wrap: anywhere; }
+.ci-job-note {
+    flex-basis: 100%;
+    padding-left: 28px;
+    font-size: 12px;
+    color: var(--gl-text-muted);
+}
+.ci-job-card form,
+.ci-jobs-row form { display: inline; margin: 0; }
+.ci-job-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--gl-border-strong);
+    border-radius: 50%;
+    background: #ffffff;
+    color: var(--gl-text);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+.ci-job-action:hover { background: #ececef; }
+.ci-jobs-row {
+    display: grid;
+    grid-template-columns: 130px minmax(0, 1fr) 140px 160px 50px;
+    align-items: center;
+    gap: 12px;
+}
+.ci-jobs-head { font-weight: 600; }
+
+/* Job page */
+.ci-job-head {
+    position: sticky;
+    top: var(--gl-topbar-height);
+    z-index: 10;
+    margin: -14px -8px 0;
+    padding: 10px 8px 10px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--gl-border);
+}
+.ci-job-head .ci-page-head { margin-bottom: 4px; }
+.ci-job-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ci-job-title h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+.ci-sidebar-toggle { padding: 3px 9px; font-size: 16px; }
+.ci-job-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 28px;
+    align-items: start;
+    margin-top: 0;
+}
+.ci-job-layout.sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+.ci-job-layout.sidebar-hidden .ci-job-sidebar { display: none; }
+.ci-job-main { min-width: 0; padding-top: 0; }
+.ci-log-shell {
+    background: #1f1e24;
+    border-radius: 0 0 4px 4px;
+}
+.ci-log-toolbar {
+    position: sticky;
+    top: calc(var(--gl-topbar-height) + 85px);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--gl-border);
+}
+.ci-log-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 6px;
+}
+.ci-log-search input { width: 260px; }
+.ci-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--gl-border-strong);
+    border-radius: 4px;
+    background: #ffffff;
+    color: var(--gl-text) !important;
+    font-size: 14px;
+    text-decoration: none !important;
+    cursor: pointer;
+}
+.ci-tool:hover { background: #ececef; }
+.ci-trace.ci-log {
+    max-height: none;
+    min-height: 120px;
+    margin: 0;
+    padding: 12px 0;
+    overflow: visible;
+    background: #1f1e24;
+    border: 0;
+    border-radius: 0;
+    color: #ececef;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: normal;
+}
+.ci-log-line {
+    display: flex;
+    padding-right: 16px;
+}
+.ci-log-line:hover { background: #333238; }
+.ci-log-line:target,
+.ci-log-line.is-current { background: #4b4a2a; }
+.ci-log-line.is-match .ci-log-text { text-decoration: underline dotted #e9be74; }
+.ci-log-ln {
+    flex: none;
+    width: 64px;
+    padding-right: 16px;
+    color: #89888d !important;
+    text-align: right;
+    text-decoration: none !important;
+    user-select: none;
+}
+.ci-log-ln:hover { text-decoration: underline !important; }
+.ci-log-text {
+    flex: 1;
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.ci-log-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 12px;
+    padding: 0 16px 12px 80px;
+}
+.ci-log-footer:empty { padding: 0; }
+.ci-log-footer .color-fg-muted { color: #a4a3a8 !important; }
+.ci-log-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #535158;
+    border-top-color: #ececef;
+    border-radius: 50%;
+    animation: ci-spin .8s linear infinite;
+}
+@keyframes ci-spin { to { transform: rotate(360deg); } }
+.ci-log-shell.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    border-radius: 0;
+}
+.ci-log-shell.is-fullscreen .ci-log-toolbar { position: static; }
+.ci-log-shell.is-fullscreen .ci-log { flex: 1; overflow: auto; }
+
+.ci-job-sidebar {
+    position: sticky;
+    top: calc(var(--gl-topbar-height) + 96px);
+    max-height: calc(100vh - var(--gl-topbar-height) - 110px);
+    overflow-y: auto;
+    padding-top: 16px;
+}
+.ci-side-block {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--gl-border);
+    overflow-wrap: anywhere;
+}
+.ci-side-block-last { border-bottom: 0; }
+.ci-side-title {
+    margin-bottom: 4px;
+    font-weight: 600;
+    color: var(--gl-text);
+}
+.ci-side-title .ci-badge { margin: 0 2px; }
+.ci-side-list { margin: 0; padding-left: 18px; font-size: 13px; }
+.ci-tag {
+    display: inline-block;
+    margin: 0 4px 4px 0;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #cbe2f9;
+    color: #0b5cad;
+    font-size: 13px;
+}
+.ci-related { margin: 0; padding: 0; list-style: none; }
+.ci-related li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 0;
+}
+.ci-related-arrow { width: 18px; color: var(--gl-text); text-align: center; }
+.ci-related a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--gl-text) !important;
+}
+.ci-related a span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ci-related li.current a { font-weight: 600; }
+
+@media (max-width: 1100px) {
+    .ci-job-layout { grid-template-columns: minmax(0, 1fr); }
+    .ci-job-sidebar { position: static; max-height: none; }
+    .ci-log-search input { width: 160px; }
+}

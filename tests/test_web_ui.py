@@ -339,6 +339,7 @@ def test_gitlab_project_shell_sidebar_css_contract():
         REPO_ROOT / "app/web/templates/repo_pipeline_detail.html"
     ).read_text()
     jobs_template = (REPO_ROOT / "app/web/templates/repo_jobs.html").read_text()
+    job_detail = (REPO_ROOT / "app/web/templates/repo_job_detail.html").read_text()
     pipelines_template = (
         REPO_ROOT / "app/web/templates/repo_pipelines.html"
     ).read_text()
@@ -377,7 +378,7 @@ def test_gitlab_project_shell_sidebar_css_contract():
     assert 'href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/-/pipelines"' in repo_nav
     assert 'href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}/branches"' in repo_nav
     assert "job_diagnostics.get(job.id)" in pipeline_detail
-    assert "This job is pending because" in pipeline_detail
+    assert "This job is pending because" in job_detail
     assert "downstream_by_job.get(job.id)" in pipeline_detail
     assert "Downstream pipeline" in pipeline_detail
     assert "Downstream pending:" in pipeline_detail
@@ -1423,9 +1424,17 @@ ui_job:
         f"/ui/testuser/ui-ci-repo/-/pipelines/{pipeline_id}"
     )
     assert pipeline_page.status_code == 200
-    assert f"Pipeline #{pipeline_id}" in pipeline_page.text
+    assert f"<strong>#{pipeline_id}</strong>" in pipeline_page.text
     assert "Recent pipelines" not in pipeline_page.text
-    assert "Back to pipelines" in pipeline_page.text
+    # GitLab's pipeline page: stage columns of job cards, with a Jobs tab.
+    assert 'data-testid="pipeline-graph"' in pipeline_page.text
+    assert 'class="ci-stage-name"' in pipeline_page.text
+    assert f"/ui/testuser/ui-ci-repo/-/pipelines/{pipeline_id}?tab=jobs" in pipeline_page.text
+    jobs_tab = await client.get(
+        f"/ui/testuser/ui-ci-repo/-/pipelines/{pipeline_id}?tab=jobs"
+    )
+    assert jobs_tab.status_code == 200
+    assert "ci-jobs-table" in jobs_tab.text
     assert "window.setTimeout" in pipeline_page.text
     assert "window.location.reload" in pipeline_page.text
     assert "ui_job" in pipeline_page.text
@@ -1486,13 +1495,38 @@ ui_job:
     # A plain log: the runner's own timestamp prefix stays, nothing is added.
     assert "2026-09-30T19:33:42.3Z 01O " in job_page.text
     assert "<details" not in job_page.text
-    assert "ci-ln" not in job_page.text
-    assert f"Job #{job_id}" in job_page.text
-    assert f"Pipeline #{pipeline_id}" in job_page.text
+    # Its own page, as in GitLab: numbered log lines and a details sidebar,
+    # not a log appended under the pipeline's job list.
+    assert f"<strong>#{job_id}</strong>" in job_page.text
+    assert 'class="ci-log-ln" href="#L2">2</a>' in job_page.text
+    assert f'/-/pipelines/{pipeline_id}">#{pipeline_id}</a>' in job_page.text
+    assert "Related jobs" in job_page.text
+    assert 'data-testid="pipeline-graph"' not in job_page.text
     assert "Recent pipelines" not in job_page.text
-    assert "Back to pipelines" in job_page.text
-    assert "Trace API" in job_page.text
-    assert "window.setTimeout" in job_page.text
+    assert f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}/trace" in job_page.text
+    # A live job is tailed through the trace endpoint, not by reloading.
+    assert f'data-trace-url="/ui/testuser/ui-ci-repo/-/jobs/{job_id}/trace.json"' in job_page.text
+    assert 'data-active="true"' in job_page.text
+
+    trace_json = await client.get(f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}/trace.json")
+    assert trace_json.status_code == 200
+    payload = trace_json.json()
+    assert payload["complete"] is False
+    assert payload["size"] == len(trace.content)
+    assert 'class="ansi-fg-2 ansi-bold">$ echo hi</span>' in payload["lines"][-1]
+    assert payload["offset"] == 0 and payload["total"] == 2
+    unchanged = await client.get(
+        f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}/trace.json?size={payload['size']}&lines=2"
+    )
+    assert "lines" not in unchanged.json()
+    # A grown trace sends the page's last line and what follows, not it all.
+    trace.content += f"2026-09-30T19:33:44.5Z 01O done\n"
+    await db_session.commit()
+    grown = (await client.get(
+        f"/ui/testuser/ui-ci-repo/-/jobs/{job_id}/trace.json?size={payload['size']}&lines=2"
+    )).json()
+    assert grown["offset"] == 1 and grown["total"] == 3
+    assert len(grown["lines"]) == 2 and grown["lines"][-1].endswith("done")
     assert not re.search(
         r'class="gl-sidebar-link gl-sidebar-subitem selected"[^>]*>Pipelines</a>',
         job_page.text,
@@ -1682,14 +1716,14 @@ async def test_ui_project_artifacts_page(client, db_session, test_user, tmp_path
     """The project UI lists job artifacts and links to existing downloads."""
     from sqlalchemy import select
 
-    from app.models.ci import JobArtifact, Pipeline, PipelineJob
+    from app.models.ci import JobArtifact, JobTrace, Pipeline, PipelineJob
     from app.models.repository import Repository
 
     _ui_session(client, test_user.login)
 
     create_repo = await client.post(
         "/ui/new",
-        data={"name": "ui-artifacts", "auto_init": "true"},
+        data={"name": "ui-artifacts", "auto_init": "true", "private": "true"},
         follow_redirects=False,
     )
     assert create_repo.status_code in (302, 303)
@@ -1721,6 +1755,7 @@ async def test_ui_project_artifacts_page(client, db_session, test_user, tmp_path
     )
     db_session.add(job)
     await db_session.flush()
+    db_session.add(JobTrace(job_id=job.id, content="browser trace"))
     artifact_path = tmp_path / "ui-artifact.zip"
     artifact_path.write_bytes(b"ui artifact")
     db_session.add(
@@ -1748,6 +1783,17 @@ async def test_ui_project_artifacts_page(client, db_session, test_user, tmp_path
     download = await client.get(download_path)
     assert download.status_code == 200
     assert download.content == b"ui artifact"
+    trace_path = f"/ui/testuser/ui-artifacts/-/jobs/{job.id}/trace"
+    trace = await client.get(trace_path)
+    assert trace.status_code == 200
+    assert trace.text == "browser trace"
+    detail = await client.get(f"/ui/testuser/ui-artifacts/-/jobs/{job.id}")
+    assert download_path in detail.text
+    assert trace_path in detail.text
+    client.cookies.clear()
+    assert (await client.get(trace_path)).status_code == 404
+    assert (await client.get(download_path)).status_code == 404
+
     assert f"/ui/testuser/ui-artifacts/-/jobs/{job.id}" in artifacts_page.text
     assert f"/ui/testuser/ui-artifacts/-/pipelines/{pipeline.id}" in artifacts_page.text
     assert re.search(

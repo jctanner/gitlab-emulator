@@ -8,7 +8,9 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
+)
 from fastapi.templating import Jinja2Templates
 from jose import JWSError, jws
 from sqlalchemy import select, func, or_
@@ -26,7 +28,7 @@ from app.api.pipelines import (
 from app.api.runner import explain_job_scheduling, registered_runner_diagnostics
 from app.api.releases import _ensure_release_tag
 from app.config import settings
-from app.web.ci_trace import render_trace
+from app.web.ci_trace import render_trace_lines
 from app.database import get_db
 from app.git.bare_repo import (
     delete_file,
@@ -3112,29 +3114,121 @@ async def _repo_ci_template(
 
     job_diagnostics = await _job_scheduling_diagnostics(db, jobs)
     downstream_by_job = await _downstream_pipeline_context(db, jobs)
+    await _can_manage_repo(current_user, repo, db)
 
+    commit_title = ""
+    if selected_pipeline is not None and repo.disk_path and os.path.isdir(repo.disk_path):
+        commit = await get_commit_info(repo.disk_path, selected_pipeline.sha)
+        if commit:
+            commit_title = (commit.get("message") or "").strip().split("\n")[0]
+
+    stages: list[dict] = []
+    for job in jobs:
+        if not stages or stages[-1]["name"] != job.stage:
+            stages.append({"name": job.stage, "jobs": []})
+        stages[-1]["jobs"].append(job)
+
+    context = dict(
+        owner=owner,
+        repo=repo,
+        repo_name=repo.name,
+        current_user=current_user,
+        pipelines=pipelines,
+        selected_pipeline=selected_pipeline,
+        jobs=jobs,
+        stages=stages,
+        selected_job=selected_job,
+        job_diagnostics=job_diagnostics,
+        downstream_by_job=downstream_by_job,
+        commit_title=commit_title,
+        now=_utcnow_naive(),
+        default_branch=repo.default_branch or "main",
+        flash_message=flash_message,
+        flash_type=flash_type,
+    )
+    if selected_job is not None:
+        return templates.TemplateResponse(
+            request=request,
+            name="repo_job_detail.html",
+            context=_ctx(
+                request,
+                **context,
+                trace_size=len(trace_text),
+                trace_lines=render_trace_lines(trace_text),
+            ),
+        )
     return templates.TemplateResponse(
         request=request,
         name="repo_pipeline_detail.html",
         context=_ctx(
             request,
-            owner=owner,
-            repo=repo,
-            repo_name=repo.name,
-            current_user=current_user,
-            pipelines=pipelines,
-            selected_pipeline=selected_pipeline,
-            jobs=jobs,
-            selected_job=selected_job,
-            job_diagnostics=job_diagnostics,
-            downstream_by_job=downstream_by_job,
-            trace_text=trace_text,
-            trace_html=render_trace(trace_text),
-            default_branch=repo.default_branch or "main",
-            flash_message=flash_message,
-            flash_type=flash_type,
+            **context,
+            active_pipeline_tab=(
+                "jobs" if request.query_params.get("tab") == "jobs" else "pipeline"
+            ),
         ),
     )
+
+
+def _utcnow_naive() -> datetime:
+    """Now in UTC without tzinfo, comparable with the CI model timestamps."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+async def _repo_trace_json_response(repo, job_id, current_user, db,
+                                    size: int | None, line_count: int | None):
+    """The job's status and rendered log lines, for the job page to tail.
+
+    The page sends the trace size and the number of lines it already shows.
+    An unchanged trace returns no lines; a grown one returns the page's last
+    line (which a continued chunk can still change) and everything after it,
+    starting at ``offset``. Long logs stay cheap to follow.
+    """
+    if repo.private and (
+        current_user is None
+        or await project_access_level(repo, current_user, db) < REPORTER
+    ):
+        return JSONResponse({"message": "404 Project Not Found"}, status_code=404)
+    job = (await db.execute(
+        select(PipelineJob).options(selectinload(PipelineJob.trace)).where(
+            PipelineJob.project_id == repo.id, PipelineJob.id == job_id
+        )
+    )).scalar_one_or_none()
+    if job is None:
+        return JSONResponse({"message": "404 Job Not Found"}, status_code=404)
+    text = job.trace.content if job.trace else ""
+    payload: dict = {
+        "id": job.id,
+        "status": job.status,
+        "size": len(text),
+        "complete": job.status not in _ACTIVE_JOB_STATUSES,
+    }
+    if size is None or size != len(text):
+        lines = render_trace_lines(text)
+        offset = 0
+        if line_count and line_count <= len(lines):
+            offset = line_count - 1
+        payload["offset"] = offset
+        payload["total"] = len(lines)
+        payload["lines"] = [str(line) for line in lines[offset:]]
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+
+_ACTIVE_JOB_STATUSES = frozenset({
+    "created", "waiting_for_resource", "preparing", "pending", "running",
+})
+
+
+@router.get("/{owner}/{repo_name}/-/jobs/{job_id}/trace.json")
+async def repo_trace_json(request: Request, owner: str, repo_name: str,
+                          job_id: int, size: int | None = Query(None),
+                          lines: int | None = Query(None),
+                          db: AsyncSession = Depends(get_db)):
+    current_user = await _get_current_user(request, db)
+    repo = await _get_repo(db, owner, repo_name)
+    if repo is None:
+        return JSONResponse({"message": "404 Project Not Found"}, status_code=404)
+    return await _repo_trace_json_response(repo, job_id, current_user, db, size, lines)
 
 
 @router.get("/{owner}/{repo_name}/-/pipelines", response_class=HTMLResponse)
@@ -3438,6 +3532,33 @@ async def repo_artifacts_page(
             artifacts=artifacts,
         ),
     )
+
+
+async def _repo_trace_download_response(repo, job_id, current_user, db):
+    """Read a job trace using the browser session and project permissions."""
+    if repo.private and (
+        current_user is None
+        or await project_access_level(repo, current_user, db) < REPORTER
+    ):
+        return HTMLResponse(content="<h1>404 - Project Not Found</h1>", status_code=404)
+    job = (await db.execute(
+        select(PipelineJob).options(selectinload(PipelineJob.trace)).where(
+            PipelineJob.project_id == repo.id, PipelineJob.id == job_id
+        )
+    )).scalar_one_or_none()
+    if job is None:
+        return HTMLResponse(content="<h1>404 - Job Not Found</h1>", status_code=404)
+    return PlainTextResponse(job.trace.content if job.trace else "")
+
+
+@router.get("/{owner}/{repo_name}/-/jobs/{job_id}/trace")
+async def repo_trace_download(request: Request, owner: str, repo_name: str,
+                              job_id: int, db: AsyncSession = Depends(get_db)):
+    current_user = await _get_current_user(request, db)
+    repo = await _get_repo(db, owner, repo_name)
+    if repo is None:
+        return HTMLResponse(content="<h1>404 - Project Not Found</h1>", status_code=404)
+    return await _repo_trace_download_response(repo, job_id, current_user, db)
 
 
 async def _repo_artifact_download_response(
@@ -5338,6 +5459,24 @@ async def nested_repo_page(
                         flash_message=request.query_params.get("flash_message"),
                         flash_type=request.query_params.get("flash_type", "info"),
                     )
+
+            if (request.method == "GET" and section == "jobs"
+                and len(action_parts) == 4 and action_parts[2].isdigit()
+                and action_parts[3] == "trace.json"):
+                raw_size = request.query_params.get("size", "")
+                raw_lines = request.query_params.get("lines", "")
+                return await _repo_trace_json_response(
+                    repo, int(action_parts[2]), current_user, db,
+                    int(raw_size) if raw_size.isdigit() else None,
+                    int(raw_lines) if raw_lines.isdigit() else None,
+                )
+
+            if (request.method == "GET" and section == "jobs"
+                and len(action_parts) == 4 and action_parts[2].isdigit()
+                and action_parts[3] == "trace"):
+                return await _repo_trace_download_response(
+                    repo, int(action_parts[2]), current_user, db
+                )
 
             if (
                 request.method == "POST"

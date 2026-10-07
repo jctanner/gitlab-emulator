@@ -585,10 +585,10 @@ async def _selected_ci_lab_state(
         "selected_job_api_url": f"/api/v4/projects/{selected_project_id}/jobs/{selected_job_id}"
         if selected_project and selected_job
         else None,
-        "selected_job_trace_api_url": f"/api/v4/projects/{selected_project_id}/jobs/{selected_job_id}/trace"
+        "selected_job_trace_api_url": f"/ui/{selected_project.full_name}/-/jobs/{selected_job_id}/trace"
         if selected_project and selected_job
         else None,
-        "selected_job_artifacts_api_url": f"/api/v4/projects/{selected_project_id}/jobs/{selected_job_id}/artifacts"
+        "selected_job_artifacts_api_url": f"/ui/{selected_project.full_name}/-/artifacts/{selected_job_id}/download"
         if selected_project and selected_job
         else None,
     }
