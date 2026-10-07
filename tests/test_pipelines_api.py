@@ -1413,6 +1413,9 @@ async def test_pipeline_diagnostics_marks_stale_running_job(
     )
     job = result.scalar_one()
     job.started_at = datetime.now(timezone.utc) - timedelta(minutes=31)
+    job.updated_at = job.started_at
+    if job.trace:
+        job.trace.updated_at = job.started_at
     await db_session.commit()
 
     diagnostics = await client.get(
@@ -1426,6 +1429,18 @@ async def test_pipeline_diagnostics_marks_stale_running_job(
     assert job_diagnostic["blockers"][0]["type"] == "stale_running_job"
     assert job_diagnostic["recovery"]["operator_requeue"] is True
     assert job_diagnostic["recovery"]["gitlab_compatible_flow"] == "cancel_then_retry"
+
+    # A long job with a fresh trace upload is active, regardless of duration.
+    assert (await client.patch(f"{API}/jobs/{job_id}/trace",
+        headers={"JOB-TOKEN": request.json()["token"], "Content-Range": "0-7"},
+        content=b"progress")).status_code == 202
+    diagnostics = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}/diagnostics")
+    active = diagnostics.json()["jobs"][0]
+    assert active["running_seconds"] >= 30 * 60
+    assert active["stale"] is False
+    assert active["blocked"] is False
+
 
 
 async def test_retry_pipeline_requeues_failed_and_skipped_jobs(client, test_token):

@@ -545,14 +545,22 @@ def explain_job_scheduling(
                 reasons.append("eligible for the next runner poll")
         elif job.status == "running":
             running_seconds = _elapsed_seconds(job.started_at or job.updated_at, now)
-            stale = running_seconds is not None and running_seconds >= int(
+            last_activity = max(
+                (value for value in (
+                    _aware_utc(job.started_at), _aware_utc(job.updated_at),
+                    _aware_utc(job.trace.updated_at) if job.trace else None,
+                ) if value is not None),
+                default=None,
+            )
+            idle_seconds = _elapsed_seconds(last_activity, now)
+            stale = idle_seconds is not None and idle_seconds >= int(
                 RUNNING_JOB_STALE_AFTER.total_seconds()
             )
             if stale:
                 blocked = True
                 reason = (
-                    "running longer than the emulator stale threshold; "
-                    "operator requeue can reset the runner-facing attempt"
+                    "no job or trace update within the emulator inactivity threshold; "
+                    "check the runner before considering cancel and retry"
                 )
                 reasons.append(reason)
                 blockers.append(
@@ -560,6 +568,7 @@ def explain_job_scheduling(
                         "type": "stale_running_job",
                         "reason": reason,
                         "running_seconds": running_seconds,
+                        "idle_seconds": idle_seconds,
                         "stale_after_seconds": int(
                             RUNNING_JOB_STALE_AFTER.total_seconds()
                         ),
