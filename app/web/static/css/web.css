@@ -1202,51 +1202,41 @@ td.blob-code {
     overflow: hidden;
 }
 .gl-project-label {
-    margin: 0 6px 10px;
-    font-size: 12px;
+    margin: 4px 8px 10px;
+    font-size: 14px;
+    text-transform: none;
 }
 .gl-project-summary {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr);
-    gap: 8px;
+    display: flex;
+    gap: 10px;
     align-items: center;
-    padding: 0 4px 8px;
-    margin-bottom: 8px;
+    padding: 6px 8px;
+    margin: 0 0 8px;
+    border-radius: 4px;
+    color: var(--gl-text) !important;
+    text-decoration: none !important;
 }
-.gl-project-summary .Label {
-    grid-column: 2;
-    justify-self: start;
+.gl-project-summary:hover {
+    background: rgba(0, 0, 0, .06);
 }
 .gl-project-avatar {
     display: flex;
+    flex: none;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 3px;
-    color: #24663b;
-    background: #d6f5d6;
-    font-size: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    color: #403483;
+    background: #e1d8f9;
+    font-size: 14px;
     font-weight: 600;
 }
 .gl-project-title {
     min-width: 0;
-}
-.gl-project-title a {
-    display: block;
-    overflow: hidden;
-    color: var(--gl-text);
     font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.gl-project-title span {
-    display: block;
-    overflow: hidden;
-    color: var(--gl-text-muted);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
 }
 .gl-sidebar-group {
     margin-bottom: 2px;

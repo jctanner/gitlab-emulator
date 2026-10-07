@@ -5,24 +5,15 @@
     Expects: owner, repo (Repository object), url_prefix, active_tab
     Optional: open_issues_count, open_pulls_count
 -#}
-{% from "_namespace.html" import namespace_links %}
 {% from "_octicons.html" import repo_icon, code, issue_opened, git_pull_request, git_branch, history, tag %}
 {% set current_path = request.url.path %}
 
 <aside class="gl-sidebar gl-project-sidebar" aria-label="Project navigation">
     <div class="gl-sidebar-section-title gl-project-label">Project</div>
-    <div class="gl-project-summary">
-        <div class="gl-project-avatar">{{ repo.name[0]|upper }}</div>
-        <div class="gl-project-title">
-            <a href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}">{{ repo.name }}</a>
-            <span>{{ namespace_links(owner, url_prefix, "") }}</span>
-        </div>
-        {% if repo.private %}
-        <span class="Label Label--secondary">Private</span>
-        {% else %}
-        <span class="Label Label--secondary">Public</span>
-        {% endif %}
-    </div>
+    <a class="gl-project-summary" href="{{ url_prefix }}/{{ owner }}/{{ repo.name }}" title="{{ repo.full_name }}">
+        <span class="gl-project-avatar" aria-hidden="true">{{ repo.name[0]|upper }}</span>
+        <span class="gl-project-title">{{ repo.name }}</span>
+    </a>
 
     <div class="gl-sidebar-scroll">
         <nav class="gl-sidebar-nav">
