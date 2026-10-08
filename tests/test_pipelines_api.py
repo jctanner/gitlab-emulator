@@ -9222,3 +9222,205 @@ async def test_runner_can_decline_untagged_jobs(client, test_token):
     )
     assert allowed.status_code == 201
     assert allowed.json()["job_info"]["name"] == "untagged"
+
+
+async def _setup_bridge_projects(client, test_token, parent_ci: str):
+    project = await _create_project(client, test_token)
+    downstream_resp = await client.post(
+        f"{API}/user/repos",
+        json={"name": "downstream", "auto_init": True},
+        headers=auth_headers(test_token),
+    )
+    assert downstream_resp.status_code == 201
+    for repo, content in (
+        (
+            "downstream",
+            "workflow:\n"
+            "  rules:\n"
+            "    - if: '$CI_PIPELINE_SOURCE == \"parent_pipeline\"'\n"
+            "    - when: never\n\n"
+            "child_job:\n  script:\n    - echo child\n",
+        ),
+        ("ci-repo", _api_only_ci_yaml(parent_ci)),
+    ):
+        write = await client.put(
+            f"{API}/repos/testuser/{repo}/contents/.gitlab-ci.yml",
+            headers=auth_headers(test_token),
+            json={
+                "message": "add ci",
+                "content": base64.b64encode(content.encode()).decode(),
+                "branch": "main",
+            },
+        )
+        assert write.status_code == 201
+    return project, downstream_resp.json()
+
+
+async def _pipeline_jobs_by_name(client, project_id, pipeline_id):
+    jobs = await client.get(
+        f"{API}/projects/{project_id}/pipelines/{pipeline_id}/jobs"
+    )
+    assert jobs.status_code == 200
+    return {job["name"]: job for job in jobs.json()}
+
+
+async def _downstream_pipeline_ids(client, downstream_id):
+    pipelines = await client.get(f"{API}/projects/{downstream_id}/pipelines")
+    assert pipelines.status_code == 200
+    return [
+        pipeline["id"]
+        for pipeline in pipelines.json()
+        if pipeline["source"] == "parent_pipeline"
+    ]
+
+
+async def _run_next_job(client, expected_name, state):
+    request = await client.post(
+        f"{API}/jobs/request",
+        headers={"RUNNER-TOKEN": RUNNER_TOKEN},
+        json={"token": RUNNER_TOKEN},
+    )
+    assert request.status_code == 201
+    payload = request.json()
+    assert payload["job_info"]["name"] == expected_name
+    update = await client.put(
+        f"{API}/jobs/{payload['id']}",
+        headers={"JOB-TOKEN": payload["token"]},
+        json={
+            "token": payload["token"],
+            "state": state,
+            "failure_reason": "script_failure" if state == "failed" else None,
+            "exit_code": 1 if state == "failed" else 0,
+        },
+    )
+    assert update.status_code == 200
+
+
+BRIDGE_AFTER_STAGE_CI = """
+stages:
+  - strategy
+  - trigger
+
+strategy_job:
+  stage: strategy
+  script:
+    - echo strategy
+
+build_dashboard:
+  stage: trigger
+  trigger:
+    project: testuser/downstream
+    branch: main
+"""
+
+
+async def test_bridge_waits_for_earlier_stage_before_dispatch(client, test_token):
+    project, downstream = await _setup_bridge_projects(
+        client, test_token, BRIDGE_AFTER_STAGE_CI
+    )
+    created = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    pipeline = created.json()
+    assert pipeline["status"] == "pending"
+
+    jobs = await _pipeline_jobs_by_name(client, project["id"], pipeline["id"])
+    assert jobs["build_dashboard"]["status"] == "pending"
+    assert jobs["build_dashboard"]["downstream_pipeline"] is None
+    assert await _downstream_pipeline_ids(client, downstream["id"]) == []
+
+    # A runner receives the strategy job and then the child pipeline's job,
+    # never the bridge itself.
+    await _run_next_job(client, "strategy_job", "success")
+    await _run_next_job(client, "child_job", "success")
+
+    jobs = await _pipeline_jobs_by_name(client, project["id"], pipeline["id"])
+    bridge = jobs["build_dashboard"]
+    assert bridge["status"] == "success"
+    downstream_ids = await _downstream_pipeline_ids(client, downstream["id"])
+    assert downstream_ids == [bridge["downstream_pipeline"]["id"]]
+    parent = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert parent.json()["status"] == "success"
+
+    # Retrying a bridge creates a new downstream pipeline.
+    retry = await client.post(
+        f"{API}/projects/{project['id']}/jobs/{bridge['id']}/retry",
+        headers=auth_headers(test_token),
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["downstream_pipeline"]["id"] != bridge["downstream_pipeline"]["id"]
+    retried = await _downstream_pipeline_ids(client, downstream["id"])
+    assert len(retried) == 2
+
+
+async def test_bridge_is_skipped_when_earlier_stage_fails(client, test_token):
+    project, downstream = await _setup_bridge_projects(
+        client, test_token, BRIDGE_AFTER_STAGE_CI
+    )
+    created = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    pipeline = created.json()
+
+    await _run_next_job(client, "strategy_job", "failed")
+
+    jobs = await _pipeline_jobs_by_name(client, project["id"], pipeline["id"])
+    assert jobs["build_dashboard"]["status"] == "skipped"
+    assert jobs["build_dashboard"]["downstream_pipeline"] is None
+    assert await _downstream_pipeline_ids(client, downstream["id"]) == []
+    parent = await client.get(
+        f"{API}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    assert parent.json()["status"] == "failed"
+
+
+async def test_bridge_with_needs_dispatches_before_unrelated_stage(
+    client, test_token
+):
+    ci_yaml = """
+stages:
+  - build
+  - test
+  - trigger
+
+build_job:
+  stage: build
+  script:
+    - echo build
+
+slow_test:
+  stage: test
+  script:
+    - echo test
+
+build_dashboard:
+  stage: trigger
+  needs: [build_job]
+  trigger:
+    project: testuser/downstream
+    branch: main
+"""
+    project, downstream = await _setup_bridge_projects(client, test_token, ci_yaml)
+    created = await client.post(
+        f"{API}/projects/{project['id']}/pipeline",
+        json={"ref": "main"},
+        headers=auth_headers(test_token),
+    )
+    assert created.status_code == 201
+    pipeline = created.json()
+    assert await _downstream_pipeline_ids(client, downstream["id"]) == []
+
+    await _run_next_job(client, "build_job", "success")
+
+    jobs = await _pipeline_jobs_by_name(client, project["id"], pipeline["id"])
+    assert jobs["slow_test"]["status"] == "pending"
+    assert jobs["build_dashboard"]["status"] == "success"
+    assert len(await _downstream_pipeline_ids(client, downstream["id"])) == 1

@@ -29,6 +29,7 @@ import yaml
 from app.api.deps import CurrentUser, DbSession
 from app.api.pagination import paginated_json
 from app.api.runner import explain_job_scheduling
+from app.services.bridge_jobs import dispatch_ready_bridges
 from app.config import settings
 from app.models.ci import (
     CiRunner,
@@ -1553,6 +1554,9 @@ def _reset_job_for_retry(job: PipelineJob, now: datetime) -> None:
         job.scheduled_at = None
     job.started_at = None
     job.finished_at = None
+    if job.trigger_project:
+        # A retried bridge creates a new downstream pipeline.
+        job.downstream_pipeline_id = None
     if job.trace:
         job.trace.content = ""
         job.trace.raw = b""
@@ -1887,6 +1891,8 @@ def _job_json(job: PipelineJob) -> dict:
 
 async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     await db.refresh(pipeline, attribute_names=["jobs"])
+    if await dispatch_ready_bridges(pipeline, db):
+        await db.refresh(pipeline, attribute_names=["jobs"])
     statuses = [job.status for job in pipeline.jobs]
     blocking_statuses = [
         job.status
@@ -2309,35 +2315,7 @@ async def _create_pipeline(
     await db.commit()
     await db.refresh(pipeline)
     if bridge_targets:
-        await db.refresh(pipeline, attribute_names=["jobs"])
-        now = datetime.now(timezone.utc)
-        for job in pipeline.jobs:
-            if not job.trigger_project or job.downstream_pipeline_id is not None:
-                continue
-            target = bridge_targets.get(job.name)
-            if target is None:
-                continue
-            try:
-                downstream = await _create_pipeline(
-                    target.id,
-                    CreatePipelineRequest(ref=job.trigger_ref or body.ref),
-                    db,
-                    source="parent_pipeline",
-                )
-            except HTTPException as exc:
-                # A bridge job is part of the parent pipeline even when the
-                # downstream pipeline cannot be created (for example, the
-                # target project has no .gitlab-ci.yml).  GitLab reports that
-                # failure on the bridge job after persisting the parent.
-                job.status = "failed"
-                job.failure_reason = str(exc.detail)
-                job.started_at = job.started_at or now
-                job.finished_at = now
-            else:
-                job.downstream_pipeline_id = downstream.id
-                job.status = "success"
-                job.started_at = job.started_at or now
-                job.finished_at = now
+        # Bridges wait like any other job; dispatch the ones already ready.
         await _derive_pipeline_status(pipeline, db)
         await db.commit()
         await db.refresh(pipeline)

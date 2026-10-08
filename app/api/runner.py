@@ -546,7 +546,11 @@ def explain_job_scheduling(
                 )
 
             if not blocked:
-                reasons.append("eligible for the next runner poll")
+                reasons.append(
+                    "bridge job; the server creates the downstream pipeline"
+                    if job.trigger_project
+                    else "eligible for the next runner poll"
+                )
         elif job.status == "running":
             running_seconds = _elapsed_seconds(job.started_at or job.updated_at, now)
             last_activity = max(
@@ -1260,6 +1264,10 @@ async def _build_persisted_job_payload(job: PipelineJob, db: DbSession) -> dict:
 
 async def _derive_pipeline_status(pipeline: Pipeline, db: DbSession) -> None:
     await db.refresh(pipeline, attribute_names=["jobs"])
+    from app.services.bridge_jobs import dispatch_ready_bridges
+
+    if await dispatch_ready_bridges(pipeline, db):
+        await db.refresh(pipeline, attribute_names=["jobs"])
     statuses = [job.status for job in pipeline.jobs]
     blocking_statuses = [
         job.status
@@ -1646,7 +1654,11 @@ async def request_job(
             .selectinload(PipelineJob.artifacts),
             selectinload(PipelineJob.project),
         )
-        .where(PipelineJob.status == "pending")
+        .where(
+            PipelineJob.status == "pending",
+            # Bridge jobs are dispatched by the server, never by a runner.
+            PipelineJob.trigger_project.is_(None),
+        )
         .order_by(PipelineJob.stage_index.asc(), PipelineJob.id.asc())
     )
     persisted_job = None
