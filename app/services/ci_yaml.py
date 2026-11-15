@@ -1316,6 +1316,8 @@ def _if_atom_matches(expression: str, variables: dict[str, str]) -> bool:
             matches = left_key not in variables
             return matches if operator == "==" else not matches
         if _is_empty_string_literal(right):
+            if left_key not in variables:
+                return False
             matches = left_value == ""
             return matches if operator == "==" else not matches
         right_value = _expression_value(right, variables)

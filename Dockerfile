@@ -32,7 +32,7 @@ RUN mkdir -p /data
 
 # Environment variables
 ENV GITLAB_EMULATOR_DATA_DIR=/data
-ENV GITLAB_EMULATOR_DATABASE_URL=sqlite+aiosqlite:///data/gitlab_emulator.db
+ENV GITLAB_EMULATOR_DATABASE_URL=sqlite+aiosqlite:////data/gitlab_emulator.db
 ENV GITLAB_EMULATOR_BASE_URL=https://glemu.local
 ENV GITLAB_EMULATOR_HOSTNAME=glemu.local
 ENV XDG_DATA_HOME=/data/caddy-data

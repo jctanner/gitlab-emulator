@@ -63,3 +63,9 @@ No bug files are currently checked into `docs/bugs/open/`.
 - [ADR-0004: Model GitLab groups as namespace paths](decisions/ADR-0004-model-gitlab-groups-as-namespaces.md)
 - [ADR-0005: Use full project paths for web UI routes](decisions/ADR-0005-use-full-project-paths-for-web-ui-routes.md)
 - [ADR-0006: Surface runner scheduling diagnostics in web UI](decisions/ADR-0006-surface-runner-scheduling-diagnostics-in-web-ui.md)
+
+## CC-43
+
+- [Release workflows](tasks/current/cc-43-releases.md)
+
+- [CC-43 clean-runner baseline fixes](tasks/current/cc-43-ci-baseline.md)

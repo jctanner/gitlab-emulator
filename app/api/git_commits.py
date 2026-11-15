@@ -14,8 +14,11 @@ router = APIRouter(tags=["git-commits"])
 BASE = settings.BASE_URL
 
 
-async def _git(repo_path: str, *args: str, input_data: bytes | None = None) -> str:
-    env = {**os.environ, "GIT_DIR": repo_path}
+async def _git(
+    repo_path: str, *args: str, input_data: bytes | None = None,
+    env_overrides: dict[str, str] | None = None,
+) -> str:
+    env = {**os.environ, "GIT_DIR": repo_path, **(env_overrides or {})}
     proc = await asyncio.create_subprocess_exec(
         "git", *args,
         stdin=asyncio.subprocess.PIPE if input_data else None,
@@ -100,7 +103,13 @@ async def create_git_commit(
         args.extend(["-p", parent])
 
     try:
-        sha = (await _git(repository.disk_path, *args)).strip()
+        identity = {
+            "GIT_AUTHOR_NAME": user.name or user.login,
+            "GIT_AUTHOR_EMAIL": user.email or f"{user.login}@localhost",
+            "GIT_COMMITTER_NAME": user.name or user.login,
+            "GIT_COMMITTER_EMAIL": user.email or f"{user.login}@localhost",
+        }
+        sha = (await _git(repository.disk_path, *args, env_overrides=identity)).strip()
     except RuntimeError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

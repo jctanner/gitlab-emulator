@@ -1,0 +1,12 @@
+
+# Keep host state and credentials out of published images.
+.git
+.venv
+.env
+.env.*
+data/
+logs/
+__pycache__/
+.pytest_cache/
+*.db
+*.sqlite*

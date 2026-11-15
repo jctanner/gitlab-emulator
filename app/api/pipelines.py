@@ -2200,7 +2200,6 @@ async def _create_pipeline(
             environment=parsed_job.environment,
         )
         variables = {
-            **project_variable_metadata,
             **(
                 parsed_job.variable_metadata
                 if parsed_job.variable_metadata
@@ -2209,6 +2208,7 @@ async def _create_pipeline(
                     for key, value in parsed_job.variables.items()
                 }
             ),
+            **project_variable_metadata,
             **pipeline_variable_entries,
         }
         try:

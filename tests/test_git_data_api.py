@@ -8,8 +8,12 @@ from tests.test_projects_api import _create_user_and_token
 
 @pytest.mark.asyncio
 async def test_git_data_writes_require_developer_access(
-    client, db_session, test_token
+    client, db_session, test_token, monkeypatch
 ):
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+    for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.delenv(name, raising=False)
     reporter, reporter_token = await _create_user_and_token(
         db_session, "git-data-reporter"
     )
@@ -92,6 +96,13 @@ async def test_git_data_writes_require_developer_access(
         headers=auth_headers(developer_token),
     )
     assert commit.status_code == 201
+    created = await client.get(
+        f"{API}/repos/testuser/git-data-role-repo/git/commits/{commit.json()['sha']}",
+        headers=auth_headers(developer_token),
+    )
+    assert created.status_code == 200
+    assert created.json()["author"]["name"] == (developer.name or developer.login)
+    assert created.json()["author"]["email"] == developer.email
     commit_sha = commit.json()["sha"]
 
     denied_tag = await client.post(
