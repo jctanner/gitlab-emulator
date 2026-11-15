@@ -26,7 +26,7 @@ jobs:
       matrix:
         include:
           - variant: default
-            port: 8000
+            port: 80
             dockerfile: Dockerfile
             image: ghcr.io/${{ github.repository }}
     steps:
@@ -64,7 +64,7 @@ jobs:
           CONTAINER_PORT: ${{ matrix.port }}
         run: |
           extra=()
-          if [[ "$VARIANT" == k3s ]]; then
+          if [[ "$VARIANT" == default ]]; then
             printf ':80 {\n  reverse_proxy 127.0.0.1:8000\n}\n' > smoke.Caddyfile
             chmod 644 smoke.Caddyfile
             extra=(-v "$PWD/smoke.Caddyfile:/etc/caddy/Caddyfile:ro")
