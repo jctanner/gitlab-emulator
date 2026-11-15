@@ -67,3 +67,5 @@ No bug files are currently checked into `docs/bugs/open/`.
 ## CC-43
 
 - [Release workflows](tasks/current/cc-43-releases.md)
+
+- [CC-43 clean-runner baseline fixes](tasks/current/cc-43-ci-baseline.md)

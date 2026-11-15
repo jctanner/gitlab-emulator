@@ -23,3 +23,5 @@ a GitHub release with its digest. Based on the Jira CC-43 reference pattern.
 Container smoke diagnostics found a relative SQLite URL in the standalone Dockerfile. Fixed it to use the intended absolute /data path. No workflow was retried; the change is validated by a new PR commit.
 
 The API intentionally binds loopback behind Caddy. The smoke test now supplies synthetic HTTP Caddy configuration and checks port 80, preserving that boundary.
+
+The first full CI run exposed four clean-runner baseline failures (745 passed). See cc-43-ci-baseline.md for the scoped fixes, official GitLab contract references and 95 passing focused tests. Full CI remains mandatory.

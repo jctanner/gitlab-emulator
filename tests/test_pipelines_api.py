@@ -4199,12 +4199,13 @@ vars:
     assert request.status_code == 201
     variables = {item["key"]: item["value"] for item in request.json()["variables"]}
 
+    # Pipeline/project variables outrank job/default YAML variables in GitLab.
     assert variables["PIPELINE_ONLY"] == "pipeline"
-    assert variables["FROM_PIPELINE"] == "yaml-override"
+    assert variables["FROM_PIPELINE"] == "pipeline"
     assert variables["FROM_YAML"] == "yaml"
     assert variables["JOB_ONLY"] == "job"
-    assert variables["SHARED"] == "job"
-    assert variables["CI_COMMIT_REF_NAME"] == "yaml-ref"
+    assert variables["SHARED"] == "pipeline"
+    assert variables["CI_COMMIT_REF_NAME"] == "main"
     assert variables["CI_PROJECT_PATH"] == "testuser/ci-repo"
 
 
@@ -4288,10 +4289,11 @@ project_probe:
     variables = {item["key"]: item["value"] for item in request.json()["variables"]}
 
     assert variables["PROJECT_ONLY"] == "project"
+    # Pipeline/project variables outrank job/default YAML variables in GitLab.
     assert variables["PIPELINE_ONLY"] == "pipeline"
-    assert variables["FROM_PROJECT"] == "yaml"
-    assert variables["FROM_PIPELINE"] == "yaml"
-    assert variables["SHARED"] == "job"
+    assert variables["FROM_PROJECT"] == "project"
+    assert variables["FROM_PIPELINE"] == "pipeline"
+    assert variables["SHARED"] == "pipeline"
     assert "SCOPED_OUT" not in variables
 
 
